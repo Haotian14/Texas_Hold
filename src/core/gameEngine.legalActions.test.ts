@@ -44,6 +44,18 @@ describe('legalActions 翻前', () => {
     expect(allin.min).toBe(seat.stack);
     expect(allin.max).toBe(seat.stack);
   });
+
+  it('大盲面对全员平跟时保留加注权（bet/raise 判别的唯一区分场景）', () => {
+    const s = startHand({ seed: 'la-bb', buttonSeat: 0 });
+    const bb = s.seats.find(x => x.position === 'BB')!;
+    // 全员平跟到大盲：currentBet 仍是 1，但大盲已投入 1，所以 toCall 为 0。
+    // 若用 toCall > 0 判别 bet/raise，这里会错误地给出 bet。
+    const limped = { ...s, toAct: bb.seat };
+    const acts = legalActions(limped);
+    expect(acts.map(a => a.type).sort()).toEqual(['allin', 'check', 'raise']);
+    // min 是"本次投入额"：加注到 2BB 只需再投 1BB，因为盲注已投过 1BB
+    expect(acts.find(a => a.type === 'raise')!.min).toBe(BIG_BLIND);
+  });
 });
 
 describe('legalActions 无人下注时', () => {
@@ -130,5 +142,20 @@ describe('legalActions 边界', () => {
   it('toAct 为 null 时返回空数组', () => {
     const s = startHand({ seed: 'la-13', buttonSeat: 0 });
     expect(legalActions({ ...s, toAct: null })).toEqual([]);
+  });
+
+  it('已弃牌或已全下的座位没有任何合法动作', () => {
+    const s = startHand({ seed: 'la-14', buttonSeat: 0 });
+    const seat = s.toAct!;
+    const folded = {
+      ...s,
+      seats: s.seats.map(x => (x.seat === seat ? { ...x, folded: true } : x)),
+    };
+    expect(legalActions(folded)).toEqual([]);
+    const allIn = {
+      ...s,
+      seats: s.seats.map(x => (x.seat === seat ? { ...x, allIn: true } : x)),
+    };
+    expect(legalActions(allIn)).toEqual([]);
   });
 });

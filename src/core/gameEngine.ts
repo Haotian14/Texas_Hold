@@ -78,6 +78,11 @@ export function isZeroChips(v: number): boolean {
   return Math.abs(v) < 1e-9;
 }
 
+/** 筹码金额的严格大于判定，容忍浮点尾数。a 恰好等于 b 时返回 false。 */
+export function chipsGreater(a: number, b: number): boolean {
+  return a - b > 1e-9;
+}
+
 /** 筹码守恒不变量的度量：所有人手上的筹码 + 所有已投入的筹码 */
 export function totalChips(state: GameState): number {
   return state.seats.reduce((sum, s) => sum + s.stack + s.totalContribution, 0);
@@ -102,7 +107,7 @@ export function legalActions(state: GameState): LegalAction[] {
 
   if (toCall > 0) {
     out.push({ type: 'fold', min: 0, max: 0 });
-    if (seat.stack > toCall) {
+    if (chipsGreater(seat.stack, toCall)) {
       out.push({ type: 'call', min: toCall, max: toCall });
     }
   } else {
@@ -115,7 +120,7 @@ export function legalActions(state: GameState): LegalAction[] {
     // 最小加注到的绝对额，换算成本次需投入额
     const minRaiseTo = state.currentBet + state.lastRaiseSize;
     const minInvest = round2(minRaiseTo - seat.streetContribution);
-    if (seat.stack > minInvest) {
+    if (chipsGreater(seat.stack, minInvest)) {
       // 用 currentBet 而非 toCall 区分 bet/raise：
       // 翻前大盲面对全员平跟时 toCall 为 0，但场上已有下注（盲注），
       // 此时他的主动加码是 raise 而不是 bet。
@@ -127,7 +132,7 @@ export function legalActions(state: GameState): LegalAction[] {
     }
   }
 
-  if (seat.stack > 0) {
+  if (!isZeroChips(seat.stack)) {
     out.push({ type: 'allin', min: seat.stack, max: seat.stack });
   }
 
