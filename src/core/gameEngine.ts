@@ -70,7 +70,12 @@ function postBlind(s: SeatState, amount: number): void {
   s.stack -= paid;
   s.streetContribution += paid;
   s.totalContribution += paid;
-  if (s.stack === 0) s.allIn = true;
+  if (isZeroChips(s.stack)) s.allIn = true;
+}
+
+/** 筹码金额的零值判定。浮点累加会产生 1e-16 量级的尾数，不能直接和 0 比。 */
+export function isZeroChips(v: number): boolean {
+  return Math.abs(v) < 1e-9;
 }
 
 /** 筹码守恒不变量的度量：所有人手上的筹码 + 所有已投入的筹码 */

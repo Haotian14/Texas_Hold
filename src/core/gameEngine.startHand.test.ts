@@ -70,4 +70,13 @@ describe('startHand', () => {
     const s = startHand({ seed: 'h1', buttonSeat: 0 });
     expect(totalChips(s)).toBe(SEAT_COUNT * STARTING_STACK);
   });
+
+  it('按钮位靠后时位置映射仍然正确（验证环绕）', () => {
+    // buttonSeat=4 时座位 0/1/2/3 的偏移量在未加 seatCount 前都是负数，
+    // 这条用例专门盯 (seat - buttonSeat + seatCount) % seatCount 的环绕修正
+    const s = startHand({ seed: 'wrap', buttonSeat: 4 });
+    expect(s.seats.map(x => x.position)).toEqual([
+      'BB', 'UTG', 'HJ', 'CO', 'BTN', 'SB',
+    ]);
+  });
 });
