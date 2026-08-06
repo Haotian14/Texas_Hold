@@ -1,14 +1,27 @@
 import type { Card } from './cards';
 import { shuffledDeck } from './cards';
 import { createRng } from './rng';
-import type { Action, ActionType, GameState, HandResult, Position, SeatState, Street } from './types';
+import type {
+  Action,
+  ActionType,
+  GameState,
+  HandRecord,
+  HandRecordSeat,
+  HandResult,
+  Position,
+  SeatState,
+  Street,
+} from './types';
 import {
   BIG_BLIND,
+  HAND_RECORD_SCHEMA_VERSION,
   POSITION_ORDER,
   SEAT_COUNT,
   SMALL_BLIND,
   STARTING_STACK,
 } from './types';
+import { buildPots } from './pots';
+import { evaluate7 } from './handEval';
 
 export interface StartHandOptions {
   seed: string;
@@ -323,4 +336,114 @@ function openNextStreet(state: GameState): GameState {
   // 翻后从按钮位左手第一位（SB 方向）起首先行动
   const first = findNextToAct(base, state.buttonSeat);
   return { ...base, toAct: first };
+}
+
+/**
+ * 结算本手：按主池/边池逐池比牌，把筹码派回各家 stack，并填充 results。
+ * 必须在 handOver 为 true 时调用。
+ */
+export function settleHand(state: GameState): GameState {
+  if (!state.handOver) throw new Error('本手尚未结束，不能结算');
+  if (state.results) return state;
+
+  const seats = state.seats.map(s => ({ ...s }));
+  const contributions = new Map(seats.map(s => [s.seat, s.totalContribution]));
+  const folded = new Set(seats.filter(s => s.folded).map(s => s.seat));
+  const pots = buildPots(contributions, folded);
+
+  const live = seats.filter(s => !s.folded);
+  const isShowdown = live.length > 1;
+
+  // 摊牌时预先算好每个未弃牌座位的牌力
+  const scores = new Map<number, number>();
+  if (isShowdown) {
+    for (const s of live) {
+      scores.set(s.seat, evaluate7([...s.holeCards, ...state.board]));
+    }
+  }
+
+  const won = new Map<number, number>(seats.map(s => [s.seat, 0]));
+
+  for (const pot of pots) {
+    const contenders = pot.eligible;
+    let winners: number[];
+    if (contenders.length === 1) {
+      winners = contenders;
+    } else {
+      let best = -1;
+      winners = [];
+      for (const seat of contenders) {
+        const sc = scores.get(seat) ?? -1;
+        if (sc > best) {
+          best = sc;
+          winners = [seat];
+        } else if (sc === best) {
+          winners.push(seat);
+        }
+      }
+    }
+    // 平分，余数按座位号升序分配，保证总额不丢失
+    const share = Math.floor((pot.amount / winners.length) * 100) / 100;
+    let distributed = 0;
+    for (const seat of winners) {
+      won.set(seat, round2(won.get(seat)! + share));
+      distributed = round2(distributed + share);
+    }
+    const remainder = round2(pot.amount - distributed);
+    if (chipsGreater(remainder, 0)) {
+      const first = winners[0];
+      won.set(first, round2(won.get(first)! + remainder));
+    }
+  }
+
+  const results: HandResult[] = seats.map(s => ({
+    seat: s.seat,
+    netBB: round2(won.get(s.seat)! - s.totalContribution),
+    showdown: isShowdown && !s.folded,
+  }));
+
+  // 结算后把筹码派回 stack，并清空 totalContribution：这笔钱已经不再
+  // "押在池子里"，totalChips() 把 stack+totalContribution 算作一个人的
+  // 全部身家，若不清零会把已派彩的筹码重复计入，破坏守恒不变量。
+  for (const s of seats) {
+    s.stack = round2(s.stack + won.get(s.seat)!);
+    s.totalContribution = 0;
+  }
+
+  return { ...state, seats, toAct: null, results };
+}
+
+export interface ToHandRecordOptions {
+  id: string;
+  heroSeat: number;
+  /** 座位号 -> persona id；hero 的座位无需提供 */
+  personaIds: Record<number, string>;
+  timestamp: number;
+}
+
+export function toHandRecord(state: GameState, opts: ToHandRecordOptions): HandRecord {
+  if (!state.handOver) throw new Error('本手尚未结束，无法生成 HandRecord');
+  const settled = state.results ? state : settleHand(state);
+
+  const seats: HandRecordSeat[] = settled.seats.map(s => ({
+    seat: s.seat,
+    position: s.position,
+    personaId: s.seat === opts.heroSeat ? 'hero' : (opts.personaIds[s.seat] ?? 'unknown'),
+    // 每手牌都从固定筹码重置开始（spec §2），无需从结算结果反推
+    startingStack: STARTING_STACK,
+    holeCards: s.holeCards,
+  }));
+
+  return {
+    id: opts.id,
+    schemaVersion: HAND_RECORD_SCHEMA_VERSION,
+    timestamp: opts.timestamp,
+    seed: settled.seed,
+    heroSeat: opts.heroSeat,
+    buttonSeat: settled.buttonSeat,
+    seats,
+    board: settled.board,
+    actions: settled.actions,
+    results: settled.results!,
+  };
 }
