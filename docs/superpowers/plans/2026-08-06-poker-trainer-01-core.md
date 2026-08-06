@@ -483,7 +483,7 @@ export function sameCard(a: Card, b: Card): boolean {
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run src/core/cards.test.ts`
-Expected: PASS，13 个测试全绿
+Expected: PASS，11 个测试全绿
 
 - [ ] **Step 5: 提交**
 
@@ -702,8 +702,8 @@ describe('evaluate7Slow', () => {
     expect(s7).toBe(s5);
   });
 
-  it('7 张中的葫芦优先于同花', () => {
-    // 5 张方片构成同花，同时 A 有三条
+  it('7 张中同花优先于三条', () => {
+    // 5 张方片构成同花，同时 A 有三条；同花更大
     const s7 = evaluate7Slow(parseCards('Ad Ah As Kd Qd Jd 9d'));
     expect(categoryOf(s7)).toBe(HandCategory.Flush);
   });
@@ -883,10 +883,9 @@ describe('evaluate7 牌型识别', () => {
     expect(s).toBe(evaluate7(parseCards('Ad Ac Kd Kc 9s 4h 3d')));
   });
 
-  it('葫芦优先于同花', () => {
-    // 6 张黑桃里含同花，同时 A 三条 + K 对子
-    const s = evaluate7(parseCards('As Ah Ad Ks Kh Qs Js'));
-    expect(categoryOf(s)).toBe(HandCategory.FullHouse);
+  it('同时构成顺子与三条时取顺子', () => {
+    // 9 有三条，同时 5-6-7-8-9 构成顺子；顺子更大
+    expect(cat('9s 9h 9d 8c 7h 6d 5s')).toBe(HandCategory.Straight);
   });
 
   it('跨花色的 5 张不构成同花', () => {
@@ -1105,19 +1104,24 @@ describe('buildPots', () => {
   });
 
   it('弃牌玩家的投入算作死钱，但不参与争夺', () => {
-    // 座位2 投了 10 后弃牌
+    // 座位2 投了 10 后弃牌。两层的有资格者都是 [0,1]，因此合并成一个池：
+    // 10×3 = 30（含座位2 的死钱）加上 40×2 = 80，共 110
     const pots = buildPots(contrib({ 0: 50, 1: 50, 2: 10 }), new Set([2]));
-    expect(pots).toEqual([
-      { amount: 30, eligible: [0, 1] },   // 10×3，座位2 无资格
-      { amount: 80, eligible: [0, 1] },   // 40×2
-    ]);
+    expect(pots).toEqual([{ amount: 110, eligible: [0, 1] }]);
   });
 
-  it('资格相同的相邻层会合并', () => {
-    // 座位2 弃牌后，两层的 eligible 都是 [0,1]，应合并为一个池
-    const pots = buildPots(contrib({ 0: 50, 1: 50, 2: 10 }), new Set([2]));
-    // 上一条测试已断言未合并的形态；此处显式说明预期行为
-    expect(pots.every(p => p.eligible.length > 0)).toBe(true);
+  it('资格相同的相邻层会合并成一个池', () => {
+    // 座位1、2 都弃牌后，三层的有资格者都只剩 [0]，全部合并
+    const pots = buildPots(contrib({ 0: 60, 1: 25, 2: 10 }), new Set([1, 2]));
+    expect(pots).toEqual([{ amount: 95, eligible: [0] }]);
+  });
+
+  it('资格不同的层不会被合并', () => {
+    // 无人弃牌：第一层 [0,1,2]，第二层只有 [1,2]，资格不同，保持两个池
+    const pots = buildPots(contrib({ 0: 10, 1: 50, 2: 50 }), new Set());
+    expect(pots).toHaveLength(2);
+    expect(pots[0].eligible).toEqual([0, 1, 2]);
+    expect(pots[1].eligible).toEqual([1, 2]);
   });
 
   it('投入为 0 的座位不产生池层', () => {
@@ -2410,28 +2414,40 @@ export function settleHand(state: GameState): GameState {
       }
     }
     // 平分，余数按座位号升序分配，保证总额不丢失
-    const share = Math.floor((pot.amount / winners.length) * 100) / 100;
+    // 用整数分做除法：(amount / n) * 100 在二进制浮点下常落在 k-ε，
+    // floor 后少一分，差额全被零头路径补给座位号最小的赢家，
+    // 会让能整除的底池也分得不均匀（底池 23 五人分 → 4.64/4.59×4）
+    const cents = Math.round(pot.amount * 100);
+    const share = Math.floor(cents / winners.length) / 100;
     let distributed = 0;
     for (const seat of winners) {
       won.set(seat, round2(won.get(seat)! + share));
       distributed = round2(distributed + share);
     }
     const remainder = round2(pot.amount - distributed);
-    if (remainder > 0) {
+    if (chipsGreater(remainder, 0)) {
       const first = winners[0];
       won.set(first, round2(won.get(first)! + remainder));
     }
   }
 
-  for (const s of seats) {
-    s.stack = round2(s.stack + won.get(s.seat)!);
-  }
-
+  // 顺序要紧：results 必须在清空投入之前构建。
+  // netBB = 赢得 - totalContribution，一旦先清零，
+  // 每个人的净盈亏都会变成「赢得的钱」，全场再无输家。
   const results: HandResult[] = seats.map(s => ({
     seat: s.seat,
     netBB: round2(won.get(s.seat)! - s.totalContribution),
     showdown: isShowdown && !s.folded,
   }));
+
+  for (const s of seats) {
+    s.stack = round2(s.stack + won.get(s.seat)!);
+    // 必须清空投入：totalChips 统计的是「手上筹码 + 已投入筹码」两个桶。
+    // 彩金付进 stack 后若不清空投入桶，赢家的钱会被重复计算，
+    // totalChips 会恒等于 600 + 底池而非 600。
+    s.totalContribution = 0;
+    s.streetContribution = 0;
+  }
 
   return { ...state, seats, toAct: null, results };
 }
