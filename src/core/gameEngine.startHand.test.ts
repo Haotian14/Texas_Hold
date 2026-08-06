@@ -79,4 +79,26 @@ describe('startHand', () => {
       'BB', 'UTG', 'HJ', 'CO', 'BTN', 'SB',
     ]);
   });
+
+  it('不传 startingStacks 时每个座位仍固定为 STARTING_STACK', () => {
+    const s = startHand({ seed: 'h1', buttonSeat: 0 });
+    expect(s.seats.every(x => x.startingStack === STARTING_STACK)).toBe(true);
+  });
+
+  it('传入 startingStacks 时各座位使用对应的起始筹码', () => {
+    const stacks = [10, 20, 30, 40, 50, 60];
+    const s = startHand({ seed: 'h1', buttonSeat: 0, startingStacks: stacks });
+    for (const seat of s.seats) {
+      expect(seat.startingStack).toBe(stacks[seat.seat]);
+    }
+    // SB/BB 扣盲注之前 stack 就等于各自的 startingStack
+    const sb = s.seats.find(x => x.position === 'SB')!;
+    expect(sb.stack).toBe(stacks[sb.seat] - SMALL_BLIND);
+  });
+
+  it('startingStacks 长度不等于 SEAT_COUNT 时抛错', () => {
+    expect(() =>
+      startHand({ seed: 'h1', buttonSeat: 0, startingStacks: [1, 2, 3] }),
+    ).toThrow();
+  });
 });

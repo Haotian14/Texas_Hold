@@ -23,6 +23,11 @@ describe('equityExactVsOne', () => {
     expect(eq).toBeGreaterThanOrEqual(0);
     expect(eq).toBeLessThanOrEqual(1);
   });
+
+  it('翻前（公共牌不足 3 张）调用直接抛错，而不是枚举 C(50,5) 卡死', () => {
+    expect(() => equityExactVsOne(hole('As Ks'), [])).toThrow();
+    expect(() => equityExactVsOne(hole('As Ks'), parseCards('Qs Js'))).toThrow();
+  });
 });
 
 describe('equityMonteCarlo 已知值', () => {

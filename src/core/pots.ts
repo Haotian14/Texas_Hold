@@ -76,9 +76,22 @@ export function buildPots(
     }
   }
 
-  // 全员弃牌的层（死钱无人争夺）归入下一个有资格者的池；
-  // 若整体无人有资格，说明调用方状态有误
-  return merged.filter(p => p.eligible.length > 0);
+  // 走到这里，每一层理论上都应该有非空资格集：孤儿层已经在上面的循环里
+  // 继承了「上一个非空池」的资格集（没有上一个池时兜底给全体未弃牌者）。
+  // 唯一还会剩下空资格集的情况是调用方传入的 contributions 里全员弃牌——
+  // 这是调用方的状态错误（全员弃牌根本不该走到 buildPots，应在更早处判定
+  // 唯一未弃牌者赢下全部，或干脆是个 bug）。以前这里用 filter 把这种池
+  // 悄悄丢弃，代价是它装着的真实筹码也被一并丢弃，调用方后续按 pots 派彩
+  // 会派得比总投入少，筹码守恒不变量在别处爆炸，错误现场却在这里——所以
+  // 改成直接抛错，而不是沉默地吃掉筹码。
+  for (const pot of merged) {
+    if (pot.eligible.length === 0) {
+      throw new Error(
+        'buildPots：出现资格集为空但金额非零的池（多半是全员弃牌的非法调用），调用方状态有误',
+      );
+    }
+  }
+  return merged;
 }
 
 function sameEligible(a: number[], b: number[]): boolean {

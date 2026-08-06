@@ -28,6 +28,12 @@ export interface SeatState {
   seat: number;
   position: Position;
   stack: number;
+  /**
+   * 本手开局时该座位的起始筹码。开局后固定不变（stack 会随行动增减，
+   * 这个字段不会），供 toHandRecord 如实记录「实际起始筹码」这一事实，
+   * 而不是重新读取调用方传入的 startHand 选项。
+   */
+  startingStack: number;
   holeCards: [Card, Card];
   folded: boolean;
   allIn: boolean;

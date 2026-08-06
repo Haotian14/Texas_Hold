@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { startHand, applyAction, settleHand, toHandRecord, totalChips, round2 } from './gameEngine';
+import { startHand, applyAction, settleHand, totalChips, round2 } from './gameEngine';
+import { toHandRecord } from './handRecord';
 import { SEAT_COUNT, STARTING_STACK, HAND_RECORD_SCHEMA_VERSION } from './types';
 import type { GameState } from './types';
 import { parseCards } from './cards';
@@ -131,6 +132,16 @@ describe('toHandRecord', () => {
       toHandRecord(s, { id: 'x', heroSeat: 0, personaIds: {}, timestamp: 1 }),
     ).toThrow();
   });
+
+  it('startingStack 如实反映各座位实际起始筹码，而不是写死的常量', () => {
+    const stacks = [20, 40, 60, 80, 100, 150];
+    const s0 = startHand({ seed: 'st-varied', buttonSeat: 0, startingStacks: stacks });
+    const settled = settleHand(play(s0, [
+      { type: 'fold' }, { type: 'fold' }, { type: 'fold' }, { type: 'fold' }, { type: 'fold' },
+    ]));
+    const rec = toHandRecord(settled, { id: 'hand-varied', heroSeat: 0, personaIds: {}, timestamp: 1 });
+    expect(rec.seats.map(x => x.startingStack)).toEqual(stacks);
+  });
 });
 
 describe('分池平分', () => {
@@ -247,5 +258,12 @@ describe('分池平分', () => {
       .reduce((sum, r) => round2(sum + r.netBB + 0.05), 0);
     expect(payoutSum).toBe(potTotal);
     expect(totalChips(settled)).toBe(SEAT_COUNT * STARTING_STACK);
+
+    // 零头具体去了哪：座位 0（三位赢家里号最小的）比另外两位多拿 0.02，
+    // 净赚 0.03；座位 1、2 只拿到平分的 0.06，净赚 0.01。
+    const netBySeat = new Map(settled.results!.map(r => [r.seat, r.netBB]));
+    expect(netBySeat.get(0)).toBeCloseTo(0.03, 9);
+    expect(netBySeat.get(1)).toBeCloseTo(0.01, 9);
+    expect(netBySeat.get(2)).toBeCloseTo(0.01, 9);
   });
 });

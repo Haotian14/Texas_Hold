@@ -67,6 +67,16 @@ export function equityMonteCarlo(
  * 只在剩余未知牌较少时使用（转牌 / 河牌），翻前调用会极慢。
  */
 export function equityExactVsOne(hero: [Card, Card], board: Card[]): number {
+  // 空/翻前公共牌（board.length < 3）会先枚举 C(50,5) = 2,118,760 种
+  // 剩余公共牌组合，再对每种组合穷举约 990 手对手牌，调用会先吃光内存
+  // 再卡死。翻牌圈起（board.length >= 3，最多穷举 C(45,2) 种转+河组合）
+  // 计算量可控；翻前请改用 equityMonteCarlo。
+  if (board.length < 3) {
+    throw new Error(
+      `equityExactVsOne 只支持翻牌圈及以后调用（board.length >= 3），实际为 ${board.length}；翻前请用 equityMonteCarlo`,
+    );
+  }
+
   const known = [...hero, ...board];
   const pool = remainingDeck(known);
   const boardNeeded = 5 - board.length;

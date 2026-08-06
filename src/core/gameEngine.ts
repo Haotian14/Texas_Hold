@@ -26,9 +26,22 @@ export { isZeroChips, chipsGreater, round2 } from './chips';
 export interface StartHandOptions {
   seed: string;
   buttonSeat: number;
+  /**
+   * 每个座位的起始筹码，下标为座位号，长度必须等于 SEAT_COUNT。
+   * 缺省时每个座位固定为 STARTING_STACK（spec §2 的 100BB 深筹重置），
+   * 产品默认路径不传这个选项，行为与之前完全一致。
+   * 仅用于让测试能够构造出不同筹码深度的桌面，从而触达边池分层逻辑。
+   */
+  startingStacks?: number[];
 }
 
 export function startHand(opts: StartHandOptions): GameState {
+  if (opts.startingStacks && opts.startingStacks.length !== SEAT_COUNT) {
+    throw new Error(
+      `startingStacks 长度必须等于 SEAT_COUNT(${SEAT_COUNT})，实际为 ${opts.startingStacks.length}`,
+    );
+  }
+
   const rng = createRng(opts.seed);
   const deck = shuffledDeck(rng);
 
@@ -39,10 +52,12 @@ export function startHand(opts: StartHandOptions): GameState {
     const offset = (seat - opts.buttonSeat + SEAT_COUNT) % SEAT_COUNT;
     const position = POSITION_ORDER[offset] as Position;
     const holeCards: [Card, Card] = [deck[seat * 2], deck[seat * 2 + 1]];
+    const startingStack = opts.startingStacks ? opts.startingStacks[seat] : STARTING_STACK;
     seats.push({
       seat,
       position,
-      stack: STARTING_STACK,
+      stack: startingStack,
+      startingStack,
       holeCards,
       folded: false,
       allIn: false,
@@ -136,7 +151,10 @@ export function legalActions(state: GameState): LegalAction[] {
   // 没有加注权的玩家面对短 all-in 时只能跟注或弃牌：
   // 全下比跟注多投的部分本质上就是加注，同样不能给。
   // 但筹码不足以跟注时，全下是"不足额跟注"，必须保留。
-  const callForLessOnly = !canRaise && toCall > 0 && chipsGreater(seat.stack, toCall);
+  // toCall 为 0 时同理：没有加注权、又不欠任何钱的人，全下就是纯粹的加注
+  // （bet），必须被抑制——不需要额外的 toCall > 0 判断，chipsGreater(stack, 0)
+  // 在 toCall 为 0 时天然成立，效果就是直接不给 allin。
+  const callForLessOnly = !canRaise && chipsGreater(seat.stack, toCall);
   if (!isZeroChips(seat.stack) && !callForLessOnly) {
     out.push({ type: 'allin', min: seat.stack, max: seat.stack });
   }
@@ -399,6 +417,3 @@ export function settleHand(state: GameState): GameState {
 
   return { ...state, seats, toAct: null, results };
 }
-
-export { toHandRecord } from './handRecord';
-export type { ToHandRecordOptions } from './handRecord';
