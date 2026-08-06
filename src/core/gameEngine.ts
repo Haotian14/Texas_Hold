@@ -383,7 +383,10 @@ export function settleHand(state: GameState): GameState {
       }
     }
     // 平分，余数按座位号升序分配，保证总额不丢失
-    const share = Math.floor((pot.amount / winners.length) * 100) / 100;
+    // 在整数分位上做除法，避免 (amount / n) * 100 的浮点误差把可整除的
+    // 底池算成除不尽（例如 2.30 两分本应各得 1.15，浮点算法会得到 1.14）。
+    const cents = Math.round(pot.amount * 100);
+    const share = Math.floor(cents / winners.length) / 100;
     let distributed = 0;
     for (const seat of winners) {
       won.set(seat, round2(won.get(seat)! + share));
@@ -408,6 +411,7 @@ export function settleHand(state: GameState): GameState {
   for (const s of seats) {
     s.stack = round2(s.stack + won.get(s.seat)!);
     s.totalContribution = 0;
+    s.streetContribution = 0;
   }
 
   return { ...state, seats, toAct: null, results };

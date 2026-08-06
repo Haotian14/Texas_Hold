@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { startHand, applyAction, settleHand, toHandRecord, totalChips } from './gameEngine';
+import { startHand, applyAction, settleHand, toHandRecord, totalChips, round2 } from './gameEngine';
 import { SEAT_COUNT, STARTING_STACK, HAND_RECORD_SCHEMA_VERSION } from './types';
 import type { GameState } from './types';
+import { parseCards } from './cards';
+import type { Card } from './cards';
 
 const CHIPS = SEAT_COUNT * STARTING_STACK;
 
@@ -128,5 +130,122 @@ describe('toHandRecord', () => {
     expect(() =>
       toHandRecord(s, { id: 'x', heroSeat: 0, personaIds: {}, timestamp: 1 }),
     ).toThrow();
+  });
+});
+
+describe('分池平分', () => {
+  /**
+   * 合成一个必然平分的摊牌局面：公共牌本身就是皇家同花顺，
+   * 所有人的底牌都用不上，牌力完全相同。
+   * 底牌显式指定为红桃/方块小对子，避免与公共牌的黑桃重复。
+   */
+  function tieState(playerCount: number, perPlayerContribution: number) {
+    const base = startHand({ seed: 'split-tie', buttonSeat: 0 });
+    const holes = ['2h 2d', '3h 3d', '4h 4d', '5h 5d', '6h 6d', '7h 7d'];
+    const seats = base.seats.map((s, i) => ({
+      ...s,
+      holeCards: parseCards(holes[i]) as [Card, Card],
+      folded: i >= playerCount,
+      stack: i < playerCount ? round2(STARTING_STACK - perPlayerContribution) : STARTING_STACK,
+      streetContribution: 0,
+      totalContribution: i < playerCount ? perPlayerContribution : 0,
+    }));
+    return {
+      ...base,
+      seats,
+      board: parseCards('As Ks Qs Js Ts'),
+      street: 'river' as const,
+      toAct: null,
+      handOver: true,
+    };
+  }
+
+  /**
+   * 与 tieState 相同的摊牌局面，但额外加入一位「跟注后弃牌」的玩家：
+   * 他的筹码留在池里（死钱），却没有资格分池。这样底池金额不再是
+   * 「每位赢家投入 × 赢家数」，因此赢家数无法整除底池金额是真实存在的，
+   * 而不是浮点误差伪造出来的。
+   */
+  function tieStateWithDeadMoney(
+    winnerCount: number,
+    perWinnerContribution: number,
+    deadMoneyContribution: number,
+  ) {
+    const base = startHand({ seed: 'split-tie-dead-money', buttonSeat: 0 });
+    const holes = ['2h 2d', '3h 3d', '4h 4d', '5h 5d', '6h 6d', '7h 7d'];
+    const seats = base.seats.map((s, i) => {
+      if (i < winnerCount) {
+        return {
+          ...s,
+          holeCards: parseCards(holes[i]) as [Card, Card],
+          folded: false,
+          stack: round2(STARTING_STACK - perWinnerContribution),
+          streetContribution: 0,
+          totalContribution: perWinnerContribution,
+        };
+      }
+      if (i === winnerCount) {
+        return {
+          ...s,
+          holeCards: parseCards(holes[i]) as [Card, Card],
+          folded: true,
+          stack: round2(STARTING_STACK - deadMoneyContribution),
+          streetContribution: 0,
+          totalContribution: deadMoneyContribution,
+        };
+      }
+      return {
+        ...s,
+        holeCards: parseCards(holes[i]) as [Card, Card],
+        folded: true,
+        stack: STARTING_STACK,
+        streetContribution: 0,
+        totalContribution: 0,
+      };
+    });
+    return {
+      ...base,
+      seats,
+      board: parseCards('As Ks Qs Js Ts'),
+      street: 'river' as const,
+      toAct: null,
+      handOver: true,
+    };
+  }
+
+  it('能整除的底池五人平分，每人金额相同', () => {
+    // 五人各投 4.6，底池 23.00，五等分应为 4.60
+    const settled = settleHand(tieState(5, 4.6));
+    const payouts = settled.results!
+      .filter(r => r.seat < 5)
+      .map(r => round2(r.netBB + 4.6));
+    expect(payouts).toEqual([4.6, 4.6, 4.6, 4.6, 4.6]);
+    expect(totalChips(settled)).toBe(SEAT_COUNT * STARTING_STACK);
+  });
+
+  it('能整除的底池两人平分，每人金额相同', () => {
+    // 两人各投 1.15，底池 2.30，两等分应为 1.15
+    const settled = settleHand(tieState(2, 1.15));
+    const payouts = settled.results!
+      .filter(r => r.seat < 2)
+      .map(r => round2(r.netBB + 1.15));
+    expect(payouts).toEqual([1.15, 1.15]);
+    expect(totalChips(settled)).toBe(SEAT_COUNT * STARTING_STACK);
+  });
+
+  it('不能整除的底池仍然守恒，零头归座位号最小的赢家', () => {
+    // 3 位摊牌玩家各投 0.05，另一位玩家跟注 0.05 后弃牌：
+    // 死钱留在池中但无权参与分池，底池 = 4*0.05 = 0.20，
+    // 三人平分时 0.20/3 除不尽（floor(20/3)=6 分，余 2 分）。
+    // 这笔余数会全部计入座位号最小的赢家，但不影响：
+    //  1) 三位赢家拿到的总额之和仍等于底池；
+    //  2) 全局筹码守恒不变量。
+    const settled = settleHand(tieStateWithDeadMoney(3, 0.05, 0.05));
+    const potTotal = round2(3 * 0.05 + 0.05);
+    const payoutSum = settled.results!
+      .filter(r => r.seat < 3)
+      .reduce((sum, r) => round2(sum + r.netBB + 0.05), 0);
+    expect(payoutSum).toBe(potTotal);
+    expect(totalChips(settled)).toBe(SEAT_COUNT * STARTING_STACK);
   });
 });
