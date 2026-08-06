@@ -483,7 +483,7 @@ export function sameCard(a: Card, b: Card): boolean {
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run src/core/cards.test.ts`
-Expected: PASS，13 个测试全绿
+Expected: PASS，11 个测试全绿
 
 - [ ] **Step 5: 提交**
 
