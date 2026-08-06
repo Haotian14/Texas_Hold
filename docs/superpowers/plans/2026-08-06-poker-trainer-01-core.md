@@ -2414,28 +2414,40 @@ export function settleHand(state: GameState): GameState {
       }
     }
     // 平分，余数按座位号升序分配，保证总额不丢失
-    const share = Math.floor((pot.amount / winners.length) * 100) / 100;
+    // 用整数分做除法：(amount / n) * 100 在二进制浮点下常落在 k-ε，
+    // floor 后少一分，差额全被零头路径补给座位号最小的赢家，
+    // 会让能整除的底池也分得不均匀（底池 23 五人分 → 4.64/4.59×4）
+    const cents = Math.round(pot.amount * 100);
+    const share = Math.floor(cents / winners.length) / 100;
     let distributed = 0;
     for (const seat of winners) {
       won.set(seat, round2(won.get(seat)! + share));
       distributed = round2(distributed + share);
     }
     const remainder = round2(pot.amount - distributed);
-    if (remainder > 0) {
+    if (chipsGreater(remainder, 0)) {
       const first = winners[0];
       won.set(first, round2(won.get(first)! + remainder));
     }
   }
 
-  for (const s of seats) {
-    s.stack = round2(s.stack + won.get(s.seat)!);
-  }
-
+  // 顺序要紧：results 必须在清空投入之前构建。
+  // netBB = 赢得 - totalContribution，一旦先清零，
+  // 每个人的净盈亏都会变成「赢得的钱」，全场再无输家。
   const results: HandResult[] = seats.map(s => ({
     seat: s.seat,
     netBB: round2(won.get(s.seat)! - s.totalContribution),
     showdown: isShowdown && !s.folded,
   }));
+
+  for (const s of seats) {
+    s.stack = round2(s.stack + won.get(s.seat)!);
+    // 必须清空投入：totalChips 统计的是「手上筹码 + 已投入筹码」两个桶。
+    // 彩金付进 stack 后若不清空投入桶，赢家的钱会被重复计算，
+    // totalChips 会恒等于 600 + 底池而非 600。
+    s.totalContribution = 0;
+    s.streetContribution = 0;
+  }
 
   return { ...state, seats, toAct: null, results };
 }
