@@ -1,3 +1,5 @@
+import { round2 } from './chips';
+
 export interface Pot {
   /** 该池的筹码总额 */
   amount: number;
@@ -29,7 +31,7 @@ export function buildPots(
 
     for (const [seat, c] of contributions) {
       if (c >= level) {
-        amount += layer;
+        amount = round2(amount + layer);
         if (!folded.has(seat)) eligible.push(seat);
       }
     }
@@ -68,7 +70,7 @@ export function buildPots(
   for (const pot of raw) {
     const last = merged[merged.length - 1];
     if (last && sameEligible(last.eligible, pot.eligible)) {
-      last.amount += pot.amount;
+      last.amount = round2(last.amount + pot.amount);
     } else {
       merged.push({ ...pot });
     }

@@ -5,8 +5,6 @@ import type {
   Action,
   ActionType,
   GameState,
-  HandRecord,
-  HandRecordSeat,
   HandResult,
   Position,
   SeatState,
@@ -14,7 +12,6 @@ import type {
 } from './types';
 import {
   BIG_BLIND,
-  HAND_RECORD_SCHEMA_VERSION,
   POSITION_ORDER,
   SEAT_COUNT,
   SMALL_BLIND,
@@ -22,23 +19,24 @@ import {
 } from './types';
 import { buildPots } from './pots';
 import { evaluate7 } from './handEval';
+import { isZeroChips, chipsGreater, round2 } from './chips';
+
+export { isZeroChips, chipsGreater, round2 } from './chips';
 
 export interface StartHandOptions {
   seed: string;
   buttonSeat: number;
-  seatCount?: number;
 }
 
 export function startHand(opts: StartHandOptions): GameState {
-  const seatCount = opts.seatCount ?? SEAT_COUNT;
   const rng = createRng(opts.seed);
   const deck = shuffledDeck(rng);
 
   const seats: SeatState[] = [];
-  for (let i = 0; i < seatCount; i++) {
+  for (let i = 0; i < SEAT_COUNT; i++) {
     const seat = i;
     // 从按钮位起顺时针数第 offset 个座位，对应 POSITION_ORDER[offset]
-    const offset = (seat - opts.buttonSeat + seatCount) % seatCount;
+    const offset = (seat - opts.buttonSeat + SEAT_COUNT) % SEAT_COUNT;
     const position = POSITION_ORDER[offset] as Position;
     const holeCards: [Card, Card] = [deck[seat * 2], deck[seat * 2 + 1]];
     seats.push({
@@ -67,7 +65,7 @@ export function startHand(opts: StartHandOptions): GameState {
     buttonSeat: opts.buttonSeat,
     seats,
     board: [],
-    deck: deck.slice(seatCount * 2),
+    deck: deck.slice(SEAT_COUNT * 2),
     street: 'preflop',
     toAct: utg ? utg.seat : null,
     currentBet: BIG_BLIND,
@@ -84,16 +82,6 @@ function postBlind(s: SeatState, amount: number): void {
   s.streetContribution += paid;
   s.totalContribution += paid;
   if (isZeroChips(s.stack)) s.allIn = true;
-}
-
-/** 筹码金额的零值判定。浮点累加会产生 1e-16 量级的尾数，不能直接和 0 比。 */
-export function isZeroChips(v: number): boolean {
-  return Math.abs(v) < 1e-9;
-}
-
-/** 筹码金额的严格大于判定，容忍浮点尾数。a 恰好等于 b 时返回 false。 */
-export function chipsGreater(a: number, b: number): boolean {
-  return a - b > 1e-9;
 }
 
 /** 筹码守恒不变量的度量：所有人手上的筹码 + 所有已投入的筹码 */
@@ -154,11 +142,6 @@ export function legalActions(state: GameState): LegalAction[] {
   }
 
   return out;
-}
-
-/** 金额规整到 2 位小数，消除浮点累积误差 */
-export function round2(v: number): number {
-  return Math.round(v * 100) / 100;
 }
 
 export function currentPot(state: GameState): number {
@@ -417,37 +400,5 @@ export function settleHand(state: GameState): GameState {
   return { ...state, seats, toAct: null, results };
 }
 
-export interface ToHandRecordOptions {
-  id: string;
-  heroSeat: number;
-  /** 座位号 -> persona id；hero 的座位无需提供 */
-  personaIds: Record<number, string>;
-  timestamp: number;
-}
-
-export function toHandRecord(state: GameState, opts: ToHandRecordOptions): HandRecord {
-  if (!state.handOver) throw new Error('本手尚未结束，无法生成 HandRecord');
-  const settled = state.results ? state : settleHand(state);
-
-  const seats: HandRecordSeat[] = settled.seats.map(s => ({
-    seat: s.seat,
-    position: s.position,
-    personaId: s.seat === opts.heroSeat ? 'hero' : (opts.personaIds[s.seat] ?? 'unknown'),
-    // 每手牌都从固定筹码重置开始（spec §2），无需从结算结果反推
-    startingStack: STARTING_STACK,
-    holeCards: s.holeCards,
-  }));
-
-  return {
-    id: opts.id,
-    schemaVersion: HAND_RECORD_SCHEMA_VERSION,
-    timestamp: opts.timestamp,
-    seed: settled.seed,
-    heroSeat: opts.heroSeat,
-    buttonSeat: settled.buttonSeat,
-    seats,
-    board: settled.board,
-    actions: settled.actions,
-    results: settled.results!,
-  };
-}
+export { toHandRecord } from './handRecord';
+export type { ToHandRecordOptions } from './handRecord';
