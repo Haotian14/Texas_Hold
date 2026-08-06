@@ -2552,7 +2552,7 @@ function impliedOddsBonus(sit: Situation, heroEquity: number): number {
     sit.heroStack,
     ...sit.opponents.map(o => o.stack),
   );
-  if (effectiveStack <= 0) return 0;
+  if (!chipsGreater(effectiveStack, 0)) return 0;
 
   // 击中概率用「距离摊牌的胜率缺口」粗略代表
   const hitChance = Math.max(0, Math.min(0.35, heroEquity));
@@ -2757,6 +2757,7 @@ Expected: FAIL，找不到模块 `./opponentRange`
 import type { Card } from './cards';
 import type { Rng } from './rng';
 import type { ActionType, Position, Street } from './types';
+import { chipsGreater } from './chips';
 import type { RangeSet } from './rangeSet';
 import { fullRange } from './rangeSet';
 import { rankRange, topFraction } from './rangeStrength';
@@ -2821,7 +2822,7 @@ export function narrowByAction(
   if (actionType === 'fold') return new Map();
   if (range.size === 0) return range;
 
-  const mdf = ctx.potBefore > 0
+  const mdf = chipsGreater(ctx.potBefore, 0)
     ? ctx.potBefore / (ctx.potBefore + Math.max(0, ctx.betSize))
     : 1;
 
