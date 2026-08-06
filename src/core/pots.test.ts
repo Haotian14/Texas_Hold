@@ -61,6 +61,23 @@ describe('buildPots', () => {
     expect(total).toBe(40);
     expect(pots.every(p => p.eligible.length === 1 && p.eligible[0] === 1)).toBe(true);
   });
+
+  it('孤儿层继承上一个非空池的资格集', () => {
+    // 座位0 投入最多却弃了牌，[30,100) 这 70 筹码没有对应的活跃投入者。
+    // 应归给最高活跃投入层的资格集 [2]，而不是广播给所有活人。
+    const pots = buildPots(contrib({ 0: 100, 1: 10, 2: 30 }), new Set([0]));
+    expect(pots.reduce((s, p) => s + p.amount, 0)).toBe(140);
+    expect(pots).toEqual([
+      { amount: 30, eligible: [1, 2] },   // [0,10) 三家各 10
+      { amount: 110, eligible: [2] },     // [10,30) 两家各 20，加上继承而来的 70，合并
+    ]);
+  });
+
+  it('没有上一个非空池时孤儿层归全体活跃玩家', () => {
+    // 唯一的投入者弃了牌，钱归唯一的活人（哪怕他一分没投）
+    const pots = buildPots(contrib({ 0: 10, 1: 0 }), new Set([0]));
+    expect(pots).toEqual([{ amount: 10, eligible: [1] }]);
+  });
 });
 
 describe('buildPots 不变量（属性测试）', () => {

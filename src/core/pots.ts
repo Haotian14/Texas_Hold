@@ -34,11 +34,25 @@ export function buildPots(
       }
     }
 
-    // If no one is eligible at this level (dead money), make all unfolded players eligible
+    // 孤儿层：本层没有任何未弃牌者的投入达到该档位（例如唯一投入到此档位的
+    // 人弃牌了），导致 eligible 为空但这层钱是真实存在的死钱，不能丢弃。
+    //
+    // 真实牌局中这种情况不可能发生：弃牌的前提是面对高于自己本街投入的下注，
+    // 而下注方本街投入等于当前最高额；双方在此前各街必然已跟平，所以下注方
+    // 的总投入严格大于弃牌方。因此真实牌局中弃牌者永远不可能是唯一的最高投
+    // 入者，孤儿层不会出现。这里的兜底只是为了让 buildPots 对任意输入（例如
+    // 属性测试的随机生成器）都保持金额守恒。
     if (eligible.length === 0 && amount > 0) {
-      for (const [seat] of contributions) {
-        if (!folded.has(seat)) {
-          eligible.push(seat);
+      if (raw.length > 0) {
+        // 归入最近一个非空池的资格集（标准边池算法：多出的钱扫入上一个有
+        // 活跃投入边界的池）
+        eligible.push(...raw[raw.length - 1].eligible);
+      } else {
+        // 前面没有任何非空池，说明这是第一层就孤儿了：钱归全体未弃牌者
+        for (const [seat] of contributions) {
+          if (!folded.has(seat)) {
+            eligible.push(seat);
+          }
         }
       }
     }
