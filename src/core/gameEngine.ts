@@ -1,7 +1,7 @@
 import type { Card } from './cards';
 import { shuffledDeck } from './cards';
 import { createRng } from './rng';
-import type { GameState, Position, SeatState } from './types';
+import type { ActionType, GameState, Position, SeatState } from './types';
 import {
   BIG_BLIND,
   POSITION_ORDER,
@@ -81,4 +81,60 @@ export function isZeroChips(v: number): boolean {
 /** 筹码守恒不变量的度量：所有人手上的筹码 + 所有已投入的筹码 */
 export function totalChips(state: GameState): number {
   return state.seats.reduce((sum, s) => sum + s.stack + s.totalContribution, 0);
+}
+
+export interface LegalAction {
+  type: ActionType;
+  /** 本次投入的最小额 */
+  min: number;
+  /** 本次投入的最大额 */
+  max: number;
+}
+
+export function legalActions(state: GameState): LegalAction[] {
+  if (state.handOver || state.toAct === null) return [];
+
+  const seat = state.seats[state.toAct];
+  if (seat.folded || seat.allIn) return [];
+
+  const toCall = round2(state.currentBet - seat.streetContribution);
+  const out: LegalAction[] = [];
+
+  if (toCall > 0) {
+    out.push({ type: 'fold', min: 0, max: 0 });
+    if (seat.stack > toCall) {
+      out.push({ type: 'call', min: toCall, max: toCall });
+    }
+  } else {
+    out.push({ type: 'check', min: 0, max: 0 });
+  }
+
+  // 有加注权才能主动加码：本轮完整加注后尚未行动过
+  const canRaise = !seat.hasActedSinceLastFullRaise;
+  if (canRaise) {
+    // 最小加注到的绝对额，换算成本次需投入额
+    const minRaiseTo = state.currentBet + state.lastRaiseSize;
+    const minInvest = round2(minRaiseTo - seat.streetContribution);
+    if (seat.stack > minInvest) {
+      // 用 currentBet 而非 toCall 区分 bet/raise：
+      // 翻前大盲面对全员平跟时 toCall 为 0，但场上已有下注（盲注），
+      // 此时他的主动加码是 raise 而不是 bet。
+      out.push({
+        type: state.currentBet > 0 ? 'raise' : 'bet',
+        min: minInvest,
+        max: seat.stack,
+      });
+    }
+  }
+
+  if (seat.stack > 0) {
+    out.push({ type: 'allin', min: seat.stack, max: seat.stack });
+  }
+
+  return out;
+}
+
+/** 金额规整到 2 位小数，消除浮点累积误差 */
+export function round2(v: number): number {
+  return Math.round(v * 100) / 100;
 }
