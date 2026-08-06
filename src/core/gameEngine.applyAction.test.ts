@@ -68,6 +68,14 @@ describe('筹码守恒不变量', () => {
       expect(totalChips(s)).toBe(CHIPS);
     }
   });
+
+  it('加注金额小于分为时筹码总量仍然守恒', () => {
+    const s = startHand({ seed: 'aa-round', buttonSeat: 0 });
+    // 2.005 是合法金额（min 2、max 100），但第三位小数会让
+    // stack 和 totalContribution 各自四舍五入时朝相反方向取整
+    const next = applyAction(s, { type: 'raise', amount: 2.005 });
+    expect(totalChips(next)).toBe(CHIPS);
+  });
 });
 
 describe('下注轮结束与街推进', () => {
@@ -143,6 +151,8 @@ describe('短 all-in 不重开下注轮', () => {
     // UTG 加注到 10
     s = applyAction(s, { type: 'raise', amount: 10 });
     // HJ 手上只有 14，all-in（增量 4 < 上次加注增量 9，属短 all-in）
+    // 注：直接篡改 stack 是构造场景的捷径，会使这个合成状态的 totalChips
+    // 变成 514 而非真实一手的 600，与筹码守恒不变量无关，勿混淆
     s = { ...s, seats: s.seats.map(x => (x.seat === s.toAct ? { ...x, stack: 14 } : x)) };
     s = applyAction(s, { type: 'allin' });
     // 后续玩家全部弃牌，轮回 UTG

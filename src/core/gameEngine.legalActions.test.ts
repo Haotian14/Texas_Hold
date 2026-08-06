@@ -131,6 +131,37 @@ describe('legalActions 加注权', () => {
     expect(t).toContain('fold');
     expect(t).not.toContain('raise');
   });
+
+  it('无加注权且筹码充足时不提供 allin（全下即加注）', () => {
+    const s = startHand({ seed: 'la-15', buttonSeat: 0 });
+    const seat = s.toAct!;
+    // 已在本轮完整加注后行动过，且面对一个短 all-in 抬高的金额
+    const afterShortAllin = {
+      ...s,
+      currentBet: 3,
+      seats: s.seats.map(x =>
+        x.seat === seat
+          ? { ...x, hasActedSinceLastFullRaise: true, streetContribution: 2 }
+          : x,
+      ),
+    };
+    expect(legalActions(afterShortAllin).map(a => a.type).sort()).toEqual(['call', 'fold']);
+  });
+
+  it('无加注权但筹码不足以跟注时仍可 allin（不足额跟注）', () => {
+    const s = startHand({ seed: 'la-16', buttonSeat: 0 });
+    const seat = s.toAct!;
+    const shortStack = {
+      ...s,
+      currentBet: 50,
+      seats: s.seats.map(x =>
+        x.seat === seat
+          ? { ...x, hasActedSinceLastFullRaise: true, streetContribution: 2, stack: 10 }
+          : x,
+      ),
+    };
+    expect(legalActions(shortStack).map(a => a.type).sort()).toEqual(['allin', 'fold']);
+  });
 });
 
 describe('legalActions 边界', () => {

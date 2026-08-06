@@ -132,7 +132,11 @@ export function legalActions(state: GameState): LegalAction[] {
     }
   }
 
-  if (!isZeroChips(seat.stack)) {
+  // 没有加注权的玩家面对短 all-in 时只能跟注或弃牌：
+  // 全下比跟注多投的部分本质上就是加注，同样不能给。
+  // 但筹码不足以跟注时，全下是"不足额跟注"，必须保留。
+  const callForLessOnly = !canRaise && toCall > 0 && chipsGreater(seat.stack, toCall);
+  if (!isZeroChips(seat.stack) && !callForLessOnly) {
     out.push({ type: 'allin', min: seat.stack, max: seat.stack });
   }
 
@@ -178,7 +182,7 @@ export function applyAction(state: GameState, input: ActionInput): GameState {
     if (want < match.min - 1e-9 || want > match.max + 1e-9) {
       throw new Error(`${input.type} 金额 ${want} 超出合法区间 [${match.min}, ${match.max}]`);
     }
-    invest = want;
+    invest = round2(want);
   }
 
   const seats = state.seats.map(s => ({ ...s }));
