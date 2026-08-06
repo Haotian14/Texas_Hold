@@ -1,10 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { playRandomHand } from './selfPlay';
 import { totalChips } from './gameEngine';
-import { buildPots } from './pots';
 import { createRng } from './rng';
 import { SEAT_COUNT, STARTING_STACK } from './types';
-import type { HandRecord } from './types';
 import { cardToString } from './cards';
 
 const CHIPS = SEAT_COUNT * STARTING_STACK;
@@ -13,27 +11,6 @@ const CHIPS = SEAT_COUNT * STARTING_STACK;
 function variedStartingStacks(seed: string): number[] {
   const rng = createRng(`${seed}-stacks`);
   return Array.from({ length: SEAT_COUNT }, () => Math.round(20 + rng.nextFloat() * 130));
-}
-
-/**
- * settleHand 会把 totalContribution 清零（结算就是把钱从池子派回 stack），
- * 所以 HandRecord 本身已经看不到「结算前」各座位的真实总投入了。这里从
- * record.actions 反推：每条 action 的 amount 就是 applyAction 当时实际
- * 从该座位 stack 里扣下、同时计入 totalContribution 的数额（fold/check
- * 恒为 0），对同一座位求和即可精确重建 totalContribution；是否出现过
- * fold 动作则重建出弃牌集合。这样就能在测试里直接对着「结算前」口径的
- * 投入调用 buildPots，验证分池分层代码真的被走到了，而不是像固定 100BB
- * 时那样永远悄悄合并成一个主池。
- */
-function reconstructPots(record: HandRecord) {
-  const contributions = new Map<number, number>();
-  const folded = new Set<number>();
-  for (const seat of record.seats) contributions.set(seat.seat, 0);
-  for (const a of record.actions) {
-    contributions.set(a.seat, Math.round((contributions.get(a.seat)! + a.amount) * 100) / 100);
-    if (a.type === 'fold') folded.add(a.seat);
-  }
-  return buildPots(contributions, folded);
 }
 
 describe('一万手随机自对弈', () => {
@@ -166,21 +143,34 @@ describe('可变筹码深度自对弈（触达边池分层代码）', () => {
         }
       }
 
-      // 直接对「结算前」口径的实际投入跑一次 buildPots：pots.length >= 2
-      // 就意味着至少两个池的资格集不同（buildPots 会把资格集相同的相邻层
-      // 合并），这就是分池分层代码被真正走到、而不是像固定 100BB 时那样
-      // 永远合并成一个主池的证明。
-      const pots = reconstructPots(record);
-      if (pots.length > maxPots) maxPots = pots.length;
-      if (pots.length >= 2) multiPotHands++;
+      // record.pots 是 settleHand 结算时算出的权威分池结果（GameState.pots /
+      // HandRecord.pots），不是从 actions 反推的。pots.length >= 2 就意味着
+      // 至少两个池的资格集不同（buildPots 会把资格集相同的相邻层合并），
+      // 这就是分池分层代码被真正走到、而不是像固定 100BB 时那样永远合并
+      // 成一个主池的证明。
+      if (record.pots.length > maxPots) maxPots = record.pots.length;
+      if (record.pots.length >= 2) multiPotHands++;
     }
 
-    expect(multiPotHands).toBeGreaterThan(0);
-    // tsconfig 的 lib 里没有 DOM/node 类型，没有 console 的类型声明；
-    // 经 globalThis 转 any 只是为了在测试输出里留下证据，不影响任何
-    // core 代码路径，也不违反“core 层不引用 DOM”的约束（这是测试文件）。
-    (globalThis as { console?: { log: (...args: unknown[]) => void } }).console?.log(
-      `可变筹码自对弈：${HANDS} 手中有 ${multiPotHands} 手产生了资格集不同的多个池，单手最多 ${maxPots} 个池`,
-    );
+    // 用真实筹码深度差异跑 3000 手，正确统计下约 90% 会产生多个池；
+    // 定一个远高于 0 的门槛，回归到「固定筹码=结构上不可能多池」的行为
+    // （见下面的对照用例）会让这里报 0，从而让测试失败。
+    expect(multiPotHands).toBeGreaterThan(1000);
   }, 300_000);
+});
+
+describe('默认固定筹码自对弈（结构上不可能出现多个池）', () => {
+  it('几百手默认 100BB 平筹局，每一手都只有一个池', () => {
+    const HANDS = 300;
+    for (let i = 0; i < HANDS; i++) {
+      const seed = `fixed-stacks-pots-${i}`;
+      const buttonSeat = i % SEAT_COUNT;
+      const { record } = playRandomHand(seed, buttonSeat);
+      if (record.pots.length !== 1) {
+        throw new Error(
+          `seed=${seed} 默认固定筹码局却产生了 ${record.pots.length} 个池，这不应该发生`,
+        );
+      }
+    }
+  }, 60_000);
 });

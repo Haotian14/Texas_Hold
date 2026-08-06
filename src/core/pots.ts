@@ -26,15 +26,19 @@ export function buildPots(
 
   for (const level of levels) {
     const layer = level - prev;
-    let amount = 0;
+    let countAtOrAboveLevel = 0;
     const eligible: number[] = [];
 
     for (const [seat, c] of contributions) {
       if (c >= level) {
-        amount = round2(amount + layer);
+        countAtOrAboveLevel++;
         if (!folded.has(seat)) eligible.push(seat);
       }
     }
+    // 对本层总额只在最后取整一次，而不是逐个座位累加取整：逐步取整对
+    // 分单位（例如两人各投 0.005）的输入不等价于对总额取整一次，会凭空
+    // 铸币（0.005+0.005 逐步取整会变成 0.02，真实总额是 0.01）。
+    const amount = round2(layer * countAtOrAboveLevel);
 
     // 孤儿层：本层没有任何未弃牌者的投入达到该档位（例如唯一投入到此档位的
     // 人弃牌了），导致 eligible 为空但这层钱是真实存在的死钱，不能丢弃。

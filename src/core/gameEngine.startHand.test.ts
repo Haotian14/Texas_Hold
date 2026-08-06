@@ -101,4 +101,31 @@ describe('startHand', () => {
       startHand({ seed: 'h1', buttonSeat: 0, startingStacks: [1, 2, 3] }),
     ).toThrow();
   });
+
+  it('startingStacks 元素非法时在此处直接抛错，而不是留到后面查不出来源的“筹码不守恒”', () => {
+    const base = [100, 100, 100, 100, 100, 100];
+    // 负数
+    expect(() =>
+      startHand({ seed: 'h1', buttonSeat: 0, startingStacks: [-1, ...base.slice(1)] }),
+    ).toThrow();
+    // 非有限数
+    expect(() =>
+      startHand({ seed: 'h1', buttonSeat: 0, startingStacks: [NaN, ...base.slice(1)] }),
+    ).toThrow();
+    expect(() =>
+      startHand({ seed: 'h1', buttonSeat: 0, startingStacks: [Infinity, ...base.slice(1)] }),
+    ).toThrow();
+    // 未按分对齐（超过 2 位小数）
+    expect(() =>
+      startHand({ seed: 'h1', buttonSeat: 0, startingStacks: [100.001, ...base.slice(1)] }),
+    ).toThrow();
+    // 合法的分对齐小数不应抛错
+    expect(() =>
+      startHand({ seed: 'h1', buttonSeat: 0, startingStacks: [99.5, ...base.slice(1)] }),
+    ).not.toThrow();
+    // 0 是合法的（玩家可以恰好没有筹码开局吗？至少不应该被这条校验拒绝）
+    expect(() =>
+      startHand({ seed: 'h1', buttonSeat: 0, startingStacks: [0, ...base.slice(1)] }),
+    ).not.toThrow();
+  });
 });

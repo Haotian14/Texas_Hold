@@ -39,6 +39,7 @@ export function toHandRecord(state: GameState, opts: ToHandRecordOptions): HandR
     board: settled.board,
     actions: settled.actions,
     results: settled.results!,
+    pots: settled.pots,
   };
 }
 
@@ -54,6 +55,13 @@ export function toHandRecord(state: GameState, opts: ToHandRecordOptions): HandR
  * amount 对 fold/check/call/allin 会被 applyAction 忽略（它们的实际投入
  * 只取决于 legalActions 算出的 min），照抄 record 里的 amount 传进去无害，
  * 也让调用方式和「回放」的直觉一致。
+ *
+ * applyAction 本身只认 state.toAct，从不校验它实际应用的动作是谁的
+ * ——这对一份来源可信的 record 没问题，但复盘引擎要处理的是外部/未知
+ * 来源的 record，一旦 actions 被重排、增删或篡改，applyAction 会照样
+ * 跑完整手牌，静默地把决策记到错误的座位上。因此这里在喂给 applyAction
+ * 之前先校验 action.seat 与当前 state.toAct 一致，不一致就直接抛错，
+ * 而不是让它悄悄重放出一个「看似合理但实际错误」的终局。
  */
 export function replayHandRecord(record: HandRecord): GameState {
   const startingStacks = [...record.seats]
@@ -66,9 +74,14 @@ export function replayHandRecord(record: HandRecord): GameState {
     startingStacks,
   });
 
-  for (const action of record.actions) {
+  record.actions.forEach((action, index) => {
+    if (action.seat !== state.toAct) {
+      throw new Error(
+        `replayHandRecord：第 ${index} 个动作记录的座位是 ${action.seat}，但重放到此处该行动的座位是 ${state.toAct}——记录可能被重排、增删或篡改`,
+      );
+    }
     state = applyAction(state, { type: action.type, amount: action.amount });
-  }
+  });
 
   if (!state.handOver) {
     throw new Error('replayHandRecord：重放完 record.actions 后本手仍未结束，记录数据不完整');

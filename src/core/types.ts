@@ -1,4 +1,5 @@
 import type { Card } from './cards';
+import type { Pot } from './pots';
 
 export type Position = 'UTG' | 'HJ' | 'CO' | 'BTN' | 'SB' | 'BB';
 export type Street = 'preflop' | 'flop' | 'turn' | 'river';
@@ -13,6 +14,18 @@ export const HERO_SEAT = 0;
 /** 从按钮位起顺时针的位置顺序 */
 export const POSITION_ORDER: readonly Position[] = ['BTN', 'SB', 'BB', 'UTG', 'HJ', 'CO'];
 
+/**
+ * 一次行动记录。
+ *
+ * 注意：小盲/大盲注是 startHand 内部直接调用 postBlind 扣除的，从不经过
+ * applyAction，因此从不出现在 actions 数组里（startHand 返回的
+ * GameState.actions 恒为 []）。对 actions 里的 amount 求和只能得到「盲注
+ * 之外」的投入，不等于各座位的 totalContribution（小盲会少 0.5，大盲会少
+ * 1）。曾经有测试试图用求和 amount 反推 totalContribution 来驱动 buildPots，
+ * 在每一手牌里都算错了；需要总投入或分池结果时，分别读
+ * SeatState.totalContribution（行动过程中）或 GameState.pots /
+ * HandRecord.pots（结算之后），不要重新推导。
+ */
 export interface Action {
   seat: number;
   street: Street;
@@ -69,9 +82,17 @@ export interface GameState {
   currentBet: number;
   /** 最近一次加注的增量，决定最小加注额 */
   lastRaiseSize: number;
+  /** 见 Action 类型上的注释：盲注不出现在这里，不能靠求和 amount 反推投入 */
   actions: Action[];
   handOver: boolean;
   results: HandResult[] | null;
+  /**
+   * 结算得到的主池/边池。startHand 时为 []（尚未结算）；settleHand 用它
+   * 内部已经算好的 buildPots 结果填充，作为「本手到底分了几个池、各池
+   * 资格集是谁」这一事实的唯一权威来源，供 HandRecord.pots 和消费方直接
+   * 读取，不必也不应该重新从 actions 反推。
+   */
+  pots: Pot[];
 }
 
 export interface HandRecordSeat {
@@ -91,8 +112,13 @@ export interface HandRecord {
   buttonSeat: number;
   seats: HandRecordSeat[];
   board: Card[];
+  /** 见 Action 类型上的注释：盲注不出现在这里，不能靠求和 amount 反推投入 */
   actions: Action[];
   results: HandResult[];
+  /** 结算得到的主池/边池，如实照抄自 GameState.pots，见其上的注释 */
+  pots: Pot[];
 }
 
-export const HAND_RECORD_SCHEMA_VERSION = 1;
+/** v2：新增 pots 字段（结算后的主池/边池），记录 schema 修改成本在
+ * 落库之前基本为零，之后会越来越贵，所以这里直接把版本号带上 */
+export const HAND_RECORD_SCHEMA_VERSION = 2;

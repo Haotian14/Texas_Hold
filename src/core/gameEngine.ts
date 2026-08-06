@@ -36,10 +36,19 @@ export interface StartHandOptions {
 }
 
 export function startHand(opts: StartHandOptions): GameState {
-  if (opts.startingStacks && opts.startingStacks.length !== SEAT_COUNT) {
-    throw new Error(
-      `startingStacks 长度必须等于 SEAT_COUNT(${SEAT_COUNT})，实际为 ${opts.startingStacks.length}`,
-    );
+  if (opts.startingStacks) {
+    if (opts.startingStacks.length !== SEAT_COUNT) {
+      throw new Error(
+        `startingStacks 长度必须等于 SEAT_COUNT(${SEAT_COUNT})，实际为 ${opts.startingStacks.length}`,
+      );
+    }
+    opts.startingStacks.forEach((v, i) => {
+      if (!Number.isFinite(v) || v < 0 || round2(v) !== v) {
+        throw new Error(
+          `startingStacks[${i}] 必须是非负、分对齐（最多 2 位小数）的有限数，实际为 ${v}`,
+        );
+      }
+    });
   }
 
   const rng = createRng(opts.seed);
@@ -88,6 +97,7 @@ export function startHand(opts: StartHandOptions): GameState {
     actions: [],
     handOver: false,
     results: null,
+    pots: [],
   };
 }
 
@@ -415,5 +425,5 @@ export function settleHand(state: GameState): GameState {
     s.streetContribution = 0;
   }
 
-  return { ...state, seats, toAct: null, results };
+  return { ...state, seats, toAct: null, results, pots };
 }

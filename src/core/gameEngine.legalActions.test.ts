@@ -162,6 +162,25 @@ describe('legalActions 加注权', () => {
     };
     expect(legalActions(shortStack).map(a => a.type).sort()).toEqual(['allin', 'fold']);
   });
+
+  it('无加注权且 toCall 为 0 时不提供 allin（防御性分支：正常引擎流程走不到这里，' +
+    '因为 needsToAct 不会把已跟平又没有加注权的座位派回来行动；直接手造状态验证）', () => {
+    const s = startHand({ seed: 'la-17', buttonSeat: 0 });
+    const seat = s.toAct!;
+    // currentBet 与该座位的 streetContribution 相等 => toCall 为 0；
+    // hasActedSinceLastFullRaise 为 true => 无加注权。此时全下等价于纯粹的
+    // bet（不欠钱却主动多投），必须被抑制，只留 check。
+    const noRaiseRightNoOwe = {
+      ...s,
+      currentBet: 1,
+      seats: s.seats.map(x =>
+        x.seat === seat
+          ? { ...x, hasActedSinceLastFullRaise: true, streetContribution: 1 }
+          : x,
+      ),
+    };
+    expect(legalActions(noRaiseRightNoOwe).map(a => a.type).sort()).toEqual(['check']);
+  });
 });
 
 describe('legalActions 边界', () => {

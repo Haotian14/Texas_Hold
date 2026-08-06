@@ -35,4 +35,30 @@ describe('replayHandRecord', () => {
     expect(replayed.handOver).toBe(true);
     expect(replayed.results).not.toBeNull();
   });
+
+  it('交换两个座位不同的动作后重放会抛错，而不是悄悄给出一个看似合理但错误的终局', () => {
+    const { record } = playRandomHand('replay-tamper', 1);
+
+    // 找一对座位不同的动作，交换它们在数组里的位置，模拟「记录被重排」
+    let i = -1;
+    let j = -1;
+    outer: for (let a = 0; a < record.actions.length; a++) {
+      for (let b = a + 1; b < record.actions.length; b++) {
+        if (record.actions[a].seat !== record.actions[b].seat) {
+          i = a;
+          j = b;
+          break outer;
+        }
+      }
+    }
+    // 一手随机自对弈几乎必然涉及多个座位；这条断言保证测试本身没有退化成
+    // 「什么都没测」（例如意外抽到全场只有一个座位行动的怪局）
+    expect(i).toBeGreaterThanOrEqual(0);
+
+    const actions = [...record.actions];
+    [actions[i], actions[j]] = [actions[j], actions[i]];
+    const tampered = { ...record, actions };
+
+    expect(() => replayHandRecord(tampered)).toThrow();
+  });
 });
