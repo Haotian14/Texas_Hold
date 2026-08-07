@@ -84,6 +84,71 @@ describe('estimateEv 跟注公式', () => {
     const expected = r.heroEquity * (100 + 50) - 50;
     expect(call.ev).toBeCloseTo(expected, 6);
   });
+
+  it('口袋对在非河牌圈获得隐含赔率加成', () => {
+    const r = estimateEv(sit({
+      street: 'flop',
+      board: parseCards('7h 4d 2c'),
+      heroCards: parseCards('5s 5d') as [Card, Card],
+      pot: 20, toCall: 10, heroStack: 100,
+    }), OPTS);
+    const call = r.candidates.find(c => c.actionType === 'call')!;
+    expect(call.impliedOdds).toBeGreaterThan(0);
+    expect(call.ev).toBeCloseTo(r.heroEquity * (20 + 10) - 10 + call.impliedOdds!, 4);
+  });
+
+  it('非口袋对不获得隐含赔率加成，哪怕胜率很低', () => {
+    const r = estimateEv(sit({
+      street: 'flop',
+      board: parseCards('7h 4d 2c'),
+      heroCards: parseCards('Kh 9s') as [Card, Card],
+      pot: 20, toCall: 10, heroStack: 100,
+    }), OPTS);
+    const call = r.candidates.find(c => c.actionType === 'call')!;
+    expect(call.impliedOdds ?? 0).toBe(0);
+    expect(call.ev).toBeCloseTo(r.heroEquity * (20 + 10) - 10, 4);
+  });
+
+  it('河牌圈口袋对也不获得加成', () => {
+    const r = estimateEv(sit({
+      street: 'river',
+      board: parseCards('7h 4d 2c Ks 8h'),
+      heroCards: parseCards('5s 5d') as [Card, Card],
+      pot: 20, toCall: 10, heroStack: 100,
+    }), OPTS);
+    expect(r.candidates.find(c => c.actionType === 'call')!.impliedOdds ?? 0).toBe(0);
+  });
+
+  it('加注的底池不把对手已投入的部分重复计算', () => {
+    // 底池 15 已含对手未被跟的 5。半池加注投入 12.5，对手再补 7.5，最终底池 35。
+    // 旧公式用 pot + 2b = 40，凭空多出一个 toCall。
+    const r = estimateEv(sit({
+      street: 'flop', board: parseCards('7h 4d 2c'),
+      pot: 15, toCall: 5, heroStack: 100,
+    }), OPTS);
+    const raise = r.candidates.find(c => c.label === 'bet 1/2')!;
+    const fe = raise.foldEquity!;
+    const wp = raise.equityWhenCalled!;
+    // 精度用 2 位而非 3 位：raise.ev 内部用未取整的 fe/wp 算出再取整到 4 位小数，
+    // 这里重算时只能用 candidate 上取整到 4 位小数的 fe/wp，乘以 15~35 的底池规模后
+    // 累积误差可达 ~7e-4，用共享 rng（OPTS.rng 在整个文件里状态递进）时具体数值还
+    // 会随测试顺序变化，3 位精度在某些排列下会被这点取整误差单独触发失败——不是公式错。
+    expect(raise.ev).toBeCloseTo(fe * 15 + (1 - fe) * (wp * 35 - 12.5), 2);
+  });
+
+  it('筹码不足以跟平时给出不足额跟注，且没有弃牌率', () => {
+    const r = estimateEv(sit({
+      street: 'flop', board: parseCards('7h 4d 2c'),
+      pot: 100, toCall: 100, heroStack: 20,
+    }), OPTS);
+    const allin = r.candidates.find(c => c.actionType === 'allin')!;
+    expect(allin.label).toBe('call all-in');
+    expect(allin.foldEquity).toBeUndefined();
+    expect(allin.investment).toBe(20);
+    // 争夺的底池：对手多出的 80 退还，双方各 20，加上此前的底池 0 => 40
+    expect(allin.ev).toBeCloseTo(r.heroEquity * 40 - 20, 3);
+    expect(r.candidates.filter(c => c.actionType === 'allin')).toHaveLength(1);
+  });
 });
 
 describe('estimateEv 胜率驱动决策', () => {
