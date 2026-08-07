@@ -2,6 +2,7 @@ import type { Card } from './cards';
 import type { Rng } from './rng';
 import type { ActionType, Position, Street } from './types';
 import { chipsGreater } from './chips';
+import type { HandClass } from './handClass';
 import type { RangeSet } from './rangeSet';
 import { fullRange } from './rangeSet';
 import { rankRange, topFraction } from './rangeStrength';
@@ -42,11 +43,15 @@ function keepTop(range: RangeSet, keep: number, ctx: NarrowContext): RangeSet {
 function dropTop(range: RangeSet, drop: number, ctx: NarrowContext): RangeSet {
   if (range.size === 0) return range;
   const ranked = rankRange(range, ctx.board, ctx.dead, ctx.strengthIterations, ctx.rng);
-  const keepFrom = Math.max(0, Math.min(1, drop));
-  const strong = topFraction(ranked, keepFrom);
-  const out = new Map<string, number>();
+  const strong = topFraction(ranked, Math.max(0, Math.min(1, drop)));
+  const out = new Map<HandClass, number>();
   for (const [hc, w] of range) {
-    if (!strong.has(hc)) out.set(hc, w);
+    // topFraction 可能只切走某个类别的一部分权重，这里按比例扣减，
+    // 而不是整类删除 —— 后者会让「剔除最强两成」实际剔掉三成以上，
+    // 并把只含单一类别的范围直接清空。
+    const removed = strong.get(hc) ?? 0;
+    const remaining = w - removed;
+    if (remaining > 0) out.set(hc, remaining);
   }
   return out;
 }
@@ -89,8 +94,9 @@ export function narrowByAction(
       return keepTop(range, Math.min(0.5, mdf * 0.6), ctx);
 
     case 'allin':
-      // 全下：只保留最强的一小部分
-      return keepTop(range, 0.25, ctx);
+      // 全下：只保留最强的一小部分。上限 0.25，且随尺度继续收紧 ——
+      // 写死常数会让「加注」在超过约 1.4 倍底池的尺度下反而比全下更窄。
+      return keepTop(range, Math.min(0.25, mdf * 0.5), ctx);
 
     default:
       return range;

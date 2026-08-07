@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseCards } from './cards';
 import { createRng } from './rng';
 import { rangeFraction } from './rangeSet';
+import { parseRange } from './rangeNotation';
 import { initialRange, narrowByAction } from './opponentRange';
 import type { NarrowContext } from './opponentRange';
 
@@ -60,6 +61,15 @@ describe('narrowByAction 收窄方向', () => {
     expect(rangeFraction(allin)).toBeLessThanOrEqual(rangeFraction(raise));
   });
 
+  it('大尺度下全下仍然比加注更窄', () => {
+    const before = initialRange('BTN');
+    // betSize 是底池的两倍，mdf ≈ 0.333，加注保留 0.2、全下保留 0.167
+    const big = ctx({ potBefore: 10, betSize: 20 });
+    const raise = narrowByAction(before, 'raise', big);
+    const allin = narrowByAction(before, 'allin', big);
+    expect(rangeFraction(allin)).toBeLessThan(rangeFraction(raise));
+  });
+
   it('下注尺度越大范围越窄', () => {
     const before = initialRange('BTN');
     const small = narrowByAction(before, 'bet', ctx({ betSize: 3 }));
@@ -79,6 +89,23 @@ describe('narrowByAction 收窄方向', () => {
     const before = initialRange('BTN');
     const after = narrowByAction(before, 'check', ctx());
     expect(rangeFraction(after)).toBeLessThan(rangeFraction(before));
+  });
+
+  it('过牌剔除的比例接近声称的两成，而不是整类删除后的三成', () => {
+    const before = initialRange('BTN');
+    const after = narrowByAction(before, 'check', ctx({ board: [], dead: [], street: 'preflop' }));
+    const ratio = rangeFraction(after) / rangeFraction(before);
+    // 名义保留八成；整类删除会掉到 0.68 左右
+    expect(ratio).toBeGreaterThan(0.74);
+    expect(ratio).toBeLessThan(0.86);
+  });
+
+  it('只含单一类别的范围过牌后不会被清空', () => {
+    const single = parseRange('AA');
+    const after = narrowByAction(single, 'check', ctx({ board: [], dead: [], street: 'preflop' }));
+    expect(after.size).toBe(1);
+    expect(after.get('AA')!).toBeGreaterThan(0.7);
+    expect(after.get('AA')!).toBeLessThan(0.9);
   });
 });
 
