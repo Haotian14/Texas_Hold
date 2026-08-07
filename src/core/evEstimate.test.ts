@@ -18,7 +18,7 @@ function sit(over: Partial<Situation>): Situation {
     toCall: 0,
     heroStack: 100,
     heroStreetContribution: 0,
-    opponents: [{ seat: 1, position: 'BB', stack: 100, range: fullRange(), personaId: 'tag' }],
+    opponents: [{ seat: 1, position: 'BB', stack: 100, range: fullRange(), personaId: 'tag', canFold: true }],
     heroIsPreflopAggressor: false,
     ...over,
   };
@@ -160,7 +160,7 @@ describe('estimateEv 胜率驱动决策', () => {
       heroCards: parseCards('Jh Th') as [Card, Card],
       pot: 100,
       toCall: 100,
-      opponents: [{ seat: 1, position: 'BB', stack: 200, range: parseRange('AA, KK, AKs, AKo, AQs'), personaId: 'tag' }],
+      opponents: [{ seat: 1, position: 'BB', stack: 200, range: parseRange('AA, KK, AKs, AKo, AQs'), personaId: 'tag', canFold: true }],
     }), OPTS);
     expect(r.recommended.actionType).toBe('fold');
   });
@@ -172,7 +172,7 @@ describe('estimateEv 胜率驱动决策', () => {
       heroCards: parseCards('As Ks') as [Card, Card],
       pot: 100,
       toCall: 30,
-      opponents: [{ seat: 1, position: 'BB', stack: 200, range: parseRange('22+, A2s+, K9s+'), personaId: 'tag' }],
+      opponents: [{ seat: 1, position: 'BB', stack: 200, range: parseRange('22+, A2s+, K9s+'), personaId: 'tag', canFold: true }],
     }), OPTS);
     expect(r.recommended.actionType).not.toBe('fold');
     expect(r.heroEquity).toBeGreaterThan(0.85);
@@ -189,7 +189,7 @@ describe('estimateEv 弃牌率与跟注后胜率', () => {
       heroCards: parseCards('As Ks') as [Card, Card],
       pot: 10,
       toCall: 0,
-      opponents: [{ seat: 1, position: 'BB', stack: 100, range: fullRange(), personaId: 'tag' }],
+      opponents: [{ seat: 1, position: 'BB', stack: 100, range: fullRange(), personaId: 'tag', canFold: true }],
     }), OPTS);
     const bet = r.candidates.find(c => c.label === 'bet 2/3')!;
     expect(bet.equityWhenCalled).toBeDefined();
@@ -209,12 +209,12 @@ describe('estimateEv 弃牌率与跟注后胜率', () => {
   it('对手越多，全体弃牌的概率越低', () => {
     const one = estimateEv(sit({
       pot: 10, toCall: 0,
-      opponents: [{ seat: 1, position: 'BB', stack: 100, range: fullRange(), personaId: 'tag' }],
+      opponents: [{ seat: 1, position: 'BB', stack: 100, range: fullRange(), personaId: 'tag', canFold: true }],
     }), OPTS);
     const three = estimateEv(sit({
       pot: 10, toCall: 0,
       opponents: [1, 2, 3].map(seat => ({
-        seat, position: 'BB' as const, stack: 100, range: fullRange(), personaId: 'tag',
+        seat, position: 'BB' as const, stack: 100, range: fullRange(), personaId: 'tag', canFold: true,
       })),
     }), OPTS);
     const feOne = one.candidates.find(c => c.label === 'bet pot')!.foldEquity!;
@@ -230,7 +230,7 @@ describe('estimateEv 弃牌率与跟注后胜率', () => {
       pot: 100,
       toCall: 0,
       heroStack: 200,
-      opponents: [{ seat: 1, position: 'BB', stack: 200, range: parseRange('22+, A2s+, K9s+, QTs+'), personaId: 'tag' }],
+      opponents: [{ seat: 1, position: 'BB', stack: 200, range: parseRange('22+, A2s+, K9s+, QTs+'), personaId: 'tag', canFold: true }],
     }), OPTS);
     const check = r.candidates.find(c => c.actionType === 'check')!;
     const bet = r.candidates.find(c => c.label === 'bet 2/3')!;
@@ -249,11 +249,11 @@ describe('estimateEv 可复现', () => {
 describe('estimateEv 多人底池', () => {
   it('对手越多，hero 胜率越低', () => {
     const one = estimateEv(sit({
-      opponents: [{ seat: 1, position: 'BB', stack: 100, range: fullRange(), personaId: 'tag' }],
+      opponents: [{ seat: 1, position: 'BB', stack: 100, range: fullRange(), personaId: 'tag', canFold: true }],
     }), OPTS);
     const three = estimateEv(sit({
       opponents: [1, 2, 3].map(seat => ({
-        seat, position: 'BB' as const, stack: 100, range: fullRange(), personaId: 'tag',
+        seat, position: 'BB' as const, stack: 100, range: fullRange(), personaId: 'tag', canFold: true,
       })),
     }), OPTS);
     expect(three.heroEquity).toBeLessThan(one.heroEquity);
@@ -261,5 +261,61 @@ describe('estimateEv 多人底池', () => {
 
   it('无对手时抛错', () => {
     expect(() => estimateEv(sit({ opponents: [] }), OPTS)).toThrow();
+  });
+});
+
+describe('estimateEv 全下对手', () => {
+  it('单挑面对全下时不再抛错，且弃牌率为零', () => {
+    const r = estimateEv(sit({
+      street: 'flop',
+      board: parseCards('7h 4d 2c'),
+      pot: 100,
+      toCall: 40,
+      heroStack: 100,
+      opponents: [{ seat: 1, position: 'BB', stack: 0, range: fullRange(),
+                    personaId: 'tag', canFold: false }],
+    }), OPTS);
+    expect(r.candidates.length).toBeGreaterThan(0);
+    for (const c of r.candidates) {
+      if (c.foldEquity !== undefined) expect(c.foldEquity).toBe(0);
+    }
+  });
+
+  it('全下的对手计入胜率', () => {
+    // 同一局面下，把对手从「能弃牌」改成「已全下」不应改变 heroEquity ——
+    // 胜率算的是要打败谁，与对方还能不能做决策无关
+    const base = {
+      street: 'flop' as const,
+      board: parseCards('7h 4d 2c'),
+      pot: 100, toCall: 40, heroStack: 100,
+    };
+    const live = estimateEv(sit({ ...base,
+      opponents: [{ seat: 1, position: 'BB' as const, stack: 100, range: fullRange(),
+                    personaId: 'tag', canFold: true }],
+    }), { ...OPTS, rng: createRng('eq-same') });
+    const shoved = estimateEv(sit({ ...base,
+      opponents: [{ seat: 1, position: 'BB' as const, stack: 0, range: fullRange(),
+                    personaId: 'tag', canFold: false }],
+    }), { ...OPTS, rng: createRng('eq-same') });
+    expect(shoved.heroEquity).toBeCloseTo(live.heroEquity, 6);
+  });
+
+  it('多人局中全下的对手不计入弃牌率的指数', () => {
+    const twoLive = estimateEv(sit({
+      street: 'flop', board: parseCards('7h 4d 2c'), pot: 30, toCall: 0, heroStack: 100,
+      opponents: [1, 2].map(seat => ({ seat, position: 'BB' as const, stack: 100,
+        range: fullRange(), personaId: 'tag', canFold: true })),
+    }), OPTS);
+    const oneLiveOneShoved = estimateEv(sit({
+      street: 'flop', board: parseCards('7h 4d 2c'), pot: 30, toCall: 0, heroStack: 100,
+      opponents: [
+        { seat: 1, position: 'BB' as const, stack: 100, range: fullRange(), personaId: 'tag', canFold: true },
+        { seat: 2, position: 'BB' as const, stack: 0, range: fullRange(), personaId: 'tag', canFold: false },
+      ],
+    }), OPTS);
+    const feTwo = twoLive.candidates.find(c => c.label === 'bet pot')!.foldEquity!;
+    const feOne = oneLiveOneShoved.candidates.find(c => c.label === 'bet pot')!.foldEquity!;
+    // 两个能弃牌的对手 => (1-mdf)^2；一个能弃牌 => (1-mdf)^1，后者更大
+    expect(feOne).toBeGreaterThan(feTwo);
   });
 });

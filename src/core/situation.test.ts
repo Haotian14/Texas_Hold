@@ -83,15 +83,24 @@ describe('situationFromGameState 对手集合', () => {
     }
   });
 
-  it('排除已全下的对手（他们无法再弃牌，计入会虚高弃牌率）', () => {
+  it('全下的对手仍在列表中，但标记为不能弃牌', () => {
     const s = startHand({ seed: 'sit-allin', buttonSeat: 0 });
     const withAllIn = {
       ...s,
       seats: s.seats.map(x => (x.seat === 4 ? { ...x, allIn: true } : x)),
     };
     const sit = situationFromGameState(withAllIn, opts());
+    expect(sit.opponents).toHaveLength(5);
+    const shover = sit.opponents.find(o => o.seat === 4)!;
+    expect(shover.canFold).toBe(false);
+    expect(sit.opponents.filter(o => o.canFold)).toHaveLength(4);
+  });
+
+  it('弃牌的对手仍然被排除', () => {
+    let s = startHand({ seed: 'sit-folded', buttonSeat: 0 });
+    s = applyAction(s, { type: 'fold' });
+    const sit = situationFromGameState(s, opts());
     expect(sit.opponents).toHaveLength(4);
-    expect(sit.opponents.some(o => o.seat === 4)).toBe(false);
   });
 
   it('底牌是拷贝，不与对局状态共享引用', () => {

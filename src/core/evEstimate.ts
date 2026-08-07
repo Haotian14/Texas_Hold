@@ -70,14 +70,18 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
   const rng = opts.rng ?? createRng('ev-default');
   const useImplied = opts.impliedOdds ?? true;
 
+  // hero 必须打败牌桌上还留在池子里的每一个人，无论对方还能不能弃牌 ——
+  // 已全下的对手的筹码已经在 sit.pot 里了，胜率计算不能把他们排除在外。
   const oppRanges: RangeSet[] = sit.opponents.map(o => o.range);
   const dead = [...sit.heroCards, ...sit.board];
 
   // W：对当前对手范围的胜率
   const heroEquity = equityVsRanges(sit.heroCards, sit.board, oppRanges, iterations, rng);
 
-  // 各对手范围按牌力排好序，供后续切「继续范围」用。排序开销大，只做一次。
-  const rankedPerOpp = sit.opponents.map(o =>
+  // 「继续范围」只对还能做决策的对手才有意义 —— 已全下的对手不会弃牌，
+  // 谈不上什么范围要被下注挤掉。只对 canFold 的对手排序，且仍然只做一次。
+  const foldableOpponents = sit.opponents.filter(o => o.canFold);
+  const rankedFoldable = foldableOpponents.map(o =>
     rankRange(o.range, sit.board, dead, strengthIterations, rng),
   );
 
@@ -129,11 +133,11 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
     for (const size of BET_SIZES) {
       const b = round2(sit.pot * size.fraction + sit.toCall);
       if (!chipsGreater(maxInvest, b)) continue;   // 筹码不足以打出这个尺度
-      candidates.push(makeBetCandidate(sit, size.label, b, rankedPerOpp, iterations, rng));
+      candidates.push(makeBetCandidate(sit, size.label, b, rankedFoldable, iterations, rng));
     }
 
     // all-in 永远是一个候选
-    candidates.push(makeBetCandidate(sit, 'all-in', maxInvest, rankedPerOpp, iterations, rng));
+    candidates.push(makeBetCandidate(sit, 'all-in', maxInvest, rankedFoldable, iterations, rng));
   }
 
   // ── 选出推荐动作
@@ -153,9 +157,11 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
 /**
  * EV(投入 b) = Fe × 底池 + (1 − Fe) × [ W' × calledPot − b ]
  *
- * Fe        所有对手都弃牌的概率
- * W'        对手跟注后的胜率 —— 必须对「继续范围」单独算，
- *           沿用 W 会系统性高估诈唬价值
+ * Fe        所有「还能弃牌」的对手都弃牌的概率；已全下的对手不会弃牌，
+ *           不参与这个指数。若没有一个对手能弃牌，Fe 恒为 0。
+ * W'        对手跟注后的胜率 —— 对能弃牌的对手必须用「继续范围」单独算
+ *           （沿用 W 会系统性高估诈唬价值），已全下的对手无论如何都在池子里，
+ *           要用他们的完整范围。
  * calledPot 对手跟注后的最终底池 = sit.pot + b + villainCall；
  *           未加注下注（toCall === 0）时精确退化为 pot + 2b
  */
@@ -163,28 +169,40 @@ function makeBetCandidate(
   sit: Situation,
   label: string,
   investment: number,
-  rankedPerOpp: ReturnType<typeof rankRange>[],
+  rankedFoldable: ReturnType<typeof rankRange>[],
   iterations: number,
   rng: Rng,
 ): EvCandidate {
   const b = investment;
 
-  // 每个对手面对该尺度时理论上必须防守的比例（MDF）。
+  // 每个能弃牌的对手面对该尺度时理论上必须防守的比例（MDF）。
   // 推导：诈唬（W'=0）时 hero 的 EV = (1-mdf)*sit.pot - mdf*b（calledPot 项的
   // 系数是 W'，W'=0 时直接消掉），令其为 0 得 mdf = sit.pot/(sit.pot+b)。
   // b 已经把 sit.toCall 算在内了（见下方调用处 b = pot*fraction + toCall），
   // 所以这条公式对下注和加注都成立，不需要因为 toCall > 0 而改写。
   const mdf = Math.min(1, sit.pot / (sit.pot + b));
-  const continueRanges: RangeSet[] = rankedPerOpp.map(r => topFraction(r, mdf));
+  const continueRanges: RangeSet[] = rankedFoldable.map(r => topFraction(r, mdf));
 
-  // 所有人都弃牌的概率：每个对手独立以 (1 - mdf) 的概率弃牌
-  const foldEquity = Math.pow(1 - mdf, continueRanges.length);
+  // 所有能弃牌的对手都弃牌的概率：每人独立以 (1 - mdf) 的概率弃牌。
+  // k = 0（没有一个对手能弃牌，比如单挑面对全下）时没有人会弃牌，
+  // Math.pow(1-mdf, 0) 恒等于 1，必须显式短路成 0，否则会凭空产生弃牌率。
+  const k = continueRanges.length;
+  const foldEquity = k === 0 ? 0 : Math.pow(1 - mdf, k);
 
-  // W'：对手跟注后的胜率。必须对「继续范围」单独算 ——
+  // W'：对手跟注后的胜率。对能弃牌的对手必须用「继续范围」单独算 ——
   // 沿用 W 会系统性高估诈唬价值，因为对手跟注时留下的是更强的那部分范围。
-  // 若任一继续范围被死牌清空，回落到原范围（此时该近似会偏保守）。
+  // 若任一继续范围被死牌清空，回落到能弃牌对手的原始范围（此时该近似会偏保守）。
+  // 已全下的对手不受下注影响 —— 他们已经全部投入，无论 hero 打多大都稳坐池中，
+  // 因此始终用其完整范围参与 W' 的计算。
+  const allInOpponents = sit.opponents.filter(o => !o.canFold);
   const allUsable = continueRanges.every(r => r.size > 0);
-  const rangesForCalled = allUsable ? continueRanges : sit.opponents.map(o => o.range);
+  const foldableRangesForCalled = allUsable
+    ? continueRanges
+    : sit.opponents.filter(o => o.canFold).map(o => o.range);
+  const rangesForCalled: RangeSet[] = [
+    ...foldableRangesForCalled,
+    ...allInOpponents.map(o => o.range),
+  ];
   const wPrime = equityVsRanges(sit.heroCards, sit.board, rangesForCalled, iterations, rng);
 
   // 对手跟注时还需再投入多少、跟注后真正的底池是多少 —— sit.pot 已经含有对手

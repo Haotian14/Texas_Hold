@@ -14,6 +14,8 @@ export interface SituationOpponent {
   /** 该对手可能持有的手牌分布 */
   range: RangeSet;
   personaId: string;
+  /** 该对手是否还能做决策。已全下的对手不能弃牌，但仍要参与摊牌比牌。 */
+  canFold: boolean;
 }
 
 /**
@@ -35,7 +37,10 @@ export interface Situation {
   heroStack: number;
   /** hero 本街已投入 */
   heroStreetContribution: number;
-  /** 仍未弃牌且未全下的对手。已全下的对手不在此列，但其筹码已计入 pot。 */
+  /**
+   * 仍未弃牌的对手，包括已全下的。已全下的对手依然会摊牌比牌 ——
+   * hero 必须在胜率计算里把他们算进去，只是他们不再能弃牌（见 canFold）。
+   */
   opponents: SituationOpponent[];
   /** hero 是否是翻前最后一个加注的人 */
   heroIsPreflopAggressor: boolean;
@@ -73,13 +78,14 @@ export function situationFromGameState(
   const opponents: SituationOpponent[] = [];
   for (const s of state.seats) {
     if (s.seat === heroSeat) continue;
-    if (s.folded || s.allIn) continue;
+    if (s.folded) continue;
     opponents.push({
       seat: s.seat,
       position: s.position,
       stack: s.stack,
       range: opts.ranges.get(s.seat) ?? fullRange(),
       personaId: opts.personaIds.get(s.seat) ?? 'unknown',
+      canFold: !s.allIn,
     });
   }
 
