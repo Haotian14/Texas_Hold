@@ -1409,10 +1409,27 @@ describe('equityVsRanges 范围影响结果', () => {
     expect(eq).toBeLessThan(0.85);
   });
 
-  it('AKs 对只含 22 的范围约 46%（经典 coin flip）', () => {
+  it('AKs 对只含 22 的范围约 50%', () => {
+    // 同花 AK 对小对子基本是掷硬币，精确值约 49.9%
     const eq = equityVsRanges(hole('As Ks'), [], [parseRange('22')], 30000, createRng('aks-vs-22'));
-    expect(eq).toBeGreaterThan(0.43);
+    expect(eq).toBeGreaterThan(0.47);
+    expect(eq).toBeLessThan(0.53);
+  });
+
+  it('AKo 对只含 22 的范围约 47%', () => {
+    // 非同花 AK 少了同花的补强，明显低于同花版本（精确值约 47.4%）。
+    // 常被引用的「AK 对小对子约 46%」说的是这一个，不是同花版本。
+    const eq = equityVsRanges(hole('Ah Kd'), [], [parseRange('22')], 30000, createRng('ako-vs-22'));
+    expect(eq).toBeGreaterThan(0.44);
     expect(eq).toBeLessThan(0.50);
+  });
+
+  it('对手范围里的牌不会出现在公共牌上（采样顺序回归）', () => {
+    // 对手范围只有 KK：若先发公共牌再给对手采样，牌面会拿走 K，
+    // 对手却仍持 KK，凭空多出四条。精确值约 81.3%。
+    const eq = equityVsRanges(hole('As Ad'), [], [parseRange('KK')], 30000, createRng('order-guard'));
+    expect(eq).toBeGreaterThan(0.78);
+    expect(eq).toBeLessThan(0.85);
   });
 });
 
@@ -1507,17 +1524,13 @@ export function equityVsRanges(
   const oppCards: Array<[Card, Card]> = new Array(opponentRanges.length);
 
   for (let iter = 0; iter < iterations; iter++) {
-    // 抽公共牌：部分 Fisher-Yates
-    for (let i = 0; i < boardNeeded; i++) {
-      const j = i + rng.nextInt(pool.length - i);
-      const tmp = pool[i];
-      pool[i] = pool[j];
-      pool[j] = tmp;
-      runout[i] = pool[i];
-    }
-
-    // 为每个对手采样，避开已用掉的牌
-    const used: Card[] = [...known, ...runout.slice(0, boardNeeded)];
+    // 顺序要紧：先给对手采样，再发公共牌。
+    //
+    // 对手手里握着的牌不可能同时出现在公共牌上。若先发公共牌，
+    // 牌面会从牌堆里拿走对手范围必须持有的牌，制造出
+    // 「对手持 KK、牌面上还有两张 K」这种现实中不存在的局面 ——
+    // 对手凭空多出四条。实测 AA 对 KK 会从真值 0.813 掉到 0.693。
+    const used: Card[] = [...known];
     let ok = true;
     for (let o = 0; o < opponentRanges.length; o++) {
       let picked: [Card, Card] | null = null;
@@ -1531,6 +1544,22 @@ export function equityVsRanges(
       used.push(picked[0], picked[1]);
     }
     if (!ok) continue;   // 本轮作废，不计入分母
+
+    // 再发公共牌：部分 Fisher-Yates 扫过牌堆，跳过对手手上的牌
+    let filled = 0;
+    let scan = 0;
+    while (filled < boardNeeded) {
+      if (scan >= pool.length) { ok = false; break; }
+      const j = scan + rng.nextInt(pool.length - scan);
+      const tmp = pool[scan];
+      pool[scan] = pool[j];
+      pool[j] = tmp;
+      const c = pool[scan];
+      scan++;
+      if (used.some(u => sameCard(u, c))) continue;
+      runout[filled++] = c;
+    }
+    if (!ok) continue;
 
     const fullBoard = board.concat(runout.slice(0, boardNeeded));
     const heroScore = evaluate7([hero[0], hero[1], ...fullBoard]);
