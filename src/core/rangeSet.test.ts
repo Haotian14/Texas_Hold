@@ -42,6 +42,26 @@ describe('rangeCombos', () => {
   it('空范围得到空数组', () => {
     expect(rangeCombos(new Map(), [])).toEqual([]);
   });
+
+  it('死牌只匹配组合中第二张牌时同样剔除', () => {
+    // AKo 的 12 组里 A 恒在第一张、K 恒在第二张。
+    // 用黑桃 K 作死牌，只能通过 cards[1] 匹配到 ——
+    // 这条专门盯 sameCard(d, cards[0]) || sameCard(d, cards[1]) 的后半段。
+    const r = parseRange('AKo');
+    expect(rangeCombos(r, parseCards('Ks'))).toHaveLength(9);
+  });
+
+  it('死牌只匹配第一张牌时剔除', () => {
+    const r = parseRange('AKo');
+    expect(rangeCombos(r, parseCards('As'))).toHaveLength(9);
+  });
+
+  it('两张死牌分别匹配两个位置时累计剔除', () => {
+    // A♠ 去掉 3 组（K 为 h/d/c），K♠ 去掉 3 组（A 为 h/d/c），
+    // 两者无重叠，因为 A♠K♠ 是同花不属于 AKo
+    const r = parseRange('AKo');
+    expect(rangeCombos(r, parseCards('As Ks'))).toHaveLength(6);
+  });
 });
 
 describe('totalWeight', () => {
