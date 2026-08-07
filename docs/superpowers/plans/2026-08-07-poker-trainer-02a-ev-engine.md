@@ -1358,7 +1358,11 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 平局按 `1/并列人数` 计入，与既有函数语义一致。
 
-**采样时的冲突处理**：每轮先抽公共牌补齐，再为每个对手从各自范围里采样；若采到的组合与已用牌冲突，重采（最多 100 次），仍冲突则跳过该轮并从总轮数中扣除。
+**采样时的冲突处理**：每轮**先**为每个对手从各自范围里采样，**再**从剩下的牌里抽公共牌。若采到的组合与已用牌冲突，重采（最多 100 次），仍冲突则跳过该轮并从总轮数中扣除。
+
+顺序不能反过来：先抽公共牌的话，牌是从「对手必须持有的那两张仍在牌堆里」的全量牌堆抽的，会让对手范围集中的点数在牌面上出现得系统性偏高——hero 拿 AA、对手范围只有 KK 时，牌面出现两张 K 的概率会从正确的 0.97% 涨到 4.31%，而对手仍持 KK，等于凭空多出四条。实测 hero 胜率从真值 0.82 掉到 0.69。
+
+**已知的近似**：多个对手时逐个采样并按先后拒绝，严格来说不是完全无偏——后采样的对手其归一化因子依赖于先采样对手占用的牌。单个对手时精确无偏（复盘引擎的主要用法，也是全部测试覆盖的情形）；对手范围较宽时偏差可忽略。不要把它当作精确的多人范围对范围求解。
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -1545,21 +1549,20 @@ export function equityVsRanges(
     }
     if (!ok) continue;   // 本轮作废，不计入分母
 
-    // 再发公共牌：部分 Fisher-Yates 扫过牌堆，跳过对手手上的牌
-    let filled = 0;
-    let scan = 0;
-    while (filled < boardNeeded) {
-      if (scan >= pool.length) { ok = false; break; }
-      const j = scan + rng.nextInt(pool.length - scan);
-      const tmp = pool[scan];
-      pool[scan] = pool[j];
-      pool[j] = tmp;
-      const c = pool[scan];
-      scan++;
-      if (used.some(u => sameCard(u, c))) continue;
-      runout[filled++] = c;
+    // 从牌堆里剔除已被对手用掉的牌，再抽公共牌。
+    // 定长 Fisher-Yates：恰好抽 boardNeeded 张，不可能少发。
+    const oppUsed = used.slice(known.length);
+    const iterPool = pool.filter(c => !oppUsed.some(u => sameCard(u, c)));
+    if (boardNeeded > iterPool.length) continue;
+
+    const runout: Card[] = new Array(boardNeeded);
+    for (let i = 0; i < boardNeeded; i++) {
+      const j = i + rng.nextInt(iterPool.length - i);
+      const tmp = iterPool[i];
+      iterPool[i] = iterPool[j];
+      iterPool[j] = tmp;
+      runout[i] = iterPool[i];
     }
-    if (!ok) continue;
 
     const fullBoard = board.concat(runout.slice(0, boardNeeded));
     const heroScore = evaluate7([hero[0], hero[1], ...fullBoard]);
