@@ -318,4 +318,36 @@ describe('estimateEv 全下对手', () => {
     // 两个能弃牌的对手 => (1-mdf)^2；一个能弃牌 => (1-mdf)^1，后者更大
     expect(feOne).toBeGreaterThan(feTwo);
   });
+
+  it('多人局中无关的全下对手不应抹掉隐含赔率加成', () => {
+    const r = estimateEv(sit({
+      street: 'flop',
+      board: parseCards('9h 4d 2c'),
+      heroCards: parseCards('5s 5d') as [Card, Card],
+      pot: 20, toCall: 10, heroStack: 100,
+      opponents: [
+        { seat: 1, position: 'BB', stack: 100, range: fullRange(), personaId: 'tag', canFold: true },
+        { seat: 2, position: 'CO', stack: 0, range: fullRange(), personaId: 'tag', canFold: false },
+      ],
+    }), OPTS);
+    expect(r.candidates.find(c => c.actionType === 'call')!.impliedOdds!).toBeGreaterThan(0);
+  });
+});
+
+describe('estimateEv 弃牌率对上教科书常数', () => {
+  it('弃牌率对上教科书的 MDF 常数', () => {
+    // 单个对手、无需跟注时，投入 b 到底池 pot：
+    // MDF = pot/(pot+b)，弃牌率 Fe = 1 - MDF = b/(pot+b)
+    // 满池下注 => Fe = 1/2；半池下注 => Fe = 1/3
+    // 注意精度：EvCandidate.foldEquity 在生产代码里经 round4() 保留 4 位小数
+    // （见 evEstimate.ts 底部 "EV 保留 4 位小数，避免测试因浮点尾数抖动"）。
+    // 0.5 与 0.25 在二进制下可精确表示，round4 后仍与公式原始值重合，6 位精度
+    // 也能通过；1/3 = 0.333333... 不能精确表示，round4 会截到 0.3333，与未截断
+    // 的 1/3 相差 ~3.3e-5，6 位精度（阈值 5e-7）测不过——这是舍入截断，不是公式
+    // 分歧，故把精度改成 4 位以匹配 round4 的实际粒度，而不是放松要验证的常数本身。
+    const r = estimateEv(sit({ pot: 30, toCall: 0, heroStack: 200 }), OPTS);
+    expect(r.candidates.find(c => c.label === 'bet pot')!.foldEquity!).toBeCloseTo(0.5, 4);
+    expect(r.candidates.find(c => c.label === 'bet 1/2')!.foldEquity!).toBeCloseTo(1 / 3, 4);
+    expect(r.candidates.find(c => c.label === 'bet 1/3')!.foldEquity!).toBeCloseTo(0.25, 4);
+  });
 });

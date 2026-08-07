@@ -242,7 +242,9 @@ function impliedOddsBonus(sit: Situation, heroEquity: number): number {
   const hc = classifyHand(sit.heroCards[0], sit.heroCards[1]);
   if (hc.length !== 2) return 0;        // 非口袋对（对子的类别只有两个字符，如 '77'）
 
-  const effectiveStack = Math.min(sit.heroStack, ...sit.opponents.map(o => o.stack));
+  const payableStacks = sit.opponents.filter(o => o.canFold).map(o => o.stack);
+  if (payableStacks.length === 0) return 0;   // 没人还能在后续街付钱，谈不上隐含赔率
+  const effectiveStack = Math.min(sit.heroStack, ...payableStacks);
   if (!chipsGreater(effectiveStack, 0)) return 0;
 
   // 击中暗三条的概率约 12%（两张牌到河牌），命中后能从对手那里多赚的比例按 0.35 估
