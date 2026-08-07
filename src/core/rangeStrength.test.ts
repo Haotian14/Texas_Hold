@@ -44,6 +44,27 @@ describe('rankRange', () => {
   it('空范围得到空数组', () => {
     expect(rankRange(new Map(), [], [], 100, createRng('rank-6'))).toEqual([]);
   });
+
+  it('相同 seed 下排序完全可复现，且中段顺序稳定', () => {
+    const r = () => rankRange(parseRange('22+, A2s+, K9s+, QTs+, JTs, ATo+'),
+                              parseCards('7h 4d 2c'), parseCards('7h 4d 2c'),
+                              120, createRng('stable'));
+    const a = r();
+    const b = r();
+    expect(a.map(x => x.handClass)).toEqual(b.map(x => x.handClass));
+  });
+
+  it('两个牌力明显不同的手牌顺序不会被噪声颠倒', () => {
+    // 公共牌 7h 4d 2c 上，AA 是超对，A7o 是顶对，77 是暗三条。
+    // 三者真实牌力差距远大于共享采样后的残余噪声，顺序必须稳定。
+    const ranked = rankRange(parseRange('AA, A7o, 77'),
+                             parseCards('7h 4d 2c'), parseCards('7h 4d 2c'),
+                             120, createRng('order'));
+    const posOf = (hc: string) =>
+      ranked.findIndex(x => x.handClass === hc);
+    expect(posOf('77')).toBeLessThan(posOf('AA'));
+    expect(posOf('AA')).toBeLessThan(posOf('A7o'));
+  });
 });
 
 describe('topFraction', () => {

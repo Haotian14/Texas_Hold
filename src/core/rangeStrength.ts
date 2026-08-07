@@ -1,13 +1,21 @@
 import type { Card } from './cards';
+import { makeDeck, sameCard } from './cards';
 import type { Rng } from './rng';
 import type { HandClass } from './handClass';
 import type { RangeSet, WeightedCombo } from './rangeSet';
 import { rangeCombos, totalWeight } from './rangeSet';
-import { equityMonteCarlo } from './equity';
+import { evaluate7 } from './handEval';
 
 export interface RankedCombo extends WeightedCombo {
   /** 该组合对一个随机手的胜率，0..1 */
   strength: number;
+}
+
+/** 一轮共享采样：一次公共牌补牌 + 一手对手底牌，对手分值预先算好。 */
+interface Sample {
+  fullBoard: Card[];
+  oppCards: readonly [Card, Card];
+  oppScore: number;
 }
 
 /**
@@ -16,6 +24,13 @@ export interface RankedCombo extends WeightedCombo {
  * 牌力定义为「对一个随机手的胜率」：它对翻前和每条街都有定义、单调、
  * 且不依赖于对手的对手是谁。牌型分值只在河牌圈才完整，翻牌圈无法比较
  * 听牌与小对子，因此不适合做排序键。
+ *
+ * 实现上用「公共随机数」：先抽出 iterations 组共享样本（补牌 + 一手对手
+ * 底牌），对手分值只算一次；再让每个组合去对同一批样本评分，跳过与自己
+ * 两张牌冲突的样本。这样两个组合面对的是完全相同的公共牌与对手手牌，
+ * 共享的采样误差在比较时会相互抵消，排序比逐个组合独立采样稳得多——
+ * 而这正是牌力排序真正要用到的东西，不是单个组合的绝对胜率。
+ * 顺带把「每个组合各建一次牌堆」与「对手分值算 combos 遍」都消掉了。
  *
  * 开销与范围大小成正比，调用方应缓存结果。
  */
@@ -27,10 +42,59 @@ export function rankRange(
   rng: Rng,
 ): RankedCombo[] {
   const combos = rangeCombos(range, dead);
-  const out: RankedCombo[] = combos.map(c => ({
-    ...c,
-    strength: equityMonteCarlo(c.cards, board, 1, iterations, rng),
-  }));
+  if (combos.length === 0) return [];
+
+  const pool = makeDeck().filter(c => !dead.some(d => sameCard(d, c)));
+  const boardNeeded = 5 - board.length;
+  const drawCount = boardNeeded + 2; // 补牌 + 对手两张
+
+  if (drawCount > pool.length) {
+    throw new Error(`牌不够：需要抽 ${drawCount} 张，牌堆只剩 ${pool.length} 张`);
+  }
+
+  const samples: Sample[] = new Array(iterations);
+  const drawn: Card[] = new Array(drawCount);
+
+  for (let iter = 0; iter < iterations; iter++) {
+    // 部分 Fisher-Yates：只打乱前 drawCount 张，避免每轮复制整副牌
+    for (let i = 0; i < drawCount; i++) {
+      const j = i + rng.nextInt(pool.length - i);
+      const tmp = pool[i];
+      pool[i] = pool[j];
+      pool[j] = tmp;
+      drawn[i] = pool[i];
+    }
+
+    const fullBoard = board.concat(drawn.slice(0, boardNeeded));
+    const oppCards: [Card, Card] = [drawn[boardNeeded], drawn[boardNeeded + 1]];
+    const oppScore = evaluate7([oppCards[0], oppCards[1], ...fullBoard]);
+    samples[iter] = { fullBoard, oppCards, oppScore };
+  }
+
+  const out: RankedCombo[] = combos.map(c => {
+    let total = 0;
+    let used = 0;
+    for (const s of samples) {
+      if (
+        sameCard(c.cards[0], s.oppCards[0]) ||
+        sameCard(c.cards[0], s.oppCards[1]) ||
+        sameCard(c.cards[1], s.oppCards[0]) ||
+        sameCard(c.cards[1], s.oppCards[1]) ||
+        s.fullBoard.some(bc => sameCard(bc, c.cards[0]) || sameCard(bc, c.cards[1]))
+      ) {
+        continue; // 与该组合的两张牌冲突，本样本对它不可用
+      }
+
+      const heroScore = evaluate7([c.cards[0], c.cards[1], ...s.fullBoard]);
+      if (heroScore > s.oppScore) total += 1;
+      else if (heroScore === s.oppScore) total += 0.5;
+      used++;
+    }
+    // 极端情况：该组合与每一份共享样本都冲突，没有可用估计，给 0 而不是除以零，
+    // 但仍要出现在输出里，保持「range 里有多少组合，输出就有多少条」这个子集性质。
+    return { ...c, strength: used === 0 ? 0 : total / used };
+  });
+
   out.sort((a, b) => b.strength - a.strength);
   return out;
 }
