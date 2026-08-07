@@ -82,6 +82,24 @@ describe('situationFromGameState 对手集合', () => {
       expect(o.personaId).toBe('unknown');
     }
   });
+
+  it('排除已全下的对手（他们无法再弃牌，计入会虚高弃牌率）', () => {
+    const s = startHand({ seed: 'sit-allin', buttonSeat: 0 });
+    const withAllIn = {
+      ...s,
+      seats: s.seats.map(x => (x.seat === 4 ? { ...x, allIn: true } : x)),
+    };
+    const sit = situationFromGameState(withAllIn, opts());
+    expect(sit.opponents).toHaveLength(4);
+    expect(sit.opponents.some(o => o.seat === 4)).toBe(false);
+  });
+
+  it('底牌是拷贝，不与对局状态共享引用', () => {
+    const s = startHand({ seed: 'sit-copy', buttonSeat: 0 });
+    const sit = situationFromGameState(s, opts());
+    expect(sit.heroCards).not.toBe(s.seats[s.toAct!].holeCards);
+    expect(sit.heroCards).toEqual(s.seats[s.toAct!].holeCards);
+  });
 });
 
 describe('situationFromGameState 翻前加注者标记', () => {
@@ -111,6 +129,24 @@ describe('situationFromGameState 翻前加注者标记', () => {
     s = applyAction(s, { type: 'check' });
     expect(s.toAct).toBe(3);
     expect(situationFromGameState(s, opts()).heroIsPreflopAggressor).toBe(true);
+  });
+
+  it('全下跟注不算翻前加注者', () => {
+    // UTG(3) 加注到 3，HJ(4) 手上恰好只剩 2（欠 2），只能提交 allin —— 经济上是跟注。
+    // 若按动作类型判断，加注者会被错记成 HJ。
+    const s = startHand({ seed: 'sit-allin-call', buttonSeat: 0 });
+    const crafted = {
+      ...s,
+      street: 'flop' as const,
+      toAct: 3,
+      actions: [
+        { seat: 3, street: 'preflop' as const, type: 'raise' as const,
+          amount: 3, potBefore: 1.5, toCall: 1, stackBefore: 100 },
+        { seat: 4, street: 'preflop' as const, type: 'allin' as const,
+          amount: 2, potBefore: 4.5, toCall: 2, stackBefore: 2 },
+      ],
+    };
+    expect(situationFromGameState(crafted, opts()).heroIsPreflopAggressor).toBe(true);
   });
 });
 

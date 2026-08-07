@@ -2,7 +2,7 @@ import type { Card } from './cards';
 import { cardToString } from './cards';
 import type { GameState, Position, Street } from './types';
 import { currentPot } from './gameEngine';
-import { round2 } from './chips';
+import { round2, chipsGreater } from './chips';
 import type { RangeSet } from './rangeSet';
 import { fullRange } from './rangeSet';
 
@@ -53,7 +53,7 @@ function preflopAggressor(state: GameState): number | null {
   let seat: number | null = null;
   for (const a of state.actions) {
     if (a.street !== 'preflop') break;
-    if (a.type === 'raise' || a.type === 'bet' || a.type === 'allin') seat = a.seat;
+    if (chipsGreater(a.amount, a.toCall)) seat = a.seat;
   }
   return seat;
 }
@@ -86,7 +86,7 @@ export function situationFromGameState(
   return {
     heroSeat,
     heroPosition: hero.position,
-    heroCards: hero.holeCards,
+    heroCards: [hero.holeCards[0], hero.holeCards[1]],
     board: [...state.board],
     street: state.street,
     pot: currentPot(state),
