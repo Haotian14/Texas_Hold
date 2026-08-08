@@ -3,8 +3,11 @@ import type { Rng } from './rng';
 import { createRng } from './rng';
 import { round2, chipsGreater } from './chips';
 import type { Situation } from './situation';
+import type { Card } from './cards';
 import type { RangeSet } from './rangeSet';
+import { rangeCombos } from './rangeSet';
 import { equityVsRanges } from './equity';
+import type { RankedCombo } from './rangeStrength';
 import { rankRange, topFraction } from './rangeStrength';
 import { classifyHand } from './handClass';
 
@@ -133,11 +136,11 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
     for (const size of BET_SIZES) {
       const b = round2(sit.pot * size.fraction + sit.toCall);
       if (!chipsGreater(maxInvest, b)) continue;   // 筹码不足以打出这个尺度
-      candidates.push(makeBetCandidate(sit, size.label, b, rankedFoldable, iterations, rng));
+      candidates.push(makeBetCandidate(sit, size.label, b, rankedFoldable, iterations, rng, dead));
     }
 
     // all-in 永远是一个候选
-    candidates.push(makeBetCandidate(sit, 'all-in', maxInvest, rankedFoldable, iterations, rng));
+    candidates.push(makeBetCandidate(sit, 'all-in', maxInvest, rankedFoldable, iterations, rng, dead));
   }
 
   // ── 选出推荐动作
@@ -152,6 +155,36 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
     recommended: best,
     iterations,
   };
+}
+
+/**
+ * 继续范围的物理下限。
+ *
+ * MDF 在翻前全下这类场景会低到 1.5%，切出来只剩一个类别（通常是 AA，六个组合）。
+ * 可牌桌上只有四张 A —— 几个对手不可能同时握着同一小撮组合，采样永远凑不出
+ * 互不冲突的配置。按对手数把范围放宽到物理可行为止。
+ *
+ * 只影响 W'（对手跟注后 hero 的胜率）所对的范围。弃牌率 Fe 仍然按 MDF 算 ——
+ * 那是教科书量，有测试钉着满池 1/2、半池 1/3、三分之一池 1/4，不能动。
+ * 两者因此略有不一致，这是刻意的：Fe 回答「多少人会弃牌」，
+ * 继续范围回答「跟下来的人可能拿着什么」，后者受牌堆里实际有多少张牌约束。
+ */
+const MIN_COMBOS_PER_OPPONENT = 8;
+
+function continueRangeWithFloor(
+  ranked: readonly RankedCombo[],
+  mdf: number,
+  opponentCount: number,
+  dead: readonly Card[],
+): RangeSet {
+  const needed = MIN_COMBOS_PER_OPPONENT * Math.max(1, opponentCount);
+  let fraction = Math.min(1, mdf);
+  for (let i = 0; i < 12; i++) {
+    const r = topFraction(ranked, fraction);
+    if (rangeCombos(r, dead).length >= needed || fraction >= 1) return r;
+    fraction = Math.min(1, fraction * 1.6);
+  }
+  return topFraction(ranked, 1);
 }
 
 /**
@@ -172,6 +205,7 @@ function makeBetCandidate(
   rankedFoldable: ReturnType<typeof rankRange>[],
   iterations: number,
   rng: Rng,
+  dead: readonly Card[],
 ): EvCandidate {
   const b = investment;
 
@@ -181,7 +215,9 @@ function makeBetCandidate(
   // b 已经把 sit.toCall 算在内了（见下方调用处 b = pot*fraction + toCall），
   // 所以这条公式对下注和加注都成立，不需要因为 toCall > 0 而改写。
   const mdf = Math.min(1, sit.pot / (sit.pot + b));
-  const continueRanges: RangeSet[] = rankedFoldable.map(r => topFraction(r, mdf));
+  const continueRanges: RangeSet[] = rankedFoldable.map(r =>
+    continueRangeWithFloor(r, mdf, rankedFoldable.length, dead),
+  );
 
   // 所有能弃牌的对手都弃牌的概率：每人独立以 (1 - mdf) 的概率弃牌。
   // k = 0（没有一个对手能弃牌，比如单挑面对全下）时没有人会弃牌，

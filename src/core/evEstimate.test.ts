@@ -348,6 +348,27 @@ describe('estimateEv 隐含赔率守卫', () => {
   });
 });
 
+describe('estimateEv 继续范围的物理下限', () => {
+  it('多人局面对全下时不会因继续范围过窄而无法估算', () => {
+    // 翻前底池 1.5，全下投入 100 => mdf ≈ 1.5%，切出来只剩一个类别。
+    // 五个对手不可能同时握着同一批组合 —— 继续范围必须放宽到物理可行。
+    const r = estimateEv(sit({
+      street: 'preflop',
+      board: [],
+      pot: 1.5,
+      toCall: 1,
+      heroStack: 100,
+      opponents: [1, 2, 3, 4, 5].map(seat => ({
+        seat, position: 'BB' as const, stack: 100,
+        range: parseRange('22+, A2s+, KTs+, ATo+'), personaId: 'tag', canFold: true,
+      })),
+    }), OPTS);
+    const allin = r.candidates.find(c => c.label === 'all-in')!;
+    expect(Number.isFinite(allin.ev)).toBe(true);
+    expect(allin.equityWhenCalled).toBeDefined();
+  });
+});
+
 describe('estimateEv 弃牌率对上教科书常数', () => {
   it('弃牌率对上教科书的 MDF 常数', () => {
     // 单个对手、无需跟注时，投入 b 到底池 pot：
