@@ -3,9 +3,12 @@ import { parseCards } from './cards';
 import type { Card } from './cards';
 import { createRng } from './rng';
 import { parseRange } from './rangeNotation';
-import { fullRange } from './rangeSet';
+import { fullRange, rangeCombos } from './rangeSet';
+import type { RangeSet } from './rangeSet';
 import type { Situation } from './situation';
 import { estimateEv } from './evEstimate';
+import { equityVsRanges, InfeasibleSamplingError } from './equity';
+import { rankRange, topFraction } from './rangeStrength';
 import * as rangeStrengthModule from './rangeStrength';
 
 function sit(over: Partial<Situation>): Situation {
@@ -472,6 +475,102 @@ describe('estimateEv 宽范围兜底只算一次', () => {
     expect(Number.isFinite(r.heroEquity)).toBe(true);
 
     spy.mockRestore();
+  });
+});
+
+describe('estimateEv 采样无解时只放宽真正冲突的对手，不连累健康范围', () => {
+  // 镜像 evEstimate.ts 里的同名私有常量/算法，仅用于在测试里独立构造出
+  // "全部对手都被替换成宽范围" 这个参照基线，从而验证选择性放宽确实
+  // 只换了那一个退化对手，而不是像旧实现那样把所有对手都换掉。
+  // 若生产代码改了这个常量或放宽算法，这里也要跟着改，这是刻意的耦合——
+  // 这个测试的意义就在于验证"放宽算法到底放宽了几个人"，脱离算法细节
+  // 就测不出这一点。
+  const MIRROR_MIN_COMBOS_PER_OPPONENT = 8;
+  function widenedReference(
+    board: Card[],
+    dead: Card[],
+    opponentCount: number,
+    strengthIterations: number,
+    rng: ReturnType<typeof createRng>,
+  ): RangeSet {
+    const wideRanked = rankRange(fullRange(), board, dead, strengthIterations, rng);
+    const needed = MIRROR_MIN_COMBOS_PER_OPPONENT * Math.max(1, opponentCount);
+    let fraction = Math.min(1, needed / Math.max(1, wideRanked.length));
+    for (let i = 0; i < 12; i++) {
+      const r = topFraction(wideRanked, fraction);
+      if (rangeCombos(r, dead).length >= needed || fraction >= 1) return r;
+      fraction = Math.min(1, fraction * 1.6);
+    }
+    return topFraction(wideRanked, 1);
+  }
+
+  // 五个对手，其中一个（座位 3）被 4-bet 线收窄到只剩 AA，且 hero 自己持
+  // AhAd、公共牌又见一张 Ac —— 牌桌四张 A 里三张已经不在牌堆，这个对手的
+  // AA 范围剔除死牌后一个组合都凑不出来，equityVsRanges 对它必定抛
+  // InfeasibleSamplingError。另外四个对手是正常的 ~40% 范围，彼此、以及
+  // 和座位 3 的宽范围替身之间都有大把互不冲突的组合可摸。
+  const heroCards = parseCards('Ah Ad') as [Card, Card];
+  const board = parseCards('Ac 7d 2h');
+  const dead = [...heroCards, ...board];
+  const healthy = parseRange('22+, A2s+, K9s+, QTs+, JTs, ATo+');
+  const opponents = [1, 2, 3, 4, 5].map(seat => ({
+    seat, position: 'BB' as const, stack: 100,
+    range: seat === 3 ? parseRange('AA') : healthy,
+    personaId: 'tag', canFold: true,
+  }));
+  const sit: Situation = {
+    heroSeat: 0, heroPosition: 'BTN', heroCards, board,
+    street: 'flop', pot: 10, toCall: 0, heroStack: 100,
+    heroStreetContribution: 0, opponents, heroIsPreflopAggressor: false,
+  };
+
+  it('健康的四个对手范围原样保留：估算成功，且只标记放宽了一个对手', () => {
+    const r = estimateEv(sit, { iterations: 3000, strengthIterations: 120, rng: createRng('f2-selective') });
+
+    expect(Number.isFinite(r.heroEquity)).toBe(true);
+    // hero 持超对 AA，面对四个正常范围外加一个（正确地）只被单独替换的
+    // 对手，胜率应当明显占优。用 0.6 做门槛——实测约 0.90 ~ 0.92（多个
+    // 种子），留了远超观测抖动的余量。
+    expect(r.heroEquity).toBeGreaterThan(0.6);
+    expect(r.degraded).toBe('widened-ranges');
+    expect(r.degradedOpponentCount).toBe(1);
+  });
+
+  it('对照组：把全部五个对手都换成同一份宽范围（旧实现的行为）在这个局面下连采样都做不到', () => {
+    // 这是选择性放宽存在的理由，不只是"数字不一样"：宽范围本身只放宽到
+    // MIN_COMBOS_PER_OPPONENT × 对手数（这里是 8×5=40 个组合）刚好够用的
+    // 程度，五个对手全都从这个刚好够用的范围里摸两张互不冲突的牌，
+    // 拒绝采样在实测里 100% 失败——旧实现会让这条 InfeasibleSamplingError
+    // 直接逃出 estimateEv，而不是返回一个"只是不准"的数字。
+    const widenedRef = widenedReference(board, dead, 5, 120, createRng('f2-ref'));
+    expect(() =>
+      equityVsRanges(
+        heroCards, board,
+        [widenedRef, widenedRef, widenedRef, widenedRef, widenedRef],
+        3000, createRng('f2-allwidened'),
+      ),
+    ).toThrow(InfeasibleSamplingError);
+  });
+});
+
+describe('estimateEv degraded 标记', () => {
+  it('普通局面（不触发任何放宽）时 degraded 为 null，degradedOpponentCount 为 0', () => {
+    const r = estimateEv(sit({ toCall: 5 }), OPTS);
+    expect(r.degraded).toBeNull();
+    expect(r.degradedOpponentCount).toBe(0);
+  });
+
+  it('多个对手塌缩到同一类别触发放宽时 degraded 标记为 widened-ranges', () => {
+    const collapsed = parseRange('AA');
+    const r = estimateEv(sit({
+      street: 'preflop', board: [], pot: 1.5, toCall: 1, heroStack: 100,
+      opponents: [1, 2, 3].map(seat => ({
+        seat, position: 'BB' as const, stack: 100,
+        range: collapsed, personaId: 'tag', canFold: true,
+      })),
+    }), OPTS);
+    expect(r.degraded).toBe('widened-ranges');
+    expect(r.degradedOpponentCount).toBeGreaterThan(0);
   });
 });
 

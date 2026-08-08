@@ -36,6 +36,24 @@ export interface EvResult {
   requiredEquity: number | null;
   recommended: EvCandidate;
   iterations: number;
+  /**
+   * 本次估算里是否发生过采样兜底放宽（某个对手的范围因物理无解被替换成
+   * 宽范围）。null 表示 heroEquity 与所有候选的 W' 全部用的是对手的真实
+   * 范围，没有任何替换发生——这时 EvResult 里的数字可以直接采信。
+   * 'widened-ranges' 表示至少一次放宽发生过：可能只影响了某一个候选的
+   * W'，也可能连 heroEquity 本身都被放宽过，具体是谁被替换、替换成什么
+   * 已经不可追溯（放宽后的范围不是真实信息），下游（复盘引擎）看到这个
+   * 标记时应当认为 heroEquity / 相关候选的 ev 不完全可信，不能直接拿来
+   * 对人报「你输了 X BB」这类具体数字。
+   */
+  degraded: 'widened-ranges' | null;
+  /**
+   * degraded 不为 null 时，本次估算过程中单次放宽最多替换掉的对手数
+   * （heroEquity 和每个下注候选的 W' 各自独立触发放宽、各自可能放宽不同
+   * 数量的对手，这里取其中最多的一次，作为「放宽严重到什么程度」的粗量级
+   * 指标，不是被替换对手的精确并集）。degraded 为 null 时恒为 0。
+   */
+  degradedOpponentCount: number;
 }
 
 export interface EvOptions {
@@ -101,16 +119,16 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
   };
 
   // W：对当前对手范围的胜率。先按对手的真实（可能已被 narrowByAction 收窄的）
-  // 范围采样；只有真的采样无解时才退化成宽范围重试一次。
+  // 范围采样；只有真的采样无解时才退化成宽范围重试——且只放宽真正造成冲突
+  // 的那些对手，见 equityWithSelectiveWidening 上的注释。
   const heroOppRanges: RangeSet[] = sit.opponents.map(o => o.range);
-  let heroEquity: number;
-  try {
-    heroEquity = equityVsRanges(sit.heroCards, sit.board, heroOppRanges, iterations, rng);
-  } catch (err) {
-    if (!(err instanceof InfeasibleSamplingError)) throw err;
-    const widened = sit.opponents.map(() => widenedRange());
-    heroEquity = equityVsRanges(sit.heroCards, sit.board, widened, iterations, rng);
-  }
+  const heroResult = equityWithSelectiveWidening(
+    sit.heroCards, sit.board, heroOppRanges, iterations, rng, dead, widenedRange,
+  );
+  const heroEquity = heroResult.equity;
+  // 记录本次估算里放宽的最严重程度，最终写进 EvResult.degraded /
+  // degradedOpponentCount（见 makeBetCandidate 调用处的另一次可能更新）。
+  const degradeTracker = { maxWidened: heroResult.widenedCount };
 
   // 「继续范围」只对还能做决策的对手才有意义 —— 已全下的对手不会弃牌，
   // 谈不上什么范围要被下注挤掉。只对 canFold 的对手排序，且仍然只做一次。
@@ -168,13 +186,13 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
       const b = round2(sit.pot * size.fraction + sit.toCall);
       if (!chipsGreater(maxInvest, b)) continue;   // 筹码不足以打出这个尺度
       candidates.push(
-        makeBetCandidate(sit, size.label, b, rankedFoldable, iterations, rng, dead, widenedRange),
+        makeBetCandidate(sit, size.label, b, rankedFoldable, iterations, rng, dead, widenedRange, degradeTracker),
       );
     }
 
     // all-in 永远是一个候选
     candidates.push(
-      makeBetCandidate(sit, 'all-in', maxInvest, rankedFoldable, iterations, rng, dead, widenedRange),
+      makeBetCandidate(sit, 'all-in', maxInvest, rankedFoldable, iterations, rng, dead, widenedRange, degradeTracker),
     );
   }
 
@@ -189,7 +207,59 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
     requiredEquity: chipsGreater(sit.toCall, 0) ? sit.toCall / (sit.pot + sit.toCall) : null,
     recommended: best,
     iterations,
+    degraded: degradeTracker.maxWidened > 0 ? 'widened-ranges' : null,
+    degradedOpponentCount: degradeTracker.maxWidened,
   };
+}
+
+/**
+ * 采样一组对手范围的胜率；若物理无解（某个对手的范围与死牌/其他对手冲突到
+ * 拒绝采样找不到解），只放宽真正造成冲突的那个对手，而不是把所有对手一并
+ * 换成宽范围。
+ *
+ * 背景：旧实现一旦采样失败，就不分青红皂白地把全部对手的范围都替换成同一份
+ * 宽范围重试。真实场景常常是「五个对手，一个被 4-bet 线收窄到 {AA} 这种
+ * 只有几个组合的类别，另外四个还是正常的 ~40% 范围」——采样失败的原因只是
+ * 那一个退化对手，另外四个的组合完全够互相不冲突地摸牌。全体替换会把四个
+ * 健康范围也一起丢掉，hero 被错误地建模成面对五个顶级范围，heroEquity 系统性
+ * 偏低。
+ *
+ * 做法：按「剔除死牌后的组合数」从少到多给对手排序——组合数最少的最可能是
+ * 采样失败的元凶，最先被怀疑、最先被放宽；仍然失败就放宽次窄的一个，以此
+ * 类推，直到成功或者所有对手都被放宽过。每次只替换一个，用尽量小的代价换
+ * 到「能采样」这个目标，不多动一个健康范围。
+ */
+function equityWithSelectiveWidening(
+  hero: [Card, Card],
+  board: Card[],
+  ranges: readonly RangeSet[],
+  iterations: number,
+  rng: Rng,
+  dead: readonly Card[],
+  widenedRange: () => RangeSet,
+): { equity: number; widenedCount: number } {
+  const current = [...ranges];
+  const order = ranges
+    .map((_, i) => i)
+    .sort((a, b) => rangeCombos(ranges[a], dead).length - rangeCombos(ranges[b], dead).length);
+
+  let widenedCount = 0;
+  let cursor = 0;
+  for (;;) {
+    try {
+      const equity = equityVsRanges(hero, board, current, iterations, rng);
+      return { equity, widenedCount };
+    } catch (err) {
+      if (!(err instanceof InfeasibleSamplingError)) throw err;
+      // 已经把所有对手都放宽过还是无解——牌桌本身容不下这么多对手（比如
+      // 宽范围本身的组合数都不够这么多人互不冲突地摸两张），原样抛出，
+      // 不静默吞掉；estimateEv 的两处调用点都不再捕获这个错误。
+      if (cursor >= order.length) throw err;
+      current[order[cursor]] = widenedRange();
+      widenedCount++;
+      cursor++;
+    }
+  }
 }
 
 /**
@@ -242,6 +312,7 @@ function makeBetCandidate(
   rng: Rng,
   dead: readonly Card[],
   widenedRange: () => RangeSet,
+  degradeTracker: { maxWidened: number },
 ): EvCandidate {
   const b = investment;
 
@@ -270,19 +341,27 @@ function makeBetCandidate(
   // 先按真实的继续范围采样；如果上游（比如 narrowByAction）把多个对手的
   // 范围收窄到同一个类别，导致 continueRanges 之间物理上无法互不冲突地
   // 同时成立，equityVsRanges 会抛 InfeasibleSamplingError —— 此时才退化成
-  // 宽范围重试一次，不预先猜测、不在没出问题时就替换掉真实的继续范围。
+  // 宽范围重试，且只逐个放宽真正造成冲突的对手（见 equityWithSelectiveWidening），
+  // 不预先猜测、不在没出问题时就替换掉真实的继续范围，也不会因为一个对手
+  // 的问题连累其余健康的继续范围。
+  //
+  // 放宽之后有个刻意保留的不对称：foldEquity 上面已经算完了，用的是这个
+  // 尺度真实的 mdf；这里 W' 一旦触发放宽，替换进来的宽范围来自
+  // widenedRange()（按 MIN_COMBOS_PER_OPPONENT 的物理下限放宽），已经不再
+  // 是这个尺度的 mdf 切出来的「继续范围」。也就是说 Fe 回答的是「这个具体
+  // 尺度下按教科书 MDF 会有多少人弃牌」，W' 在放宽发生后回答的是「按物理
+  // 下限能采到样的最窄范围，对手跟注后的胜率」，两个问题在放宽发生的那一刻
+  // 已经不再是同一个「继续范围」的两面。这与 continueRangeWithFloor 上文档
+  // 的不对称（Fe 用 mdf、继续范围用物理下限）同源，但是新的一层：那里是
+  // 「未放宽时」两者的物理下限差异，这里是「放宽发生后」两者干脆不共享
+  // 同一个范围对象了。EvResult.degraded 就是留给下游识别这种情况的标记。
   const allInOpponents = sit.opponents.filter(o => !o.canFold);
   const rangesForCalled: RangeSet[] = [...continueRanges, ...allInOpponents.map(o => o.range)];
-  let wPrime: number;
-  try {
-    wPrime = equityVsRanges(sit.heroCards, sit.board, rangesForCalled, iterations, rng);
-  } catch (err) {
-    if (!(err instanceof InfeasibleSamplingError)) throw err;
-    const widenedContinue = continueRanges.map(() => widenedRange());
-    const widenedAllIn = allInOpponents.map(() => widenedRange());
-    const retryRanges: RangeSet[] = [...widenedContinue, ...widenedAllIn];
-    wPrime = equityVsRanges(sit.heroCards, sit.board, retryRanges, iterations, rng);
-  }
+  const wResult = equityWithSelectiveWidening(
+    sit.heroCards, sit.board, rangesForCalled, iterations, rng, dead, widenedRange,
+  );
+  const wPrime = wResult.equity;
+  degradeTracker.maxWidened = Math.max(degradeTracker.maxWidened, wResult.widenedCount);
 
   // 对手跟注时还需再投入多少、跟注后真正的底池是多少 —— sit.pot 已经含有对手
   // 此前未被跟的下注（toCall），所以对手的跟注额是 b − toCall，最终底池是
