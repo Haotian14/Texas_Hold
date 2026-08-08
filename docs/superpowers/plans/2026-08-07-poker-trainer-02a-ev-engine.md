@@ -989,7 +989,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **数据组织方式**：每个节点只列出**非 fold** 的动作，fold 是补集。这样每个动作一行紧凑记法，且各动作频率之和恒等于 1（不可能写错）。同一节点内一手牌在多个动作里出现时，频率相加不得超过 1 —— 由一致性测试保证。
 
-**覆盖范围与回落**：本任务覆盖 5 个 RFI 节点、13 个面对开池节点、4 个面对 3bet 节点。未覆盖的节点（4bet 之后、多人底池的复杂节点）`hasNode` 返回 `false`，由调用方回落到翻后同一套 EV 估算 —— 这是 spec §6.5 明确的设计。
+**覆盖范围与回落**：本任务覆盖 5 个 RFI 节点、10 个面对开池节点、4 个面对 3bet 节点（共 19 个）。未覆盖的节点（4bet 之后、多人底池的复杂节点）`hasNode` 返回 `false`，由调用方回落到翻后同一套 EV 估算 —— 这是 spec §6.5 明确的设计。
 
 - [ ] **Step 1: 创建范围数据**
 
@@ -1358,7 +1358,11 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 平局按 `1/并列人数` 计入，与既有函数语义一致。
 
-**采样时的冲突处理**：每轮先抽公共牌补齐，再为每个对手从各自范围里采样；若采到的组合与已用牌冲突，重采（最多 100 次），仍冲突则跳过该轮并从总轮数中扣除。
+**采样时的冲突处理**：每轮**先**为每个对手从各自范围里采样，**再**从剩下的牌里抽公共牌。若采到的组合与已用牌冲突，重采（最多 100 次），仍冲突则跳过该轮并从总轮数中扣除。
+
+顺序不能反过来：先抽公共牌的话，牌是从「对手必须持有的那两张仍在牌堆里」的全量牌堆抽的，会让对手范围集中的点数在牌面上出现得系统性偏高——hero 拿 AA、对手范围只有 KK 时，牌面出现两张 K 的概率会从正确的 0.97% 涨到 4.31%，而对手仍持 KK，等于凭空多出四条。实测 hero 胜率从真值 0.82 掉到 0.69。
+
+**已知的近似**：多个对手时逐个采样并按先后拒绝，严格来说不是完全无偏——后采样的对手其归一化因子依赖于先采样对手占用的牌。单个对手时精确无偏（复盘引擎的主要用法，也是全部测试覆盖的情形）；对手范围较宽时偏差可忽略。不要把它当作精确的多人范围对范围求解。
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -1409,10 +1413,27 @@ describe('equityVsRanges 范围影响结果', () => {
     expect(eq).toBeLessThan(0.85);
   });
 
-  it('AKs 对只含 22 的范围约 46%（经典 coin flip）', () => {
+  it('AKs 对只含 22 的范围约 50%', () => {
+    // 同花 AK 对小对子基本是掷硬币，精确值约 49.9%
     const eq = equityVsRanges(hole('As Ks'), [], [parseRange('22')], 30000, createRng('aks-vs-22'));
-    expect(eq).toBeGreaterThan(0.43);
+    expect(eq).toBeGreaterThan(0.47);
+    expect(eq).toBeLessThan(0.53);
+  });
+
+  it('AKo 对只含 22 的范围约 47%', () => {
+    // 非同花 AK 少了同花的补强，明显低于同花版本（精确值约 47.4%）。
+    // 常被引用的「AK 对小对子约 46%」说的是这一个，不是同花版本。
+    const eq = equityVsRanges(hole('Ah Kd'), [], [parseRange('22')], 30000, createRng('ako-vs-22'));
+    expect(eq).toBeGreaterThan(0.44);
     expect(eq).toBeLessThan(0.50);
+  });
+
+  it('对手范围里的牌不会出现在公共牌上（采样顺序回归）', () => {
+    // 对手范围只有 KK：若先发公共牌再给对手采样，牌面会拿走 K，
+    // 对手却仍持 KK，凭空多出四条。精确值约 81.3%。
+    const eq = equityVsRanges(hole('As Ad'), [], [parseRange('KK')], 30000, createRng('order-guard'));
+    expect(eq).toBeGreaterThan(0.78);
+    expect(eq).toBeLessThan(0.85);
   });
 });
 
@@ -1507,17 +1528,13 @@ export function equityVsRanges(
   const oppCards: Array<[Card, Card]> = new Array(opponentRanges.length);
 
   for (let iter = 0; iter < iterations; iter++) {
-    // 抽公共牌：部分 Fisher-Yates
-    for (let i = 0; i < boardNeeded; i++) {
-      const j = i + rng.nextInt(pool.length - i);
-      const tmp = pool[i];
-      pool[i] = pool[j];
-      pool[j] = tmp;
-      runout[i] = pool[i];
-    }
-
-    // 为每个对手采样，避开已用掉的牌
-    const used: Card[] = [...known, ...runout.slice(0, boardNeeded)];
+    // 顺序要紧：先给对手采样，再发公共牌。
+    //
+    // 对手手里握着的牌不可能同时出现在公共牌上。若先发公共牌，
+    // 牌面会从牌堆里拿走对手范围必须持有的牌，制造出
+    // 「对手持 KK、牌面上还有两张 K」这种现实中不存在的局面 ——
+    // 对手凭空多出四条。实测 AA 对 KK 会从真值 0.813 掉到 0.693。
+    const used: Card[] = [...known];
     let ok = true;
     for (let o = 0; o < opponentRanges.length; o++) {
       let picked: [Card, Card] | null = null;
@@ -1531,6 +1548,21 @@ export function equityVsRanges(
       used.push(picked[0], picked[1]);
     }
     if (!ok) continue;   // 本轮作废，不计入分母
+
+    // 从牌堆里剔除已被对手用掉的牌，再抽公共牌。
+    // 定长 Fisher-Yates：恰好抽 boardNeeded 张，不可能少发。
+    const oppUsed = used.slice(known.length);
+    const iterPool = pool.filter(c => !oppUsed.some(u => sameCard(u, c)));
+    if (boardNeeded > iterPool.length) continue;
+
+    const runout: Card[] = new Array(boardNeeded);
+    for (let i = 0; i < boardNeeded; i++) {
+      const j = i + rng.nextInt(iterPool.length - i);
+      const tmp = iterPool[i];
+      iterPool[i] = iterPool[j];
+      iterPool[j] = tmp;
+      runout[i] = iterPool[i];
+    }
 
     const fullBoard = board.concat(runout.slice(0, boardNeeded));
     const heroScore = evaluate7([hero[0], hero[1], ...fullBoard]);
@@ -2552,7 +2584,7 @@ function impliedOddsBonus(sit: Situation, heroEquity: number): number {
     sit.heroStack,
     ...sit.opponents.map(o => o.stack),
   );
-  if (effectiveStack <= 0) return 0;
+  if (!chipsGreater(effectiveStack, 0)) return 0;
 
   // 击中概率用「距离摊牌的胜率缺口」粗略代表
   const hitChance = Math.max(0, Math.min(0.35, heroEquity));
@@ -2757,6 +2789,7 @@ Expected: FAIL，找不到模块 `./opponentRange`
 import type { Card } from './cards';
 import type { Rng } from './rng';
 import type { ActionType, Position, Street } from './types';
+import { chipsGreater } from './chips';
 import type { RangeSet } from './rangeSet';
 import { fullRange } from './rangeSet';
 import { rankRange, topFraction } from './rangeStrength';
@@ -2821,7 +2854,7 @@ export function narrowByAction(
   if (actionType === 'fold') return new Map();
   if (range.size === 0) return range;
 
-  const mdf = ctx.potBefore > 0
+  const mdf = chipsGreater(ctx.potBefore, 0)
     ? ctx.potBefore / (ctx.potBefore + Math.max(0, ctx.betSize))
     : 1;
 
