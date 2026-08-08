@@ -30,7 +30,10 @@ export const GTO_PERSONA: Persona = {
   aggression: 1,
   bluffFreq: 0,
   callThresholdMul: 1,
-  cbetFreq: 0.55,
+  // 0.5 才是中性值：decide.ts 的 personaScore 用 (cbetFreq - 0.5) 算 c-bet
+  // 加成，0.55 会让「全中性」的 GTO 原型在翻牌圈也拿到一个不为零的
+  // c-bet 加成（+0.005×pot），与其它四项倍率都恰好中性的设计意图不符。
+  cbetFreq: 0.5,
 };
 
 export const PERSONAS: readonly Persona[] = [

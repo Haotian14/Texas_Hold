@@ -1,6 +1,6 @@
 import { startHand, applyAction, settleHand } from '../core/gameEngine';
 import type { GameState, HandRecord } from '../core/types';
-import { SEAT_COUNT, HERO_SEAT } from '../core/types';
+import { HERO_SEAT } from '../core/types';
 import { toHandRecord } from '../core/handRecord';
 import { createRng } from '../core/rng';
 import type { RangeSet } from '../core/rangeSet';

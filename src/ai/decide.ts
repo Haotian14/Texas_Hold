@@ -31,7 +31,33 @@ export interface Decision {
   score: number;
 }
 
-const AGGRESSIVE = new Set(['bet', 'raise', 'allin']);
+/**
+ * personaScore 里判断"这是一个进攻候选"要用的集合，只含 'bet'/'raise'，
+ * 不含 'allin'。
+ *
+ * 这是刻意的，不是漏写：estimateEv（core/evEstimate.ts）只在一种情况下
+ * 把候选的 actionType 定成 'allin'——sit.toCall > 0 且 heroStack <= toCall
+ * 的「不足额跟注」分支（筹码不够跟平，全下只是把手上仅剩的筹码跟出去，
+ * 见 evEstimate.ts 里 'call all-in' 那个候选）。这是一次被迫的跟注，不是
+ * 主动选择的进攻动作；玩家没有「跟注」和「加注」之外的第三个选项。真正
+ * 主动选择的全下（筹码够、自愿把 all-in 当一个下注尺度）在 estimateEv 里
+ * 类型是 'raise' 或 'bet'（取决于 toCall 是否 > 0，见 makeBetCandidate），
+ * 从来不是 'allin'——那些候选已经在 AGGRESSIVE 里了。
+ *
+ * 如果把 'allin' 也算进「进攻」，会让这唯一会出现 'allin' 类型的强制跟注
+ * 场景凭空获得 (persona.aggression - 1) * pot * AGGRESSION_WEIGHT 的加成
+ * （疯子加分、岩石因为 aggression < 1 反而被扣分——一个被迫的动作不应该
+ * 因为性格是「岩石」就被打压），还会让它有资格被 bluffFreq 抽中、当成
+ * 「诈唬候选」参与进攻候选间的比较——一个只能跟注不能诈唬的动作没有
+ * 「诈唬」这个概念。
+ *
+ * 注意这与下面 BET_LIKE 的用途完全不同：BET_LIKE 解决的是 candidate 类型
+ * 和 legal 类型字符串不一致时"能不能匹配到同一个引擎动作"，在那里 'allin'
+ * 属于同一族是对的（一个引擎层面真正的全下，不管是主动的还是被迫的，
+ * 都应该能被对应的候选匹配上）；这里 AGGRESSIVE 解决的是"这个候选算不算
+ * 性格意义上的进攻"，是两个不同的问题，不应该共用同一个集合。
+ */
+const AGGRESSIVE = new Set(['bet', 'raise']);
 
 /** 下注类候选与合法动作之间可以互相匹配的类型族，见下方 matchesLegal。 */
 const BET_LIKE = new Set<ActionType>(['bet', 'raise', 'allin']);

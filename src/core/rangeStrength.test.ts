@@ -4,6 +4,8 @@ import { createRng } from './rng';
 import { parseRange } from './rangeNotation';
 import { rangeFraction } from './rangeSet';
 import { rankRange, topFraction, strengthPercentile, warmPreflopStrength } from './rangeStrength';
+import { equityMonteCarlo } from './equity';
+import { expandCombos } from './handClass';
 
 describe('rankRange', () => {
   it('按强度降序排列', () => {
@@ -117,12 +119,44 @@ describe('strengthPercentile', () => {
 
 describe('翻前牌力查表', () => {
   it('翻前排序与逐个采样的结果高度一致', () => {
-    // 查表版与采样版对同一范围应给出几乎相同的顺序
+    // 旧版本从没算过「逐个采样」的版本：只检查了 classes[0] === 'AA' 和
+    // 强度递减，这两条查表本身、甚至一个写错的排序函数只要恰好没把 AA
+    // 排到第一都测不出来，标题声称的「与逐个采样高度一致」从未被验证过。
+    //
+    // 这里真的独立算一遍：对范围里每个类别，用 equityMonteCarlo（和
+    // buildPreflopTable 内部用的是同一个函数，但样本数、种子都不同，
+    // 不是在读同一份缓存）单独跑一次蒙特卡洛，得到一版不经过查表、
+    // 完全独立的强度排序，再用 Spearman 等级相关系数衡量两版排序的
+    // 一致程度。
     const range = parseRange('22+, A2s+, K9s+, QTs+, JTs, ATo+, KQo');
     const ranked = rankRange(range, [], [], 120, createRng('table-1'));
     const classes = ranked.map(r => r.handClass);
-    // 最强的应当是 AA，最弱的不应当是对子
+
+    const sampledStrength = new Map<string, number>();
+    for (const hc of classes) {
+      const cards = expandCombos(hc)[0];
+      sampledStrength.set(hc, equityMonteCarlo(cards, [], 1, 4000, createRng(`sample-${hc}`)));
+    }
+    const sampledOrder = [...classes].sort((a, b) => sampledStrength.get(b)! - sampledStrength.get(a)!);
+
+    // Spearman: 1 = 完全一致，0 = 无关，-1 = 完全反序
+    const rankOf = (order: string[]) => new Map(order.map((hc, i) => [hc, i]));
+    const tableRank = rankOf(classes);
+    const sampledRank = rankOf(sampledOrder);
+    const n = classes.length;
+    let sumSqDiff = 0;
+    for (const hc of classes) {
+      const d = tableRank.get(hc)! - sampledRank.get(hc)!;
+      sumSqDiff += d * d;
+    }
+    const spearman = 1 - (6 * sumSqDiff) / (n * (n * n - 1));
+
+    // 实测（同样的范围、同样的抽样参数）约 0.96，且前 5 名完全重合。0.8
+    // 做门槛，留了远超两版各自蒙特卡洛噪声的余量。
+    expect(spearman).toBeGreaterThan(0.8);
+    // 最强的应当是 AA，最弱的不应当是对子——两版排序都要满足
     expect(classes[0]).toBe('AA');
+    expect(sampledOrder[0]).toBe('AA');
     expect(ranked[ranked.length - 1].strength).toBeLessThan(ranked[0].strength);
   });
 
@@ -153,10 +187,24 @@ describe('翻前牌力查表', () => {
     expect(ranked[0].handClass).toBe('72o');
   });
 
-  it('预热函数可重复调用且不改变结果', () => {
-    warmPreflopStrength();
+  it('预热函数可重复调用不抛错，重复调用后翻前排序仍然可复现', () => {
+    // 这条起名叫「不改变结果」，但翻前牌力表是模块级单例（preflopTable，见
+    // buildPreflopTable 上方），本文件里更早的用例（比如"翻前 AA 强于 72o"）
+    // 已经把它建好了；等跑到这里，warmPreflopStrength() 内部的
+    // `if (!preflopTable) …` 必然短路成空操作。就算把 warmPreflopStrength
+    // 整个实现换成 `() => {}`，a 和 b 依然会相等——两次 rankRange 调用读的
+    // 是同一张早就建好的表，跟 warmPreflopStrength 到底做没做事无关。
+    //
+    // 在不引入新文件、不破坏模块级单例本身设计的前提下，没有办法在这个
+    // 测试文件里真正观测到"第一次调用建了表、第二次调用没有再建"——需要
+    // 一个全新的、preflopTable 还未被任何用例碰过的模块环境。这里退而
+    // 求其次，验证一个仍然有意义、且这个名字诚实反映的性质：调用
+    // warmPreflopStrength 本身不抛错、可以安全地反复调用（它在真实调用方
+    // 那里就是这么被用的——不确定表建没建时无脑调一下），并且调用前后
+    // rankRange 的翻前结果不受影响、保持可复现。
+    expect(() => warmPreflopStrength()).not.toThrow();
     const a = rankRange(parseRange('22+'), [], [], 120, createRng('warm')).map(r => r.strength);
-    warmPreflopStrength();
+    expect(() => warmPreflopStrength()).not.toThrow();
     const b = rankRange(parseRange('22+'), [], [], 120, createRng('warm')).map(r => r.strength);
     expect(a).toEqual(b);
   });

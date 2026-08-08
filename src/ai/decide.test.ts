@@ -1,11 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { startHand, applyAction, legalActions } from '../core/gameEngine';
-import type { GameState, Street } from '../core/types';
 import { SEAT_COUNT } from '../core/types';
 import { createRng } from '../core/rng';
 import { fullRange } from '../core/rangeSet';
 import type { RangeSet } from '../core/rangeSet';
-import { initialRange } from '../core/opponentRange';
 import { PERSONAS, getPersona } from './personas';
 import { decide, personaScore } from './decide';
 import type { EvCandidate } from '../core/evEstimate';
@@ -82,7 +80,10 @@ describe('decide 反映性格差异', () => {
 
   it('GTO 原型不叠加任何偏好，评分等于 EV 本身', () => {
     // GTO 的 aggression / callThresholdMul 都是 1，bluffFreq 为 0，
-    // 所以 personaScore 的三项加成全为 0，score 必须与所选候选的 ev 相等。
+    // cbetFreq 是 0.5（这一项的中性值是 0.5 而不是 1 —— personaScore 用
+    // (cbetFreq - 0.5) 算加成），所以 personaScore 的三项加成在任意街都
+    // 恒为 0，不是仅仅因为这个用例恰好停在翻前、c-bet 那一项根本不会触发。
+    // score 必须与所选候选的 ev 相等。
     // 注意不能断言「选的就是 ev.recommended」—— 推荐候选可能因非法尺度被过滤掉。
     const s = startHand({ seed: 'dec-gto', buttonSeat: 0 });
     const d = decide(s, { ...opts('gto'), rng: createRng('no-bluff') });
@@ -109,6 +110,26 @@ describe('decide 反映性格差异', () => {
     };
     const score = personaScore(candidate, /* pot */ 10, /* toCall */ 2, 'flop', false, maniac);
     expect(score).toBeGreaterThan(candidate.ev);
+  });
+
+  it("'allin' 类型的候选不算进攻：不足额跟注不应该获得性格加成", () => {
+    // estimateEv 只在「筹码不够跟平，全下是被迫的不足额跟注」这一种情况下
+    // 把候选类型定成 'allin'（见 evEstimate.ts 的 'call all-in' 分支）；
+    // 真正主动选择的全下类型是 'raise'/'bet'。把 'allin' 也塞进 AGGRESSIVE
+    // 会让这个被迫的动作凭空获得 aggression 加成——疯子加分、岩石因为
+    // aggression < 1 反而被扣分，一个没有选择余地的动作不该因为性格标签
+    // 被打压或拔高。这里用疯子（加成方向最容易看出来）验证：'allin' 候选
+    // 的 score 必须恰好等于它自己的 ev，不带任何加成。
+    const maniac = getPersona('maniac');
+    const candidate: EvCandidate = {
+      label: 'call all-in',
+      actionType: 'allin',
+      investment: 20,
+      ev: 3,
+      isRecommended: false,
+    };
+    const score = personaScore(candidate, /* pot */ 40, /* toCall */ 100, 'flop', false, maniac);
+    expect(score).toBe(candidate.ev);
   });
 });
 
@@ -144,6 +165,43 @@ describe('decide 大盲的选项也能加注（bet/raise 类型不匹配的回�
 
     expect(d.action.type).toBe('raise');
     expect(() => applyAction(s, d.action)).not.toThrow();
+  });
+});
+
+describe('decide 筹码只够跟注不够最小加注时也能全下', () => {
+  it('legal 只剩 fold/call/allin（没有 raise）时，AI 仍能选出全下', () => {
+    // UTG 加注到 10（currentBet=10, lastRaiseSize=9，minRaiseTo=19）。
+    // 下一个行动的 HJ 只有 15 点筹码：够跟注（15 > toCall=10）但不够最小
+    // 加注（15 <= minInvest=19），legalActions 因此不给 raise，只给
+    // fold/call/allin。estimateEv 的「all-in」候选仍然按 toCall>0 的规则
+    // 定为 'raise'类型——如果 matchesLegal 不把 allin 也算进 bet/raise 同族，
+    // 这个候选就无处匹配，AI 只能在 call/fold 之间选，喊不出全下。
+    // 这个场景在 finding 1 修 matchesLegal 时被顺带修复了，这里单独钉一个
+    // 回归测试。
+    const stacks = [100, 100, 100, 100, 15, 100];
+    let s = startHand({ seed: 'shortraise-0', buttonSeat: 0, startingStacks: stacks });
+    s = applyAction(s, { type: 'raise', amount: 10 }); // UTG(seat3)
+    expect(s.toAct).toBe(4); // HJ，筹码只有 15
+
+    const legal = legalActions(s);
+    expect(legal.some(a => a.type === 'raise')).toBe(false);
+    expect(legal.some(a => a.type === 'allin')).toBe(true);
+
+    const ranges = new Map<number, RangeSet>();
+    const personaIds = new Map<number, string>();
+    for (let k = 0; k < SEAT_COUNT; k++) { ranges.set(k, fullRange()); personaIds.set(k, 'maniac'); }
+
+    let found: ReturnType<typeof decide> | null = null;
+    for (let i = 0; i < 20 && !found; i++) {
+      const d = decide(s, {
+        ranges, personaIds, rng: createRng(`shortraise-rng-${i}`),
+        iterations: 150, strengthIterations: 15,
+      });
+      if (d.action.type === 'allin') found = d;
+    }
+
+    expect(found).not.toBeNull();
+    expect(() => applyAction(s, found!.action)).not.toThrow();
   });
 });
 

@@ -46,6 +46,11 @@ describe('GTO_PERSONA', () => {
     expect(GTO_PERSONA.aggression).toBe(1);
     expect(GTO_PERSONA.callThresholdMul).toBe(1);
     expect(GTO_PERSONA.bluffFreq).toBe(0);
+    // cbetFreq 的中性值是 0.5，不是 1——decide.ts 的 personaScore 用
+    // (cbetFreq - 0.5) 算加成，0.5 才会让这一项恒为 0。漏掉这条断言曾经
+    // 让 cbetFreq: 0.55 混进来过：GTO 在翻牌圈会悄悄拿到一个不为零的
+    // c-bet 加成，其它四项全部中性的这条测试却照样通过。
+    expect(GTO_PERSONA.cbetFreq).toBe(0.5);
   });
 });
 

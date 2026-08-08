@@ -145,6 +145,17 @@ export function equityVsRanges(
   iterations: number,
   rng: Rng,
 ): number {
+  // iterations <= 0 是调用方的配置错误（比如 EvOptions.iterations 传成 0 或负数），
+  // 不是「牌面凑不出解」——两者不该混为一谈。不加这道 guard，下面的循环一次都不
+  // 会跑，counted 恒为 0，会被底部的 `counted === 0` 分支当成 InfeasibleSamplingError
+  // 抛出；estimateEv 只捕获 InfeasibleSamplingError 并静默宽范围重试，一个纯粹的
+  // 参数错误就这样被当成物理无解吞掉，重试出一个看似正常、实则毫无意义的数字。
+  // 用不同的错误类型把两者分开：调用方传错参数应该让调用直接失败，而不是被
+  // 兜底路径悄悄抹平。
+  if (iterations <= 0) {
+    throw new Error(`equityVsRanges 的 iterations 必须为正数，收到 ${iterations}`);
+  }
+
   if (opponentRanges.length === 0) throw new Error('至少需要一个对手范围');
 
   const known = [...hero, ...board];

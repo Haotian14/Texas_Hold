@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { parseCards } from './cards';
 import type { Card } from './cards';
 import { createRng } from './rng';
-import { equityMonteCarlo, equityExactVsOne } from './equity';
+import { equityMonteCarlo, equityExactVsOne, equityVsRanges, InfeasibleSamplingError } from './equity';
+import { fullRange } from './rangeSet';
 
 const hole = (s: string) => parseCards(s) as [Card, Card];
 
@@ -78,6 +79,32 @@ describe('equityMonteCarlo 与精确解对拍', () => {
     const exact = equityExactVsOne(hole('As Ks'), parseCards('Qs Js 9s 4h'));
     const mc = equityMonteCarlo(hole('As Ks'), parseCards('Qs Js 9s 4h'), 1, 20000, createRng('mc-turn'));
     expect(Math.abs(mc - exact)).toBeLessThan(0.015);
+  });
+});
+
+describe('equityVsRanges 的 iterations 参数校验', () => {
+  it('iterations <= 0 是配置错误，抛出与 InfeasibleSamplingError 不同的错误', () => {
+    // counted === 0 这条路径同时会被「iterations 太小/为 0」和「牌面物理冲突」
+    // 触发；两者语义完全不同——前者是调用方传错了参数，后者是真的采不出样。
+    // estimateEv 只捕获 InfeasibleSamplingError 并静默宽范围重试，如果配置错误
+    // 也抛同一种错误，会被当成物理无解悄悄吞掉、重试出一个无意义的数字。
+    // 用不同的错误类型强制两者分开：iterations <= 0 必须在最上面直接抛出，
+    // 且不能是 InfeasibleSamplingError（否则调用方无法区分）。
+    expect(() => equityVsRanges(
+      parseCards('As Ks') as [Card, Card], [], [fullRange()], 0, createRng('iter-guard'),
+    )).toThrow();
+    try {
+      equityVsRanges(parseCards('As Ks') as [Card, Card], [], [fullRange()], 0, createRng('iter-guard'));
+      expect.unreachable('应当抛错');
+    } catch (err) {
+      expect(err).not.toBeInstanceOf(InfeasibleSamplingError);
+    }
+    try {
+      equityVsRanges(parseCards('As Ks') as [Card, Card], [], [fullRange()], -5, createRng('iter-guard'));
+      expect.unreachable('应当抛错');
+    } catch (err) {
+      expect(err).not.toBeInstanceOf(InfeasibleSamplingError);
+    }
   });
 });
 

@@ -49,14 +49,27 @@ describe('AI 自对弈', () => {
   }, 60_000);
 
   it('多种结束方式都会出现', () => {
+    // 旧断言只要求 streets.size > 1，只能挡住「全部手牌都在同一条街结束」这种
+    // 彻底退化；比如 59 手都翻前结束、1 手拖到河牌，size 是 2 照样通过，测不出
+    // 「翻前收得太快」或「几乎从不翻前结束」这类真实的比例失衡。改成分别统计
+    // 翻前结束与翻后（flop/turn/river 任一）结束的手数，各自要求一个最小值。
+    //
+    // 实测（60 手，种子 ai-var-0..59）：{"preflop":29,"river":21,"turn":3,"flop":7}，
+    // 即翻前 29 手、翻后合计 31 手。门槛取 10，相对两边的实测值都留了两倍以上
+    // 的余量，既不会因为实现细节的小改动就变脆，也确实排除了「几乎不翻前结束」
+    // 或「几乎不打到翻后」这两种真实的失衡。
     warmPreflopStrength();
-    const streets = new Set<string>();
+    let preflopEnds = 0;
+    let postflopEnds = 0;
     for (let i = 0; i < 60; i++) {
       const { state } = playAiHand(`ai-var-${i}`, i % SEAT_COUNT, { iterations: 150, strengthIterations: 15 });
-      streets.add(state.street);
+      if (state.street === 'preflop') preflopEnds++;
+      else postflopEnds++;
     }
-    // AI 不像随机智能体那样满桌全下，应当既有翻前结束的也有打到后面的
-    expect(streets.size).toBeGreaterThan(1);
+    // eslint-disable-next-line no-console
+    console.log(`\n=== street distribution over 60 hands ===\npreflop=${preflopEnds} postflop(flop/turn/river)=${postflopEnds}\n`);
+    expect(preflopEnds).toBeGreaterThanOrEqual(10);
+    expect(postflopEnds).toBeGreaterThanOrEqual(10);
   }, 180_000);
 });
 
