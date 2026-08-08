@@ -156,7 +156,13 @@ export function equityVsRanges(
   for (let i = 0; i < opponentRanges.length; i++) {
     const combos = rangeCombos(opponentRanges[i], known);
     if (combos.length === 0) {
-      throw new Error(`第 ${i} 个对手的范围在剔除死牌后为空`);
+      // 语义上这就是「采样无解」的一种：范围与已知死牌不能同时成立——
+      // 不只是多个对手范围互相冲突会导致这种情况，hero 自己的底牌加公共牌
+      // 单独就能把一个已经收窄到很小的类别（比如 AA）挤空。必须抛
+      // InfeasibleSamplingError，而不是裸 Error —— evEstimate.ts 的两处
+      // 调用点都只捕获 InfeasibleSamplingError 并宽范围重试，其余错误一律
+      // 原样重新抛出；裸 Error 会直接逃出 estimateEv。
+      throw new InfeasibleSamplingError(`第 ${i} 个对手的范围在剔除死牌后为空`);
     }
     combosPerOpp.push(combos);
     totalsPerOpp.push(totalWeight(combos));

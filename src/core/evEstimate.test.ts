@@ -492,3 +492,29 @@ describe('estimateEv 弃牌率对上教科书常数', () => {
     expect(r.candidates.find(c => c.label === 'bet 1/3')!.foldEquity!).toBeCloseTo(0.25, 4);
   });
 });
+
+describe('estimateEv hero 自己的底牌 + 公共牌就能把对手范围挤空', () => {
+  it('单个对手、hero 持 AhAd、公共牌含 Ac 时，对手范围 AA 只剩一个组合的死亡角——不应该崩溃', () => {
+    // dead = [Ah, Ad, Ac, 7d, 2h]：牌桌上四张 A 里三张已经被 hero 的底牌和
+    // 公共牌占掉，只剩 As。对手范围 AA 需要两张 A，剔除死牌后一个组合都凑不出来。
+    // 这不是 narrowByAction 收窄多个对手范围导致互相冲突的那种「多人塌缩」——
+    // 单个对手、hero 自己的底牌和公共牌就把这个类别挤空了，equityVsRanges 内部
+    // 对空 combos 抛的必须是 InfeasibleSamplingError（estimateEv 会捕获并宽范围
+    // 重试），而不是逃出 estimateEv 的裸 Error。
+    const r = estimateEv(sit({
+      street: 'flop',
+      board: parseCards('Ac 7d 2h'),
+      heroCards: parseCards('Ah Ad') as [Card, Card],
+      pot: 10,
+      toCall: 0,
+      heroStack: 100,
+      opponents: [{ seat: 1, position: 'BB', stack: 100, range: parseRange('AA'), personaId: 'tag', canFold: true }],
+    }), OPTS);
+
+    expect(Number.isFinite(r.heroEquity)).toBe(true);
+    expect(r.candidates.length).toBeGreaterThan(0);
+    for (const c of r.candidates) {
+      expect(Number.isFinite(c.ev)).toBe(true);
+    }
+  });
+});
