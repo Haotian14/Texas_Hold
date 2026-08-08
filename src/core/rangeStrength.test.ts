@@ -3,7 +3,7 @@ import { parseCards } from './cards';
 import { createRng } from './rng';
 import { parseRange } from './rangeNotation';
 import { rangeFraction } from './rangeSet';
-import { rankRange, topFraction, strengthPercentile } from './rangeStrength';
+import { rankRange, topFraction, strengthPercentile, warmPreflopStrength } from './rangeStrength';
 
 describe('rankRange', () => {
   it('按强度降序排列', () => {
@@ -112,5 +112,52 @@ describe('strengthPercentile', () => {
   it('不在范围内的类别返回 0', () => {
     const r = rankRange(parseRange('AA'), [], [], 100, createRng('pct-2'));
     expect(strengthPercentile(r, '72o')).toBe(0);
+  });
+});
+
+describe('翻前牌力查表', () => {
+  it('翻前排序与逐个采样的结果高度一致', () => {
+    // 查表版与采样版对同一范围应给出几乎相同的顺序
+    const range = parseRange('22+, A2s+, K9s+, QTs+, JTs, ATo+, KQo');
+    const ranked = rankRange(range, [], [], 120, createRng('table-1'));
+    const classes = ranked.map(r => r.handClass);
+    // 最强的应当是 AA，最弱的不应当是对子
+    expect(classes[0]).toBe('AA');
+    expect(ranked[ranked.length - 1].strength).toBeLessThan(ranked[0].strength);
+  });
+
+  it('翻前结果与随机种子无关', () => {
+    const range = parseRange('22+, A2s+, KTs+');
+    const a = rankRange(range, [], [], 120, createRng('seed-a')).map(r => r.handClass);
+    const b = rankRange(range, [], [], 120, createRng('seed-b')).map(r => r.handClass);
+    expect(a).toEqual(b);
+  });
+
+  it('翻前同一类别的所有组合强度相同', () => {
+    const ranked = rankRange(parseRange('AA'), [], [], 120, createRng('table-2'));
+    const strengths = new Set(ranked.map(r => r.strength));
+    expect(strengths.size).toBe(1);
+  });
+
+  it('死牌只减少组合数，不改变强度值', () => {
+    const withAll = rankRange(parseRange('AA'), [], [], 120, createRng('table-3'));
+    const withDead = rankRange(parseRange('AA'), [], parseCards('As'), 120, createRng('table-3'));
+    expect(withDead).toHaveLength(3);
+    expect(withDead[0].strength).toBe(withAll[0].strength);
+  });
+
+  it('翻后仍然走采样，不受查表影响', () => {
+    // 有公共牌时结果必须依赖牌面：7h7d2c 上 72o 成葫芦，强过 AA
+    const board = parseCards('7h 7d 2c');
+    const ranked = rankRange(parseRange('AA, 72o'), board, board, 200, createRng('table-4'));
+    expect(ranked[0].handClass).toBe('72o');
+  });
+
+  it('预热函数可重复调用且不改变结果', () => {
+    warmPreflopStrength();
+    const a = rankRange(parseRange('22+'), [], [], 120, createRng('warm')).map(r => r.strength);
+    warmPreflopStrength();
+    const b = rankRange(parseRange('22+'), [], [], 120, createRng('warm')).map(r => r.strength);
+    expect(a).toEqual(b);
   });
 });

@@ -1,10 +1,13 @@
 import type { Card } from './cards';
 import { makeDeck, sameCard } from './cards';
 import type { Rng } from './rng';
+import { createRng } from './rng';
 import type { HandClass } from './handClass';
+import { allHandClasses, expandCombos } from './handClass';
 import type { RangeSet, WeightedCombo } from './rangeSet';
 import { rangeCombos, totalWeight } from './rangeSet';
 import { evaluate7 } from './handEval';
+import { equityMonteCarlo } from './equity';
 
 export interface RankedCombo extends WeightedCombo {
   /** 该组合对一个随机手的胜率，0..1 */
@@ -44,6 +47,33 @@ interface Sample {
  *
  * 开销与范围大小成正比，调用方应缓存结果。
  */
+
+/** 翻前牌力表：类别 -> 对一个随机手的胜率。整个进程只算一次。 */
+let preflopTable: Map<HandClass, number> | null = null;
+
+/** 计算翻前牌力表用的固定种子与样本数。固定是刻意的 —— 表必须与调用方的种子无关。 */
+const PREFLOP_TABLE_SEED = 'preflop-strength-table';
+const PREFLOP_TABLE_SAMPLES = 1500;
+
+function buildPreflopTable(): Map<HandClass, number> {
+  const rng = createRng(PREFLOP_TABLE_SEED);
+  const table = new Map<HandClass, number>();
+  // 每个类别取其第一个具体组合来估强度 —— 同一类别的组合在翻前是同构的
+  for (const hc of allHandClasses()) {
+    const cards = expandCombos(hc)[0];
+    table.set(hc, equityMonteCarlo(cards, [], 1, PREFLOP_TABLE_SAMPLES, rng));
+  }
+  return table;
+}
+
+/**
+ * 预热翻前牌力表。可选 —— 不调用的话第一次翻前排序会自动建表。
+ * 想把建表开销挪到启动阶段而不是第一次决策时，就调用它。
+ */
+export function warmPreflopStrength(): void {
+  if (!preflopTable) preflopTable = buildPreflopTable();
+}
+
 export function rankRange(
   range: RangeSet,
   board: Card[],
@@ -53,6 +83,19 @@ export function rankRange(
 ): RankedCombo[] {
   const combos = rangeCombos(range, dead);
   if (combos.length === 0) return [];
+
+  // 翻前没有公共牌，每个类别的牌力是固定值，查表即可 —— 这是 AI 决策预算里最大的一项。
+  // 注意查表结果与传入的 rng 无关，这是刻意的：同一手牌无论谁来问、用什么种子，
+  // 翻前的强弱顺序都应当一致。
+  if (board.length === 0) {
+    if (!preflopTable) preflopTable = buildPreflopTable();
+    const out: RankedCombo[] = combos.map(c => ({
+      ...c,
+      strength: preflopTable!.get(c.handClass) ?? 0,
+    }));
+    out.sort((a, b) => b.strength - a.strength);
+    return out;
+  }
 
   const pool = makeDeck().filter(c => !dead.some(d => sameCard(d, c)));
   const boardNeeded = 5 - board.length;
