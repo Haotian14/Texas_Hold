@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { parseCards } from './cards';
 import type { Card } from './cards';
 import { createRng } from './rng';
@@ -6,6 +6,7 @@ import { parseRange } from './rangeNotation';
 import { fullRange } from './rangeSet';
 import type { Situation } from './situation';
 import { estimateEv } from './evEstimate';
+import * as rangeStrengthModule from './rangeStrength';
 
 function sit(over: Partial<Situation>): Situation {
   return {
@@ -381,6 +382,77 @@ describe('estimateEv 继续范围的物理下限', () => {
     }), OPTS);
     expect(Number.isFinite(r.heroEquity)).toBe(true);
     expect(r.candidates.every(c => Number.isFinite(c.ev))).toBe(true);
+  });
+
+  it('物理可满足的窄范围原样保留，不会被替换成泛化范围', () => {
+    // 三个对手每人 QQ+, AKs（22 combos）—— 低于旧版 8×3=24 的阈值，
+    // 但三人完全可以互不冲突地各自摸到 QQ+/AKs 里的组合（QQ+ 共 18 个
+    // 组合、AKs 4 个组合，远够 3 个对手各摸 2 张不冲突的牌）。旧的
+    // widenIfPhysicallyInfeasible 只看单个对手的组合数是否够 8×3=24，
+    // 22 < 24 会无条件把这个真实范围换成「牌力前 24」的泛化范围
+    // （AA,KK,QQ,JJ）。新版只在采样真的失败时才兜底，因此这里应当
+    // 采到 hero 对阵 {QQ+, AKs} 本身的胜率，而不是对阵 {AA,KK,QQ,JJ}。
+    //
+    // 用 hero 持 JJ 直接测量两者的差异（iterations=8000，独立脚本测量，
+    // 7 个不同种子，flop 未涉及、纯翻前）：
+    //   eq vs {QQ+, AKs}×3      落在 0.153 ~ 0.161
+    //   eq vs {AA,KK,QQ,JJ}×3   落在 0.111 ~ 0.121
+    // 差距稳定在 0.037 ~ 0.049（JJ 对阵 QQ+/AKs 时 AKs 只是接近race，
+    // 对阵纯 AA/KK/QQ/JJ 时全是压制它的对子，因此更窄的「泛化」范围反而
+    // 让 hero 的胜率更低）。用 0.02 做门槛，比观测到的最小差距 0.037
+    // 留了接近一倍的余量。
+    const narrow = parseRange('QQ+, AKs');
+    const heroCards = parseCards('Jh Jd') as [Card, Card];
+
+    const narrowResult = estimateEv(sit({
+      street: 'preflop', board: [], pot: 1.5, toCall: 1, heroStack: 100,
+      heroCards,
+      opponents: [1, 2, 3].map(seat => ({
+        seat, position: 'BB' as const, stack: 100, range: narrow, personaId: 'tag', canFold: true,
+      })),
+    }), { iterations: 8000, strengthIterations: 100, rng: createRng('feasible-narrow') });
+
+    const wideGeneric = parseRange('AA,KK,QQ,JJ');
+    const wideResult = estimateEv(sit({
+      street: 'preflop', board: [], pot: 1.5, toCall: 1, heroStack: 100,
+      heroCards,
+      opponents: [1, 2, 3].map(seat => ({
+        seat, position: 'BB' as const, stack: 100, range: wideGeneric, personaId: 'tag', canFold: true,
+      })),
+    }), { iterations: 8000, strengthIterations: 100, rng: createRng('feasible-wide') });
+
+    expect(Number.isFinite(narrowResult.heroEquity)).toBe(true);
+    expect(narrowResult.heroEquity).toBeGreaterThan(wideResult.heroEquity + 0.02);
+  });
+});
+
+describe('estimateEv 宽范围兜底只算一次', () => {
+  it('同一次 estimateEv 调用里，无论触发多少次兜底，全范围排序只跑一次', () => {
+    // 三个对手全部塌缩到同一个类别 'AA'——牌桌只有四张 A，物理无解，
+    // heroEquity 与每一个下注尺度（1/3、1/2、2/3、pot、all-in 共 5 个候选）
+    // 的 W' 都会各自触发一次「宽范围兜底」。若兜底每次都重新
+    // rankRange(fullRange(), …)，这里就会看到 6 次全范围排序；
+    // 若按 brief 要求惰性缓存，只应看到 1 次。
+    //
+    // 用 flop 局面（board.length > 0）而不是翻前，这样 rankRange 走的是
+    // 真正跑蒙特卡洛的分支（翻前会查表，开销本来就很小，测不出这里要
+    // 验证的「贵调用只跑一次」）。用 range.size === 169（fullRange 的类别数）
+    // 识别哪些调用是「宽范围」调用，区别于对每个对手真实（窄）范围的排序。
+    const spy = vi.spyOn(rangeStrengthModule, 'rankRange');
+    const collapsed = parseRange('AA');
+
+    const r = estimateEv(sit({
+      street: 'flop', board: parseCards('7h 4d 2c'), pot: 10, toCall: 0, heroStack: 100,
+      opponents: [1, 2, 3].map(seat => ({
+        seat, position: 'BB' as const, stack: 100, range: collapsed, personaId: 'tag', canFold: true,
+      })),
+    }), { iterations: 400, strengthIterations: 40, rng: createRng('widen-once') });
+
+    const fullRangeCalls = spy.mock.calls.filter(([range]) => range.size === 169);
+    expect(fullRangeCalls.length).toBe(1);
+    expect(Number.isFinite(r.heroEquity)).toBe(true);
+
+    spy.mockRestore();
   });
 });
 

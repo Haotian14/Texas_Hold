@@ -6,7 +6,7 @@ import type { Situation } from './situation';
 import type { Card } from './cards';
 import type { RangeSet } from './rangeSet';
 import { rangeCombos, fullRange } from './rangeSet';
-import { equityVsRanges } from './equity';
+import { equityVsRanges, InfeasibleSamplingError } from './equity';
 import type { RankedCombo } from './rangeStrength';
 import { rankRange, topFraction } from './rangeStrength';
 import { classifyHand } from './handClass';
@@ -77,19 +77,40 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
 
   // hero 必须打败牌桌上还留在池子里的每一个人，无论对方还能不能弃牌 ——
   // 已全下的对手的筹码已经在 sit.pot 里了，胜率计算不能把他们排除在外。
-  // 每个对手的范围都要先过一遍物理下限：narrowByAction 在翻前全下这类场景
-  // 会把范围收到不到 1%，而牌力表让排序变成确定性的，于是多个对手常常
-  // 收窄到完全相同的类别（比如都只剩 AA）。若直接把这种收窄后的原始范围
-  // 丢给采样，会出现「几个对手必须互不冲突地同时持有同一小撮组合」这种
-  // 物理上无解的局面，equityVsRanges 耗尽重试后会抛错。opponentCount 必须
-  // 数上全部对手（含已全下的）——他们的牌照样要从牌堆里发出来。
+  // opponentCount 数上全部对手（含已全下的）——他们的牌照样要从牌堆里发出来。
   const opponentCount = sit.opponents.length;
-  const heroOppRanges: RangeSet[] = sit.opponents.map(o =>
-    heroEquityRange(o.range, sit.board, dead, opponentCount, strengthIterations, rng),
-  );
 
-  // W：对当前对手范围的胜率
-  const heroEquity = equityVsRanges(sit.heroCards, sit.board, heroOppRanges, iterations, rng);
+  // 宽范围兜底：只有在采样物理无解（多个对手的范围收窄到互相冲突、拒绝采样
+  // 找不到任何一组不冲突的手牌组合，equityVsRanges 抛 InfeasibleSamplingError）
+  // 时才需要——正常情况下 narrowByAction 收窄出的范围即使很窄，也是物理可行的，
+  // 不应该被这里的兜底替换掉、丢失它承载的真实信息。
+  //
+  // rankRange(fullRange(), …) 是全代码库里最贵的调用，且对同一次 estimateEv
+  // 调用（同一个 board/dead/strengthIterations/rng）结果完全相同，因此惰性
+  // 计算并缓存在这个闭包里：本次调用里不管多少个对手、多少个下注尺度触发
+  // 兜底，全范围排序最多算一次。闭包只在本次 estimateEv 调用内存活，不会
+  // 跨调用共享——不同调用的 board/dead/rng 不同，共享会破坏可复现性。
+  let wideRankedCache: RankedCombo[] | null = null;
+  const widenedRange = (): RangeSet => {
+    if (!wideRankedCache) {
+      wideRankedCache = rankRange(fullRange(), sit.board, dead, strengthIterations, rng);
+    }
+    const needed = MIN_COMBOS_PER_OPPONENT * Math.max(1, opponentCount);
+    const startFraction = needed / Math.max(1, wideRankedCache.length);
+    return continueRangeWithFloor(wideRankedCache, startFraction, opponentCount, dead);
+  };
+
+  // W：对当前对手范围的胜率。先按对手的真实（可能已被 narrowByAction 收窄的）
+  // 范围采样；只有真的采样无解时才退化成宽范围重试一次。
+  const heroOppRanges: RangeSet[] = sit.opponents.map(o => o.range);
+  let heroEquity: number;
+  try {
+    heroEquity = equityVsRanges(sit.heroCards, sit.board, heroOppRanges, iterations, rng);
+  } catch (err) {
+    if (!(err instanceof InfeasibleSamplingError)) throw err;
+    const widened = sit.opponents.map(() => widenedRange());
+    heroEquity = equityVsRanges(sit.heroCards, sit.board, widened, iterations, rng);
+  }
 
   // 「继续范围」只对还能做决策的对手才有意义 —— 已全下的对手不会弃牌，
   // 谈不上什么范围要被下注挤掉。只对 canFold 的对手排序，且仍然只做一次。
@@ -147,13 +168,13 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
       const b = round2(sit.pot * size.fraction + sit.toCall);
       if (!chipsGreater(maxInvest, b)) continue;   // 筹码不足以打出这个尺度
       candidates.push(
-        makeBetCandidate(sit, size.label, b, rankedFoldable, iterations, rng, dead, strengthIterations),
+        makeBetCandidate(sit, size.label, b, rankedFoldable, iterations, rng, dead, widenedRange),
       );
     }
 
     // all-in 永远是一个候选
     candidates.push(
-      makeBetCandidate(sit, 'all-in', maxInvest, rankedFoldable, iterations, rng, dead, strengthIterations),
+      makeBetCandidate(sit, 'all-in', maxInvest, rankedFoldable, iterations, rng, dead, widenedRange),
     );
   }
 
@@ -202,68 +223,6 @@ function continueRangeWithFloor(
 }
 
 /**
- * 兜底：当传入的范围本身（即便不收窄）也凑不出 needed 张组合时，说明它
- * 物理上撑不住 opponentCount 个对手互不冲突地同时持有——退回全范围重新
- * 按牌力排序，再走一次 continueRangeWithFloor 的放宽逻辑。
- *
- * continueRangeWithFloor 只能从调用方给的 ranked 里挑，挑不出 ranked 本来
- * 就没有的类别；如果 ranked 是从一个已经被上游（比如 narrowByAction）
- * 收窄到只剩一个类别的 range 展开来的，不管传给 continueRangeWithFloor
- * 的起始 fraction 是多少，它能给出的最宽结果也只是那个类别本身。用
- * fullRange() 重新排序是唯一能真正撑宽的办法——把它也套进
- * continueRangeWithFloor 的放宽循环里，让「按牌力取前 N 张」这条既有逻辑
- * 在更宽的池子上重新走一遍，而不是直接甩出未经排序的整副牌。
- */
-function widenIfPhysicallyInfeasible(
-  candidate: RangeSet,
-  board: Card[],
-  dead: readonly Card[],
-  opponentCount: number,
-  strengthIterations: number,
-  rng: Rng,
-): RangeSet {
-  const needed = MIN_COMBOS_PER_OPPONENT * Math.max(1, opponentCount);
-  if (rangeCombos(candidate, dead).length >= needed) return candidate;
-
-  const wideRanked = rankRange(fullRange(), board, dead, strengthIterations, rng);
-  const startFraction = needed / Math.max(1, wideRanked.length);
-  return continueRangeWithFloor(wideRanked, startFraction, opponentCount, dead);
-}
-
-/**
- * heroEquity 用的对手范围：先套物理下限，再兜底处理「range 本身（不收窄）
- * 都凑不出足够组合」这种更极端的塌缩。
- *
- * 复盘建议的写法是 continueRangeWithFloor(ranked, 1, opponentCount, dead)。
- * 核对了这个函数的实现（见上方 continueRangeWithFloor）：mdf 传 1 时，
- * `fraction = Math.min(1, 1) = 1`，循环第一轮 `fraction >= 1` 就成立，
- * 直接返回 topFraction(ranked, 1)，根本不看 needed 是否达标。而
- * topFraction(ranked, 1) 精确等于（剔除死牌后的）range 自身——ranked 就是
- * range 展开成组合后排的序，天然不含 range 之外的类别。也就是说它确实是
- * 「对已经够宽的 range 是 no-op」，但代价是对凑不够的 range 也是同一个
- * no-op：不管起始 fraction 传多少，continueRangeWithFloor 用 ranked 能给出
- * 的最宽结果，上限就是 range 自身，「用 range 自身的 fraction 代替 1」
- * 不会改变这个上限，只是少走几步循环、结果不变。
- *
- * 所以这里按字面用 continueRangeWithFloor(ranked, 1, …)：对已经够宽的
- * range 它确实什么也不做，行为与直接用 range 一致，这部分符合建议。
- * 真正让「物理上不可能」变得可行的是下一步——widenIfPhysicallyInfeasible
- * 的全范围兜底，这是建议之外新增的部分。
- */
-function heroEquityRange(
-  range: RangeSet,
-  board: Card[],
-  dead: readonly Card[],
-  opponentCount: number,
-  strengthIterations: number,
-  rng: Rng,
-): RangeSet {
-  const ranked = rankRange(range, board, dead, strengthIterations, rng);
-  const floored = continueRangeWithFloor(ranked, 1, opponentCount, dead);
-  return widenIfPhysicallyInfeasible(floored, board, dead, opponentCount, strengthIterations, rng);
-}
-
-/**
  * EV(投入 b) = Fe × 底池 + (1 − Fe) × [ W' × calledPot − b ]
  *
  * Fe        所有「还能弃牌」的对手都弃牌的概率；已全下的对手不会弃牌，
@@ -282,7 +241,7 @@ function makeBetCandidate(
   iterations: number,
   rng: Rng,
   dead: readonly Card[],
-  strengthIterations: number,
+  widenedRange: () => RangeSet,
 ): EvCandidate {
   const b = investment;
 
@@ -296,40 +255,33 @@ function makeBetCandidate(
     continueRangeWithFloor(r, mdf, rankedFoldable.length, dead),
   );
 
-  // 兜底：continueRangeWithFloor 只能从 rankedFoldable 里挑，挑不出对手
-  // 原始范围之外的类别。如果上游（比如 narrowByAction）已经把多个对手的
-  // 范围收窄到同一个类别，上面这行不管 mdf 给多宽都凑不出足够组合，
-  // W' 的采样会跟 heroEquity 撞上同一种物理不可行。这里不改 mdf、不改
-  // 上面那行 continueRangeWithFloor 的调用参数——教科书 MDF 的行为不动——
-  // 只在结果确实不够用时才用全范围重新排序补一刀。opponentCount 用全体
-  // 对手数（含已全下的）：他们的牌也要从牌堆里发出来，即使全下对手本身
-  // 不参与这次「继续范围」的收窄。
-  const allOpponentCount = sit.opponents.length;
-  const feasibleContinueRanges: RangeSet[] = continueRanges.map(r =>
-    widenIfPhysicallyInfeasible(r, sit.board, dead, allOpponentCount, strengthIterations, rng),
-  );
-
   // 所有能弃牌的对手都弃牌的概率：每人独立以 (1 - mdf) 的概率弃牌。
   // k = 0（没有一个对手能弃牌，比如单挑面对全下）时没有人会弃牌，
   // Math.pow(1-mdf, 0) 恒等于 1，必须显式短路成 0，否则会凭空产生弃牌率。
-  const k = feasibleContinueRanges.length;
+  // k 只取决于能弃牌的对手数，不受下面 W' 是否需要宽范围兜底影响。
+  const k = continueRanges.length;
   const foldEquity = k === 0 ? 0 : Math.pow(1 - mdf, k);
 
   // W'：对手跟注后的胜率。对能弃牌的对手必须用「继续范围」单独算 ——
   // 沿用 W 会系统性高估诈唬价值，因为对手跟注时留下的是更强的那部分范围。
-  // 若任一继续范围被死牌清空，回落到能弃牌对手的原始范围（此时该近似会偏保守）。
   // 已全下的对手不受下注影响 —— 他们已经全部投入，无论 hero 打多大都稳坐池中，
   // 因此始终用其完整范围参与 W' 的计算。
+  //
+  // 先按真实的继续范围采样；如果上游（比如 narrowByAction）把多个对手的
+  // 范围收窄到同一个类别，导致 continueRanges 之间物理上无法互不冲突地
+  // 同时成立，equityVsRanges 会抛 InfeasibleSamplingError —— 此时才退化成
+  // 宽范围重试一次，不预先猜测、不在没出问题时就替换掉真实的继续范围。
   const allInOpponents = sit.opponents.filter(o => !o.canFold);
-  const allUsable = feasibleContinueRanges.every(r => r.size > 0);
-  const foldableRangesForCalled = allUsable
-    ? feasibleContinueRanges
-    : sit.opponents.filter(o => o.canFold).map(o => o.range);
-  const rangesForCalled: RangeSet[] = [
-    ...foldableRangesForCalled,
-    ...allInOpponents.map(o => o.range),
-  ];
-  const wPrime = equityVsRanges(sit.heroCards, sit.board, rangesForCalled, iterations, rng);
+  const rangesForCalled: RangeSet[] = [...continueRanges, ...allInOpponents.map(o => o.range)];
+  let wPrime: number;
+  try {
+    wPrime = equityVsRanges(sit.heroCards, sit.board, rangesForCalled, iterations, rng);
+  } catch (err) {
+    if (!(err instanceof InfeasibleSamplingError)) throw err;
+    const widenedContinue = continueRanges.map(() => widenedRange());
+    const retryRanges: RangeSet[] = [...widenedContinue, ...allInOpponents.map(o => o.range)];
+    wPrime = equityVsRanges(sit.heroCards, sit.board, retryRanges, iterations, rng);
+  }
 
   // 对手跟注时还需再投入多少、跟注后真正的底池是多少 —— sit.pot 已经含有对手
   // 此前未被跟的下注（toCall），所以对手的跟注额是 b − toCall，最终底池是

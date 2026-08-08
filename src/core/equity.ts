@@ -5,6 +5,9 @@ import type { Rng } from './rng';
 import type { RangeSet, WeightedCombo } from './rangeSet';
 import { rangeCombos, totalWeight, sampleCombo } from './rangeSet';
 
+/** 采样无解：几个对手的范围在物理上不可能同时成立（比如都只剩 AA，而牌桌只有四张 A）。 */
+export class InfeasibleSamplingError extends Error {}
+
 /** 从整副牌里剔除已知牌 */
 function remainingDeck(known: Card[]): Card[] {
   return makeDeck().filter(c => !known.some(k => sameCard(k, c)));
@@ -217,6 +220,6 @@ export function equityVsRanges(
     counted++;
   }
 
-  if (counted === 0) throw new Error('所有采样轮次都因牌面冲突作废，无法估算胜率');
+  if (counted === 0) throw new InfeasibleSamplingError('所有采样轮次都因牌面冲突作废，无法估算胜率');
   return total / counted;
 }
