@@ -99,6 +99,41 @@ describe('decide 反映性格差异', () => {
   });
 });
 
+describe('decide 大盲的选项也能加注（bet/raise 类型不匹配的回归）', () => {
+  it('限注平跟到大盲选项时，激进性格能选择加注，且引擎接受该动作', () => {
+    // 除大盲外全员平跟，制造 toCall === 0 但 currentBet === 1（大盲本身）的
+    // 局面：evEstimate 按 toCall 把候选定为 'bet'，legalActions 按 currentBet
+    // 把同一个合法动作定为 'raise'。旧的精确字符串匹配会把全部五个进攻候选
+    // 筛掉，usable 塌缩成只剩 check，maniac 也只能 check。
+    let s = startHand({ seed: 'bbopt-0', buttonSeat: 0 });
+    while (s.seats[s.toAct!].position !== 'BB') {
+      s = applyAction(s, { type: 'call' });
+    }
+    const bb = s.seats[s.toAct!];
+    expect(bb.position).toBe('BB');
+    expect(s.currentBet).toBe(1);
+    const toCall = s.currentBet - bb.streetContribution;
+    expect(Math.abs(toCall)).toBeLessThan(1e-9);
+    const legal = legalActions(s);
+    expect(legal.some(a => a.type === 'raise')).toBe(true);
+
+    const ranges = new Map<number, RangeSet>();
+    const personaIds = new Map<number, string>();
+    for (let k = 0; k < SEAT_COUNT; k++) { ranges.set(k, fullRange()); personaIds.set(k, 'maniac'); }
+
+    const d = decide(s, {
+      ranges,
+      personaIds,
+      rng: createRng('bbopt-0-rng-2'),
+      iterations: 120,
+      strengthIterations: 15,
+    });
+
+    expect(d.action.type).toBe('raise');
+    expect(() => applyAction(s, d.action)).not.toThrow();
+  });
+});
+
 describe('decide 可复现', () => {
   it('相同 seed 决策相同', () => {
     const s = startHand({ seed: 'dec-repro', buttonSeat: 0 });

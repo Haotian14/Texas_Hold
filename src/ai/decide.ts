@@ -1,4 +1,4 @@
-import type { GameState, Street } from '../core/types';
+import type { ActionType, GameState, Street } from '../core/types';
 import type { ActionInput, LegalAction } from '../core/gameEngine';
 import { legalActions } from '../core/gameEngine';
 import { situationFromGameState } from '../core/situation';
@@ -32,6 +32,27 @@ export interface Decision {
 }
 
 const AGGRESSIVE = new Set(['bet', 'raise', 'allin']);
+
+/** 下注类候选与合法动作之间可以互相匹配的类型族，见下方 matchesLegal。 */
+const BET_LIKE = new Set<ActionType>(['bet', 'raise', 'allin']);
+
+/**
+ * candidate 的类型是否可以对应到 legal 的类型。
+ *
+ * estimateEv（core/evEstimate.ts）按 toCall 是否 > 0 把下注/加注候选定成
+ * 'bet' 或 'raise'；legalActions（core/gameEngine.ts）按 currentBet 是否
+ * > 0 定同一件事，两条规则大多数时候重合，但在大盲被平跟到选项（toCall
+ * === 0、currentBet === 1）以及筹码只够跟注不够最小加注（legal 只剩
+ * allin、没有 raise/bet）这两种局面下会分歧。这里把 bet/raise/allin
+ * 当同一族，只要 candidate 是这三者之一，就允许匹配到 legal 里这三者之一——
+ * 具体是不是这个投入额，交给调用处按 investment 是否落在 legal 区间内过滤，
+ * 这里只负责放宽「类型字符串必须完全相等」这个不该存在的约束。
+ * fold/check/call 不受影响：它们在两条命名规则下从不分歧。
+ */
+function matchesLegal(candidateType: ActionType, legalType: ActionType): boolean {
+  if (candidateType === legalType) return true;
+  return BET_LIKE.has(candidateType) && BET_LIKE.has(legalType);
+}
 
 /**
  * 性格扰动的系数。手调，没有外部锚点 —— 作用是让性格差异在牌桌上看得出来，
@@ -73,8 +94,19 @@ export function decide(state: GameState, opts: DecideOptions): Decision {
   // 会给出翻前 1.5BB 这类非法尺度。
   // `!chipsGreater(legal.min, investment)` 等价于「investment >= min - 1e-9」——
   // 用项目统一的筹码比较容差，而不是裸写 epsilon。
+  //
+  // 类型匹配不能用裸的 `===`：estimateEv 给下注/加注候选定类型的规则是
+  // 「toCall > 0 就是 raise，否则是 bet」（见 evEstimate.ts makeBetCandidate），
+  // 而 legalActions 给同一个动作定类型的规则是「currentBet > 0 就是 raise，
+  // 否则是 bet」（见 gameEngine.ts）。两条规则在几乎所有局面下重合，唯独在
+  // 大盲被平跟到选项时分歧：toCall === 0 但 currentBet === 1，estimateEv 说
+  // 'bet'、引擎说 'raise'。若还要求全下的候选去匹配一个已经不存在 raise/bet
+  // 选项、只剩 allin 的合法列表（比如筹码只够跟注却不够最小加注），同样的
+  // 裸判等会把它筛掉，AI 只能干等着弃牌/跟注。用 matchesLegal 把
+  // bet/raise/allin 当同一族处理，具体投入额是否合法仍然交给下面的
+  // investment >= legal.min 过滤，不会让一个 1/3 池的小下注错配到全下上。
   const usable = ev.candidates
-    .map(c => ({ candidate: c, legal: legal.find(a => a.type === c.actionType) }))
+    .map(c => ({ candidate: c, legal: legal.find(a => matchesLegal(c.actionType, a.type)) }))
     .filter((x): x is { candidate: EvCandidate; legal: LegalAction } => x.legal !== undefined)
     .filter(x => !chipsGreater(x.legal.min, x.candidate.investment));
 
@@ -143,14 +175,21 @@ function personaScore(
   return score;
 }
 
-/** 把候选映射成引擎接受的动作，金额夹到合法区间 */
+/**
+ * 把候选映射成引擎接受的动作，金额夹到合法区间。
+ *
+ * 类型必须用 legal.type（引擎认可的类型），不能用 c.actionType（EV 引擎
+ * 自己的命名）—— matchesLegal 已经允许两者不完全相同（bet/raise/allin
+ * 互相匹配），如果这里还返回 c.actionType，applyAction 内部按 input.type
+ * 严格查找 legalActions() 列表会找不到，照样抛「非法动作」。
+ */
 function toActionInput(c: EvCandidate, legal: LegalAction): ActionInput {
-  if (c.actionType === 'fold' || c.actionType === 'check') {
-    return { type: c.actionType };
+  if (legal.type === 'fold' || legal.type === 'check') {
+    return { type: legal.type };
   }
-  if (c.actionType === 'call' || c.actionType === 'allin') {
-    return { type: c.actionType };
+  if (legal.type === 'call' || legal.type === 'allin') {
+    return { type: legal.type };
   }
   const amount = round2(Math.min(Math.max(c.investment, legal.min), legal.max));
-  return { type: c.actionType, amount };
+  return { type: legal.type, amount };
 }
