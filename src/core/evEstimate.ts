@@ -279,7 +279,8 @@ function makeBetCandidate(
   } catch (err) {
     if (!(err instanceof InfeasibleSamplingError)) throw err;
     const widenedContinue = continueRanges.map(() => widenedRange());
-    const retryRanges: RangeSet[] = [...widenedContinue, ...allInOpponents.map(o => o.range)];
+    const widenedAllIn = allInOpponents.map(() => widenedRange());
+    const retryRanges: RangeSet[] = [...widenedContinue, ...widenedAllIn];
     wPrime = equityVsRanges(sit.heroCards, sit.board, retryRanges, iterations, rng);
   }
 

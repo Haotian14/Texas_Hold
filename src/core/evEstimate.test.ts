@@ -384,6 +384,25 @@ describe('estimateEv 继续范围的物理下限', () => {
     expect(r.candidates.every(c => Number.isFinite(c.ev))).toBe(true);
   });
 
+  it('全下对手的范围塌缩到同一类别时，下注候选的重试也要连带宽放全下对手的范围', () => {
+    // 三个对手都已经全下（canFold: false），narrowByAction 把他们的范围
+    // 都收窄到 AA —— 牌桌只剩四张 A（hero 还占了一张），foldableOpponents
+    // 为空，continueRanges 是 []，rangesForCalled 变成三份相同的 AA，
+    // 采样物理无解。makeBetCandidate 的重试如果只宽放 continueRanges
+    // （空数组，宽放了个寂寞），allInOpponents 的窄范围原样传回去，
+    // 重试会跟第一次抛一样的 InfeasibleSamplingError，逃出 estimateEv。
+    const collapsed = parseRange('AA');
+    const r = estimateEv(sit({
+      street: 'preflop', board: [], pot: 1.5, toCall: 1, heroStack: 100,
+      opponents: [1, 2, 3].map(seat => ({
+        seat, position: 'BB' as const, stack: 0,
+        range: collapsed, personaId: 'tag', canFold: false,
+      })),
+    }), OPTS);
+    expect(Number.isFinite(r.heroEquity)).toBe(true);
+    expect(r.candidates.every(c => Number.isFinite(c.ev))).toBe(true);
+  });
+
   it('物理可满足的窄范围原样保留，不会被替换成泛化范围', () => {
     // 三个对手每人 QQ+, AKs（22 combos）—— 低于旧版 8×3=24 的阈值，
     // 但三人完全可以互不冲突地各自摸到 QQ+/AKs 里的组合（QQ+ 共 18 个
