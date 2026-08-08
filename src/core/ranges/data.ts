@@ -71,6 +71,28 @@ export const PREFLOP_NODES: Record<string, Partial<Record<string, string>>> = {
     call: '22-77, A8s-A6s, K9s, Q9s, J9s, T9s, 98s',
   },
 
+  // ── 面对单一开池：中间位置防守（补齐终审指出的缺口）
+  HJ_vs_UTG_open: {
+    '3bet': 'QQ+, AKs, A5s, AKo',
+    call: 'JJ-77, AQs-AJs, KQs, QJs, JTs, T9s, AQo',
+  },
+  CO_vs_UTG_open: {
+    '3bet': 'QQ+, AKs, A5s-A4s, AKo',
+    call: 'JJ-66, AQs-ATs, KQs-KJs, QJs, JTs, T9s, 98s, AQo',
+  },
+  CO_vs_HJ_open: {
+    '3bet': 'JJ+, AQs+, A5s-A4s, AKo',
+    call: 'TT-55, AJs-A9s, KQs-KTs, QTs+, J9s+, T9s, 98s, 87s, AQo-AJo, KQo',
+  },
+  SB_vs_UTG_open: {
+    '3bet': 'QQ+, AKs, A5s, AKo',
+    call: 'JJ-99, AQs, KQs, QJs, JTs',
+  },
+  SB_vs_HJ_open: {
+    '3bet': 'JJ+, AQs+, A5s-A4s, AKo',
+    call: 'TT-88, AJs-ATs, KQs, QJs, JTs, T9s',
+  },
+
   // ── 面对 3bet（开池者视角）
   UTG_vs_BB_3bet: {
     '4bet': 'QQ+, AKs, A5s:0.5',

@@ -5,6 +5,7 @@ import { PREFLOP_NODES } from './data';
 import {
   rfiKey, vsOpenKey, vs3betKey, hasNode, nodeActions, actionFreqs, rangeForAction,
 } from './index';
+import type { Position } from '../types';
 
 describe('节点键构造', () => {
   it('RFI 键', () => {
@@ -25,7 +26,6 @@ describe('hasNode', () => {
   });
 
   it('未覆盖的节点返回 false（调用方需回落到 EV 估算）', () => {
-    expect(hasNode(vsOpenKey('HJ', 'UTG'))).toBe(false);
     expect(hasNode('BB_rfi')).toBe(false);
   });
 });
@@ -136,5 +136,45 @@ describe('rangeForAction', () => {
   it('节点或动作不存在时返回 undefined', () => {
     expect(rangeForAction('NOT_A_NODE', 'raise')).toBeUndefined();
     expect(rangeForAction(rfiKey('UTG'), '4bet')).toBeUndefined();
+  });
+});
+
+describe('面对开池节点的覆盖', () => {
+  const allVsOpen: Array<[Position, Position]> = [
+    ['BB', 'UTG'], ['BB', 'HJ'], ['BB', 'CO'], ['BB', 'BTN'], ['BB', 'SB'],
+    ['BTN', 'UTG'], ['BTN', 'HJ'], ['BTN', 'CO'],
+    ['SB', 'UTG'], ['SB', 'HJ'], ['SB', 'CO'], ['SB', 'BTN'],
+    ['HJ', 'UTG'], ['CO', 'UTG'], ['CO', 'HJ'],
+  ];
+
+  it('十五个单次加注底池节点全部存在', () => {
+    for (const [pos, opener] of allVsOpen) {
+      const key = vsOpenKey(pos, opener);
+      if (!hasNode(key)) throw new Error(`缺少节点 ${key}`);
+    }
+  });
+
+  it('新增节点的频率之和仍然为 1', () => {
+    for (const key of ['HJ_vs_UTG_open', 'CO_vs_UTG_open', 'CO_vs_HJ_open',
+                       'SB_vs_UTG_open', 'SB_vs_HJ_open']) {
+      for (const hc of allHandClasses()) {
+        const f = actionFreqs(key, hc)!;
+        const sum = Object.values(f).reduce((a, b) => a + b, 0);
+        expect(Math.abs(sum - 1)).toBeLessThan(0.001);
+      }
+    }
+  });
+
+  it('面对越靠前的开池，防守越紧', () => {
+    // CO 面对 UTG 开池应当比面对 HJ 开池防守得更紧
+    const total = (key: string) =>
+      rangeFraction(rangeForAction(key, 'call')!) + rangeFraction(rangeForAction(key, '3bet')!);
+    expect(total('CO_vs_UTG_open')).toBeLessThan(total('CO_vs_HJ_open'));
+  });
+
+  it('小盲面对同一开池比大盲防守得紧（位置劣势）', () => {
+    const total = (key: string) =>
+      rangeFraction(rangeForAction(key, 'call')!) + rangeFraction(rangeForAction(key, '3bet')!);
+    expect(total('SB_vs_UTG_open')).toBeLessThan(total('BB_vs_UTG_open'));
   });
 });
