@@ -367,6 +367,21 @@ describe('estimateEv 继续范围的物理下限', () => {
     expect(Number.isFinite(allin.ev)).toBe(true);
     expect(allin.equityWhenCalled).toBeDefined();
   });
+
+  it('多个对手的原始范围塌缩到同一类别时仍能估算', () => {
+    // narrowByAction 在翻前全下时会把范围收到约 0.7%，只剩一个类别。
+    // 三个对手同时只剩 AA —— 牌桌上只有四张 A，采样必须仍然有解。
+    const collapsed = parseRange('AA');
+    const r = estimateEv(sit({
+      street: 'preflop', board: [], pot: 1.5, toCall: 1, heroStack: 100,
+      opponents: [1, 2, 3].map(seat => ({
+        seat, position: 'BB' as const, stack: 100,
+        range: collapsed, personaId: 'tag', canFold: true,
+      })),
+    }), OPTS);
+    expect(Number.isFinite(r.heroEquity)).toBe(true);
+    expect(r.candidates.every(c => Number.isFinite(c.ev))).toBe(true);
+  });
 });
 
 describe('estimateEv 弃牌率对上教科书常数', () => {
