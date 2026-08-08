@@ -6,8 +6,9 @@ import { createRng } from '../core/rng';
 import { fullRange } from '../core/rangeSet';
 import type { RangeSet } from '../core/rangeSet';
 import { initialRange } from '../core/opponentRange';
-import { PERSONAS } from './personas';
-import { decide } from './decide';
+import { PERSONAS, getPersona } from './personas';
+import { decide, personaScore } from './decide';
+import type { EvCandidate } from '../core/evEstimate';
 
 function opts(personaId: string, seed = 'decide') {
   const ranges = new Map<number, RangeSet>();
@@ -89,13 +90,25 @@ describe('decide 反映性格差异', () => {
   });
 
   it('有性格的原型确实叠加了偏好', () => {
-    // 疯子的 aggression 远大于 1，只要它选的是进攻动作，score 就必然高于 ev
-    const s = startHand({ seed: 'dec-maniac', buttonSeat: 0 });
-    const d = decide(s, opts('maniac', 'bias'));
-    const aggressive = new Set(['bet', 'raise', 'allin']);
-    if (aggressive.has(d.chosen.actionType)) {
-      expect(d.score).toBeGreaterThan(d.chosen.ev);
-    }
+    // 旧版本这里跑一手真实牌局，只在「碰巧选中了进攻动作」时才断言——
+    // dec-maniac/bias 这个组合选中的其实是 fold（score = ev = 0），
+    // if 判断体从未执行过，测试零断言地通过，personaScore 就算被删得
+    // 只剩 `return c.ev`，这个测试也照样绿。
+    //
+    // 直接调用 personaScore：不依赖随机种子恰好落在「选中进攻动作」这个
+    // 分支上，用合成的进攻候选（actionType: 'raise'）保证断言每次都执行。
+    // 疯子的 aggression（1.85）远大于 1，加成 (aggression-1)*pot*AGGRESSION_WEIGHT
+    // 严格为正，score 必然高于 candidate 自己的 ev。
+    const maniac = getPersona('maniac');
+    const candidate: EvCandidate = {
+      label: 'bet pot',
+      actionType: 'raise',
+      investment: 10,
+      ev: 3,
+      isRecommended: false,
+    };
+    const score = personaScore(candidate, /* pot */ 10, /* toCall */ 2, 'flop', false, maniac);
+    expect(score).toBeGreaterThan(candidate.ev);
   });
 });
 

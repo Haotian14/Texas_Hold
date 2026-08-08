@@ -150,8 +150,14 @@ export function decide(state: GameState, opts: DecideOptions): Decision {
   };
 }
 
-/** 在 EV 之上叠加性格偏好。不改 EV 本身 —— 客观估值对所有性格是同一个。 */
-function personaScore(
+/**
+ * 在 EV 之上叠加性格偏好。不改 EV 本身 —— 客观估值对所有性格是同一个。
+ * 导出供测试直接调用：decide() 要挑出一个「所选动作恰好是进攻动作」的
+ * 真实牌局才能测到这个函数的行为，靠随机种子跑到这种局面并不保证每次
+ * 都命中；直接传合成的 candidate/persona 进来，断言就不会因为跑到别的
+ * 分支而悄悄退化成不执行。
+ */
+export function personaScore(
   c: EvCandidate,
   pot: number,
   toCall: number,
