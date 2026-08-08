@@ -68,14 +68,23 @@ export function playAiHand(
 
     state = applyAction(state, d.action);
 
-    // 按该座位刚做的动作收窄它的范围
+    // 按该座位刚做的动作收窄它的范围。betSize 必须是引擎实际记下的投入额，
+    // 不能用 d.action.amount —— toActionInput（decide.ts）对 call/allin 故意
+    // 不带 amount（引擎自己算），这两种类型上 d.action.amount 恒为
+    // undefined，`?? 0` 会把 betSize 悄悄钉死在 0，使 mdf = potBefore/potBefore = 1，
+    // 等于对 call/allin 完全关闭按尺度收窄。state.actions 是 applyAction 刚刚
+    // 推入的这一条动作记录，其 .amount 字段对 fold/check 为 0，对
+    // call/allin/bet/raise 都是引擎按 legalActions 算出的真实投入额
+    // （见 gameEngine.ts applyAction 里 `invest = match.min`/`round2(want)`），
+    // 语义与场景完全匹配。
     const prev = ranges.get(acting)!;
+    const appliedAction = state.actions[state.actions.length - 1];
     ranges.set(acting, narrowByAction(prev, d.action.type, {
       street: before.street,
       board: before.board,
       dead: before.board,
       potBefore: before.seats.reduce((a, x) => a + x.totalContribution, 0),
-      betSize: d.action.amount ?? 0,
+      betSize: appliedAction.amount,
       strengthIterations: opts.strengthIterations ?? 20,
       rng,
     }));

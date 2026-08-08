@@ -1,9 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { totalChips } from '../core/gameEngine';
 import { SEAT_COUNT, STARTING_STACK } from '../core/types';
 import { cardToString } from '../core/cards';
 import { warmPreflopStrength } from '../core/rangeStrength';
 import { playAiHand } from './selfPlayAi';
+import * as equityModule from '../core/equity';
+import * as opponentRangeModule from '../core/opponentRange';
+import { rangeFraction } from '../core/rangeSet';
+import type { RangeSet } from '../core/rangeSet';
 
 // 项目的 tsconfig 只声明了 ES2022 lib，不含 DOM/Node，因此没有 console 的
 // 环境类型。测试实际跑在 vitest 的 node 环境里，console 运行时确实存在，
@@ -152,5 +156,82 @@ describe('性格行为统计（仅报告，不断言）', () => {
     console.log(`\n=== persona behaviour stats over 200 hands ===\n${header}\n${rows.join('\n')}\n`);
 
     expect(stats.size).toBeGreaterThan(0);
+  }, 300_000);
+});
+
+/**
+ * 额外交付物（不在 brief 里）：证明「betSize 传引擎真实投入额」这个修复
+ * 真的把自对弈推进到了这个分支存在的理由——preflop all-in 应该能把范围
+ * 塌缩到 narrowByAction 的 InfeasibleSamplingError 兜底路径，而不是像
+ * betSize 恒为 0 那样从未被触碰过。
+ *
+ * 用 vi.spyOn 包一层 pass-through（不替换实现，只旁观调用与返回/抛出），
+ * 这与文件里 evEstimate.test.ts 对 rankRange 的做法是同一手法：
+ *   - equityVsRanges：统计有多少次调用以 InfeasibleSamplingError 结束——
+ *     这些正是 estimateEv 捕获后宽范围重试的那些。
+ *   - narrowByAction：对每次返回的范围取 rangeFraction，记录整轮跑下来
+ *     观测到的最窄值。
+ *
+ * 只报告，不断言具体数字——是否「宽范围兜底确实被触发了」以及触发的
+ * 量级，需要人工判断，不是这个测试该替开发者下的结论。
+ */
+describe('narrowByAction 收窄是否真的触及塌缩分支（仅报告，不断言）', () => {
+  it('200 手自对弈里 InfeasibleSamplingError 触发次数与观测到的最窄对手范围', () => {
+    warmPreflopStrength();
+
+    const equitySpy = vi.spyOn(equityModule, 'equityVsRanges');
+    const narrowSpy = vi.spyOn(opponentRangeModule, 'narrowByAction');
+
+    for (let i = 0; i < 200; i++) {
+      const seed = `ai-narrow-${i}`;
+      playAiHand(seed, i % SEAT_COUNT, { iterations: 200, strengthIterations: 20 });
+    }
+
+    let infeasibleCount = 0;
+    for (const r of equitySpy.mock.results) {
+      if (r.type === 'throw' && r.value instanceof equityModule.InfeasibleSamplingError) {
+        infeasibleCount++;
+      }
+    }
+
+    // fold 恒定收窄到空范围（narrowByAction 对 'fold' 直接 return new Map()，
+    // 见 opponentRange.ts）——那不是这条 brief 关心的「塌缩」，只是弃牌者退出
+    // 牌局的记账副作用。只在非 fold 的动作（call/bet/raise/allin/check）里找
+    // 观测到的最窄范围，才是能反映 betSize 收窄力度的数字。
+    let narrowestFraction = 1;
+    let narrowestActionType = '(none)';
+    let allinNarrowest = 1;
+    for (let i = 0; i < narrowSpy.mock.calls.length; i++) {
+      const r = narrowSpy.mock.results[i];
+      if (r.type !== 'return') continue;
+      const actionType = narrowSpy.mock.calls[i][1] as string;
+      if (actionType === 'fold') continue;
+      const frac = rangeFraction(r.value as RangeSet);
+      if (frac < narrowestFraction) {
+        narrowestFraction = frac;
+        narrowestActionType = actionType;
+      }
+      if (actionType === 'allin' && frac < allinNarrowest) allinNarrowest = frac;
+    }
+
+    // 读完 .mock.calls / .mock.results 之后才能 restore ——
+    // mockRestore() 不只是换回原始实现，还会顺带 mockReset()，
+    // 把调用历史清空；先读数据再 restore，否则下面打印的调用数恒为 0。
+    const equityCallCount = equitySpy.mock.calls.length;
+    const narrowCallCount = narrowSpy.mock.calls.length;
+    equitySpy.mockRestore();
+    narrowSpy.mockRestore();
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `\n=== narrowing gate over 200 hands ===\n` +
+      `equityVsRanges 调用总数: ${equityCallCount}\n` +
+      `InfeasibleSamplingError 触发（宽范围兜底）次数: ${infeasibleCount}\n` +
+      `narrowByAction 调用总数: ${narrowCallCount}\n` +
+      `观测到的最窄对手范围占比（不含 fold）: ${(narrowestFraction * 100).toFixed(4)}%，来自动作类型 ${narrowestActionType}\n` +
+      `观测到的最窄 all-in 后范围占比: ${(allinNarrowest * 100).toFixed(4)}%\n`,
+    );
+
+    expect(narrowCallCount).toBeGreaterThan(0);
   }, 300_000);
 });
