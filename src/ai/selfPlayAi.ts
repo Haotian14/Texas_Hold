@@ -4,8 +4,9 @@ import { HERO_SEAT } from '../core/types';
 import { toHandRecord } from '../core/handRecord';
 import { createRng } from '../core/rng';
 import type { RangeSet } from '../core/rangeSet';
-import { initialRange, narrowByAction } from '../core/opponentRange';
-import { assignPersonas } from './personas';
+import { narrowByAction } from '../core/opponentRange';
+import { assignPersonas, getPersona, GTO_PERSONA } from './personas';
+import { personaInitialRange } from './personaRange';
 import { decide } from './decide';
 
 export interface AiHandResult {
@@ -25,8 +26,13 @@ export interface PlayAiHandOptions {
 /**
  * 六个 AI 互相打完一手牌。
  *
- * 每个座位的范围从其位置的开池范围起手，随该座位的每个动作逐街收窄 ——
- * 这条链路和复盘引擎将来重建对手范围时走的是同一条。
+ * 每个座位的范围从其位置的开池范围起手，按该座位的性格用 rangeWidthMul
+ * 收紧或放宽（personaInitialRange，见 ai/personaRange.ts）——rock 和
+ * maniac 从翻前第一手牌起就该打不同宽度的范围，而不只是行动风格不同。
+ * hero 座位没有 AI 性格（由人操作），起手范围按 GTO 原型（宽度中性）
+ * 处理，与 decide.ts 把 'hero' 映射到 GTO_PERSONA 的规则一致。
+ * 之后随该座位的每个动作逐街收窄 —— 这条链路和复盘引擎将来重建对手
+ * 范围时走的是同一条。
  */
 export function playAiHand(
   seed: string,
@@ -43,7 +49,11 @@ export function playAiHand(
   );
 
   const ranges = new Map<number, RangeSet>();
-  for (const s of state.seats) ranges.set(s.seat, initialRange(s.position));
+  for (const s of state.seats) {
+    const personaId = personaIds.get(s.seat) ?? GTO_PERSONA.id;
+    const persona = personaId === 'hero' ? GTO_PERSONA : getPersona(personaId);
+    ranges.set(s.seat, personaInitialRange(s.position, persona, rng, opts.strengthIterations));
+  }
 
   let decisions = 0;
   let maxDecisionMs = 0;
