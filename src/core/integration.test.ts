@@ -87,11 +87,71 @@ describe('跨模块集成：对局状态 -> 局面快照 -> 范围收窄 -> EV �
       }
     }
 
+    // 实测 seed 'integration-1' 下 hero 在四条街各被问到一次：
+    // streetsSeen = {preflop, flop, turn, river}，decisions = 4。
+    expect(streetsSeen.size).toBe(4);
+    expect(decisions).toBe(4);
+  }, 60_000);
+
+  it('短筹码对手全下后，hero 的对手集合里出现不能弃牌的全下对手', () => {
+    // buttonSeat: 0 时按 POSITION_ORDER 座位映射为
+    // 0=BTN 1=SB 2=BB 3=UTG 4=HJ 5=CO，UTG（座位 3）是 preflop 第一个行动者，
+    // 即本测试的 hero。把 BB（座位 2）的起始筹码压到 0.5（小于大盲 1），
+    // 这样开局扣盲注时就会把该座位打成全下（postBlind: paid = min(1, 0.5) = 0.5，
+    // stack 归零 => allIn = true）——不依赖 pickContinuing 的选择，从第一个
+    // hero 决策点起就确定性地存在一个不能弃牌的全下对手。
+    const startingStacks = [100, 100, 0.5, 100, 100, 100];
+    let s: GameState = startHand({ seed: 'integration-3', buttonSeat: 0, startingStacks });
+
+    const ranges = new Map<number, RangeSet>();
+    for (const seat of s.seats) ranges.set(seat.seat, initialRange(seat.position));
+    const personaIds = new Map<number, string>();
+    for (const seat of s.seats) personaIds.set(seat.seat, 'tag');
+
+    const heroSeat = s.toAct!;
+    let decisions = 0;
+    let guard = 0;
+    let sawAllInOpponent = false;
+
+    while (!s.handOver) {
+      if (++guard > 200) throw new Error('疑似死锁');
+      const acting = s.toAct!;
+      const legal = legalActions(s);
+      if (legal.length === 0) throw new Error(`座位 ${acting} 无合法动作`);
+
+      if (acting === heroSeat) {
+        const sit = situationFromGameState(s, { ranges, personaIds });
+        const ev = estimateEv(sit, {
+          iterations: 400, strengthIterations: 40, rng: createRng(`ev3-${decisions}`),
+        });
+        decisions++;
+
+        if (sit.opponents.some(o => !o.canFold)) sawAllInOpponent = true;
+
+        expect(legal.some(a => a.type === ev.recommended.actionType)).toBe(true);
+        for (const c of ev.candidates) expect(Number.isFinite(c.ev)).toBe(true);
+      }
+
+      const pick = pickContinuing(legal);
+      const before = s;
+      s = applyAction(s, { type: pick.type, amount: pick.min });
+
+      if (acting !== heroSeat && pick.type !== 'fold') {
+        const prev = ranges.get(acting)!;
+        ranges.set(acting, narrowByAction(prev, pick.type, {
+          street: before.street,
+          board: before.board,
+          dead: before.board,
+          potBefore: before.seats.reduce((a, x) => a + x.totalContribution, 0),
+          betSize: pick.min,
+          strengthIterations: 30,
+          rng: createRng(`narrow3-${guard}`),
+        }));
+      }
+    }
+
+    expect(sawAllInOpponent).toBe(true);
     expect(decisions).toBeGreaterThan(0);
-    // 走完整手牌应当经过多条街，而不是翻前就结束
-    expect(streetsSeen.size).toBeGreaterThan(1);
-    // hero 在多个决策点被估过 EV
-    expect(decisions).toBeGreaterThan(1);
   }, 60_000);
 
   it('链式收窄后的范围只会变窄，且不会变空', () => {

@@ -334,6 +334,20 @@ describe('estimateEv 全下对手', () => {
   });
 });
 
+describe('estimateEv 隐含赔率守卫', () => {
+  it('单挑面对全下时没有隐含赔率可言', () => {
+    const r = estimateEv(sit({
+      street: 'flop',
+      board: parseCards('9h 6d 3c'),
+      heroCards: parseCards('5s 5d') as [Card, Card],
+      pot: 40, toCall: 20, heroStack: 100,
+      opponents: [{ seat: 1, position: 'BB', stack: 0, range: fullRange(),
+                    personaId: 'tag', canFold: false }],
+    }), OPTS);
+    expect(r.candidates.find(c => c.actionType === 'call')!.impliedOdds).toBeUndefined();
+  });
+});
+
 describe('estimateEv 弃牌率对上教科书常数', () => {
   it('弃牌率对上教科书的 MDF 常数', () => {
     // 单个对手、无需跟注时，投入 b 到底池 pot：
