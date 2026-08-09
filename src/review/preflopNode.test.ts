@@ -24,7 +24,7 @@ describe('preflopNodeFor', () => {
     expect(n.opener).toBe(openerPos);
   });
 
-  // брief 原文用 while+break 构造两次加注的状态，并把断言包在 if (n) 里——
+  // 计划原文用 while+break 构造两次加注的状态，并把断言包在 if (n) 里——
   // 这样即使 n 是 null，测试也会"通过"而什么都没断言。这里改成确定性构造：
   // UTG 开池后，让其余四家依次弃牌到大盲，大盲 3bet，行动权必然回到 UTG
   // （其余四家已弃牌，桌上只剩 UTG/BB 两个活跃座位）。产生的节点是
