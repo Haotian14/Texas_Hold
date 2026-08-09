@@ -428,6 +428,91 @@ describe('tagFor —— 翻后', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// tagFor —— 'allin' 类型的进攻/跟注消歧（isAggressiveActual 回归）。
+//
+// 缺陷复现：estimateEv 下注/加注候选的 actionType 从不是 'allin'（matchCandidate
+// 上 candidateTypeMatches 的文档注释已经说明），但 gameEngine 记录用户实际动作
+// 时，'allin' 与 'raise'/'bet' 一样合法——用户自愿全下会被记成
+// actual.type==='allin'。tagFor 里 bet_size_too_small/too_large 与
+// over_bluffing 曾经只判 `actual.type === 'bet' || actual.type === 'raise'`，
+// 没有把 'allin' 并进来（should_have_folded 那组分支倒是写了）：用户一旦自愿
+// 全下，这几个分支全部落空、退化到 tagFor 末尾 `return null`——evLoss 仍然算
+// 得对（matchCandidate 已经修好），只是分类丢了，复盘只显示"你亏了 X BB"却不
+// 说是哪一类错误。
+//
+// 但 'allin' 不能无条件并入进攻类：estimateEv 的强制短筹码分支（toCall > 0 且
+// heroStack <= toCall，玩家没有加注权，见 evEstimate.ts 170-182 行）也会让
+// legalActions 只剩 'allin' 一个能继续的选项（core/gameEngine.ts legalActions
+// 161-169 行），这时候的 'allin' 语义是"跟注"，不是"主动加码"——如果把它也
+// 当进攻处理，一次赔率不足的被迫跟注会被误标成 over_bluffing/bet_size_too_large，
+// 比"没有分类"更具误导性。isAggressiveActual 用 toCall>0 且
+// !chipsGreater(heroStack,toCall) 这个跟 evEstimate.ts 相同的判据来分辨这两种
+// 处境，见 judge.ts 上该函数的文档注释。
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('tagFor — allin 的进攻/跟注消歧', () => {
+  it('用户自愿全下（toCall=0，非强制）、推荐尺度比实际小 → bet_size_too_large', () => {
+    // heroStack(91) > toCall(0)：不是强制短筹码处境，'allin' 是主动把 bet
+    // 拉满到筹码上限，理应并入 bet_size_too_large 的判定。
+    const s = sit({ street: 'flop', toCall: 0, pot: 9, heroStack: 91 });
+    const actual = tagAct('allin', 91, { toCall: 0, potBefore: 9, stackBefore: 91 });
+    const actualCand = cand('all-in', 'bet', 91, 3);
+    const rec = cand('bet 1/3', 'bet', 3, 6);
+    expect(tagFor(s, actual, actualCand, evFor(rec, [actualCand]))).toBe('bet_size_too_large');
+  });
+
+  it('用户自愿全下（toCall=0，非强制）、低胜率、推荐过牌 → over_bluffing', () => {
+    const s = sit({ street: 'flop', toCall: 0, pot: 10, heroStack: 100 });
+    const actual = tagAct('allin', 100, { toCall: 0, potBefore: 10, stackBefore: 100 });
+    const rec = cand('check', 'check', 0, 1); // foldEquity 缺失 → over_bluffing，不是 ineffective_bluff
+    expect(tagFor(s, actual, null, evFor(rec, [], 0.1))).toBe('over_bluffing');
+  });
+
+  it('强制短筹码全下跟注（toCall>0 且 heroStack<=toCall）不算进攻，不会被误判 bet_size_too_large', () => {
+    // hero 只剩 5 BB，面对 8 BB 的下注被迫全下跟注。这里手写的 rec 是 bet
+    // 类型只为单独钉住 isAggressiveActual 本身的判据——真实的 estimateEv 在
+    // 这个处境下只会产出 fold/allin(强制跟注) 两个候选（evEstimate.ts
+    // 170-182 行），不会有 bet 候选，所以这个组合在真实数据里不会出现；
+    // 但正因为如此，才要在单测里把它单独构造出来验证：即使 rec 恰好是
+    // bet/raise 类型、即使投入差距很大，isAggressiveActual 判成"非进攻"后，
+    // bet_size_too_large 分支也不会被命中。
+    const s = sit({ street: 'flop', toCall: 8, pot: 10, heroStack: 5 });
+    const actual = tagAct('allin', 5, { toCall: 8, potBefore: 10, stackBefore: 5 });
+    const actualCand = cand('call all-in', 'allin', 5, 0.5);
+    const rec = cand('bet 1/2', 'bet', 6, 2);
+    expect(tagFor(s, actual, actualCand, evFor(rec, [actualCand]))).toBeNull();
+  });
+
+  it('强制短筹码全下跟注不会被误判 over_bluffing/ineffective_bluff（即使推荐过牌、弃牌率信息拼凑得像诈唬）', () => {
+    const s = sit({ street: 'flop', toCall: 8, pot: 10, heroStack: 5 });
+    const actual = tagAct('allin', 5, { toCall: 8, potBefore: 10, stackBefore: 5 });
+    const rec = cand('check', 'check', 0, 1, { foldEquity: 0.1 }); // 若被误判成进攻会命中 ineffective_bluff
+    expect(tagFor(s, actual, null, evFor(rec))).toBeNull();
+  });
+
+  it('强制短筹码全下不改变 should_have_folded 分支（该分支不区分进攻/跟注，本就该正常命中）', () => {
+    const s = sit({ street: 'flop', toCall: 8, pot: 10, heroStack: 5 });
+    const actual = tagAct('allin', 5, { toCall: 8, potBefore: 10, stackBefore: 5 });
+    const rec = cand('fold', 'fold', 0, 0);
+    expect(tagFor(s, actual, null, evFor(rec))).toBe('should_have_folded');
+  });
+
+  it('翻前强制短筹码全下跟注不会被误判成 preflop_over_aggressive（forced call ≠ 进攻）', () => {
+    const s = sit({ street: 'preflop', toCall: 20, heroStack: 5 });
+    const actual = tagAct('allin', 5, { street: 'preflop', toCall: 20, stackBefore: 5 });
+    const rec = cand('fold', 'fold', 0, 0);
+    expect(tagFor(s, actual, null, evFor(rec), VS_OPEN_NODE)).toBeNull();
+  });
+
+  it('翻前自愿全下（heroStack > toCall，非强制）推荐弃牌 → 仍正确判 preflop_over_aggressive（既有行为不受影响）', () => {
+    const s = sit({ street: 'preflop', toCall: 20, heroStack: 100 });
+    const actual = tagAct('allin', 100, { street: 'preflop', toCall: 20, stackBefore: 100 });
+    const rec = cand('fold', 'fold', 0, 0);
+    expect(tagFor(s, actual, null, evFor(rec), VS_OPEN_NODE)).toBe('preflop_over_aggressive');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // tag/equity 一致性回归测试。
 //
 // 复现的缺陷：河牌圈用户过牌，推荐 all-in（97 BB 投入，EV 1.0846），

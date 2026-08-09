@@ -168,7 +168,7 @@ export function tagFor(
     if (actual.type === 'call' && rec.actionType === 'fold') {
       return 'preflop_cold_call_too_wide';
     }
-    if ((actual.type === 'raise' || actual.type === 'allin') && rec.actionType === 'fold') {
+    if (isAggressiveActual(actual, situation) && rec.actionType === 'fold') {
       return isOpen ? 'preflop_open_too_wide' : 'preflop_over_aggressive';
     }
     return null;
@@ -203,20 +203,63 @@ export function tagFor(
     if (ev.heroEquity < VALUE_BET_EQUITY_FLOOR) return null;
     return 'missed_value_bet';
   }
-  if ((actual.type === 'bet' || actual.type === 'raise') && rec.actionType === 'fold') {
+  if (isAggressiveActual(actual, situation) && rec.actionType === 'fold') {
     return 'over_bluffing';
   }
-  if ((actual.type === 'bet' || actual.type === 'raise') && rec.actionType === 'check') {
+  if (isAggressiveActual(actual, situation) && rec.actionType === 'check') {
     // 下注但推荐过牌：弃牌率不足的诈唬
     if (rec.foldEquity !== undefined && rec.foldEquity < 0.2) return 'ineffective_bluff';
     return 'over_bluffing';
   }
-  if (actualCand && (actual.type === 'bet' || actual.type === 'raise') &&
+  if (actualCand && isAggressiveActual(actual, situation) &&
       (rec.actionType === 'bet' || rec.actionType === 'raise')) {
     if (chipsGreater(rec.investment, actualCand.investment)) return 'bet_size_too_small';
     if (chipsGreater(actualCand.investment, rec.investment)) return 'bet_size_too_large';
   }
   return null;
+}
+
+/**
+ * 判断用户在这个决策点的实际动作是不是「进攻类」（主动下注/加注，含自愿
+ * 全下）——tagFor 里每一处需要回答"这是不是一次主动加码"的分支都必须走
+ * 这一个函数，不能各自重复 `actual.type === 'bet' || actual.type === 'raise'`
+ * 的字面量列表：下一次有人加一条新分支，忘了把 'allin' 一起加进去，就是本次
+ * 修复的同一个缺陷再犯一遍。
+ *
+ * 'bet'/'raise' 没有歧义，直接判进攻。'allin' 有歧义，需要看 situation 消歧——
+ * gameEngine.legalActions（core/gameEngine.ts 第 161-169 行）在两种物理上完全
+ * 不同的处境下都会把 'allin' 列为合法选项：
+ *   1）玩家有加注权、筹码又够（!( toCall>0 且 heroStack<=toCall )）：'allin'
+ *      只是把 'raise'/'bet' 填到筹码上限的另一种写法——玩家本可以选 'raise'
+ *      把金额手动拉到 stack，选 'allin' 是同一个决定的另一种记录方式，语义
+ *      是进攻。
+ *   2）toCall > 0 且 heroStack <= toCall（筹码不够完整跟注，没有加注权可言，
+ *      见 legalActions 第 136 行 call 的筹码门槛）：'call' 因为筹码不够被
+ *      legalActions 排除，'allin' 是这种处境下唯一能表达"跟注"的动作类型，
+ *      语义是跟注，不是进攻。
+ *
+ * 这个二选一的边界——toCall > 0 且 !chipsGreater(heroStack, toCall)——与
+ * estimateEv 划分"下注/加注候选" vs "call all-in 候选"用的是同一个条件
+ * （evEstimate.ts 第 171 行），不是巧合：两处问的是同一个物理问题（这个人
+ * 手上的筹码够不够做一次真正的加注），只是分别站在"引擎记录用户选了什么"
+ * 与"EV 引擎能产出哪些候选"两侧回答。用同一个判据，保证这里对 'allin' 的
+ * 分类与 rec.actionType 会不会是 'bet'/'raise' 永远同步——判成"进攻"的处境，
+ * ev.candidates 里一定有 bet/raise 候选（evEstimate.ts 183-197 行的 else 分支）；
+ * 判成"跟注"的处境，ev.candidates 只可能有 fold 与强制跟注的 allin 候选，不会有
+ * bet/raise（evEstimate.ts 170-182 行的 if 分支，两个分支互斥），下面几个要求
+ * rec.actionType 是 bet/raise 的分支天然不会被"跟注"误配上进攻类的判断依据。
+ *
+ * 刻意不覆盖 should_have_folded / call_too_light_vs_raise / chasing_bad_odds
+ * 那一组分支（本文件 tagFor 里 184-187 行）：那一组问的是"选了 call/raise/allin
+ * 中的任意一个而不是 fold"，跟"是不是主动进攻"是两个不同的问题——强制全下
+ * 跟注本来就该被那一组按"没弃牌"处理，不需要也不应该用这个函数去过滤。
+ */
+function isAggressiveActual(actual: Action, situation: Situation): boolean {
+  if (actual.type === 'bet' || actual.type === 'raise') return true;
+  if (actual.type !== 'allin') return false;
+  const forcedShortStackCall =
+    chipsGreater(situation.toCall, 0) && !chipsGreater(situation.heroStack, situation.toCall);
+  return !forcedShortStackCall;
 }
 
 /**

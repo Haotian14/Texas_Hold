@@ -346,41 +346,19 @@ function actTo(state: GameState, totalAmount: number): GameState {
 function callCur(state: GameState): GameState { need(state, 'call'); return applyAction(state, { type: 'call' }); }
 function checkCur(state: GameState): GameState { need(state, 'check'); return applyAction(state, { type: 'check' }); }
 function foldCur(state: GameState): GameState { need(state, 'fold'); return applyAction(state, { type: 'fold' }); }
-/** 当前行动者全下，走 legalActions 里的 'raise'/'bet' 类型把金额填到筹码上限
- * （而不是 legalActions 单独提供的 'allin' 类型）。
- *
- * 曾经是绕开 matchCandidate 缺陷的必要手段：judge.ts::matchCandidate 按
- * actionType 字符串精确匹配时，玩家自愿选 legalActions 里的 'allin' 类型会
- * 找不到 estimateEv 给出的 'raise'/'bet' 候选（那个缺陷已经在 judge.ts 修复，
- * 见 matchCandidate 上的 AGGRESSIVE_ACTION_TYPES 注释与 goldenScenarios 报告
- * "已知不可达"一节之后的验证——修完之后场景 24 已经改用 allInCur 走真实
- * 'allin' 动作，见下方）。
- *
- * 这里仍然保留、仍在场景 19/21 里使用，是因为发现了一个更窄、不在本次任务
- * 范围内的独立缺口：tagFor（judge.ts）里 bet_size_too_small/too_large 与
- * over_bluffing 的判断只写了 `actual.type === 'bet' || actual.type === 'raise'`，
- * 没有把 'allin' 并进这两个分支（should_have_folded 那个分支倒是写了）。
- * 场景 19/21 测的正是这两个分支，若这里改用真实 'allin' 动作，tagFor 会在
- * 那两个分支上都不匹配、落到末尾 `return null`，断言会失败——这不是
- * matchCandidate 的问题（EV 数字算得对，actualEv 不再是 null），是 tagFor
- * 自己另一处未覆盖 'allin' 的窄口子，任务书把这次修复的范围限定在
- * matchCandidate，没有要求动 tagFor，因此这里保留 actTo 到筹码上限的写法，
- * 不因为 matchCandidate 已修好就跟着换。 */
-function allInViaRaise(state: GameState): GameState {
-  const seat = state.seats[state.toAct!];
-  return actTo(state, round2(seat.streetContribution + seat.stack));
-}
 /** 走 legalActions 里的 'allin' 类型全下。
  *
  * 本节"短筹码对手 shove"系列里用于对手一侧：没有加注权/筹码不够跟注时，
  * legalActions 只给 'allin' 一个选项，这是唯一合法的写法。
  *
- * 场景 24 里也用它来驱动 hero 自己的动作：hero 在有加注权的情况下自愿选
- * 'allin'（而不是把 'raise' 填到筹码上限），这正是本次修复要覆盖的真实场景——
- * matchCandidate 修复前这里若用真实 'allin'，会被静默判成"没有失误"
- * （原缺陷的复现）；tagFor 的 should_have_folded 分支本来就写了
- * `actual.type === 'allin'`，不受上面 allInViaRaise 注释里那个独立缺口影响，
- * 所以可以放心换成真实的全下动作，不需要再借道 raise。 */
+ * 场景 19/21/24 里也用它来驱动 hero 自己的动作：hero 在有加注权的情况下
+ * 自愿选 'allin'（而不是把 'raise'/'bet' 填到筹码上限，即曾经借道用的
+ * allInViaRaise，已随 tagFor 的 allin 缺口一起移除，见下方三条场景的注释）。
+ * matchCandidate 修复前这里若用真实 'allin'，actualEv 会因为找不到候选而变
+ * null、evLoss 被短路成 0（原缺陷的复现）；tagFor 里 should_have_folded /
+ * bet_size_too_small/too_large / over_bluffing 现在也都通过 isAggressiveActual
+ * 把 'allin' 计入进攻类，不再需要借道 'raise'/'bet' 来绕开任何一个分支的
+ * 判定缺口。 */
 function allInCur(state: GameState): GameState { need(state, 'allin'); return applyAction(state, { type: 'allin' }); }
 
 /** 收尾：翻前弃到街结束；翻后能过牌就过牌，能跟注就跟注，能用 allin 跟就跟——
@@ -956,20 +934,27 @@ describe('金标准场景 —— 翻后扩展：下注尺度（bet_size_too_smal
     // 单一对手场景下"全下=更赚"的偏置（对照下面 it.skip 场景 S4 一类的单对手
     // 案例），这正是本文件顶部记录的已知局限 1 的另一面：不是每次都会推荐
     // 超额下注，多个仍能弃牌的对手在场时，引擎依然能正确识别"下太大"。
+    //
+    // hero 这一步走真实的 legalActions 'allin' 类型（allInCur），不再借道
+    // allInViaRaise：judge.ts::tagFor 里 bet_size_too_small/too_large 曾经只写
+    // `actual.type === 'bet' || actual.type === 'raise'`，自愿全下会因为字符串
+    // 不匹配落到 `return null`，tag 变 null——这正是本次修复要覆盖的缺陷本体
+    // （evLoss 算得对，但没有分类）。tagFor 现在通过 isAggressiveActual 判断
+    // 「toCall=0 时的自愿 allin 是进攻类」，把它并入 bet/raise 同一族。
     const record = buildRecord('golden-19-utg-kk-overbet-multiway', 'dry-7', BUTTON_FOR.UTG, s => {
       s = actTo(s, 3); // hero UTG 开池
       s = foldUntil(s, seatOf(BUTTON_FOR.UTG, 'HJ')); // 无需弃牌，HJ 紧接着行动
       s = callCur(s); // HJ 跟注
       s = callCur(s); // CO 跟注
       s = foldRestOfPreflop(s); // BTN, SB, BB 弃牌
-      s = allInViaRaise(s); // hero 全下（被测决策点）
+      s = allInCur(s); // hero 自愿全下（被测决策点，真实 'allin' 类型，不借道 raise）
       s = finishHand(s);
       return s;
     });
     expect(classifyHand(record.seats[0].holeCards[0], record.seats[0].holeCards[1])).toBe('KK');
 
     const a = analyzeHand(record, EV_OPTS);
-    const idx = record.actions.findIndex(act => act.seat === 0 && act.street === 'flop' && act.type === 'bet');
+    const idx = record.actions.findIndex(act => act.seat === 0 && act.street === 'flop' && act.type === 'allin');
     const d = a.decisions.find(dd => dd.actionIndex === idx)!;
     expect(d).toBeDefined();
     expect(d.tag).toBe('bet_size_too_large');
@@ -1022,20 +1007,26 @@ describe('金标准场景 —— 翻后扩展：诈唬（over_bluffing）', () =
     // 面对两个仍能弃牌的对手，EV 引擎判定这个尺度已经不是"价值下注"而是纯粹
     // 靠吓退人赚钱的诈唬（heroEquity 45% 不够格拿 missed_value_bet 需要的
     // 50% 门槛），且诈唬得太狠，推荐直接过牌。
+    //
+    // hero 这一步同样走真实的 'allin' 类型（allInCur），不再借道 allInViaRaise：
+    // judge.ts::tagFor 里 over_bluffing 曾经只写
+    // `actual.type === 'bet' || actual.type === 'raise'`，自愿全下同样会字符串
+    // 不匹配、落到 `return null`——tagFor 现在通过 isAggressiveActual 判断
+    // 「toCall=0 时的自愿 allin 是进攻类」，覆盖了这条分支。
     const record = buildRecord('golden-21-utg-ats-overbet-bluff-multiway', 'dry-28', BUTTON_FOR.UTG, s => {
       s = actTo(s, 3);
       s = foldUntil(s, seatOf(BUTTON_FOR.UTG, 'HJ'));
       s = callCur(s); // HJ 跟注
       s = callCur(s); // CO 跟注
       s = foldRestOfPreflop(s);
-      s = allInViaRaise(s); // hero 全下（被测决策点）
+      s = allInCur(s); // hero 自愿全下（被测决策点，真实 'allin' 类型，不借道 raise）
       s = finishHand(s);
       return s;
     });
     expect(classifyHand(record.seats[0].holeCards[0], record.seats[0].holeCards[1])).toBe('ATs');
 
     const a = analyzeHand(record, EV_OPTS);
-    const idx = record.actions.findIndex(act => act.seat === 0 && act.street === 'flop' && act.type === 'bet');
+    const idx = record.actions.findIndex(act => act.seat === 0 && act.street === 'flop' && act.type === 'allin');
     const d = a.decisions.find(dd => dd.actionIndex === idx)!;
     expect(d).toBeDefined();
     expect(d.tag).toBe('over_bluffing');
@@ -1117,12 +1108,14 @@ describe('金标准场景 —— 翻后扩展：短筹码对手全下（chasing_
     // 纯粹是拿一手弱牌去冒更大的风险，答案无争议。
     //
     // hero 这一步走的是真实的 legalActions 'allin' 类型（allInCur），不是借道
-    // 'raise' 填满筹码上限（allInViaRaise）——这正是本次修复要覆盖的"自愿全下"
+    // 'raise' 填满筹码上限——这正是 matchCandidate 那次修复要覆盖的"自愿全下"
     // 场景本身：hero 有加注权，本可以选 'raise' 把金额填到筹码上限，却选了
     // 'allin'。matchCandidate 修复前，这条路径会因为字符串不匹配找不到候选，
     // actualEv 变 null，evLoss 被短路成 0、tag 变 null，是原缺陷的直接复现；
-    // tagFor 的 should_have_folded 分支本就显式包含 'allin'（judge.ts:128 一带），
-    // 不受 allInViaRaise 注释里那个独立的 tagFor 缺口影响，可以放心去掉借道。
+    // tagFor 的 should_have_folded 分支本就显式包含 'allin'（judge.ts 184-187
+    // 行），从一开始就不受 bet_size/over_bluffing 分支那个独立的 tagFor 缺口
+    // 影响（那个缺口已经在本次修复中一并解决，见场景 19/21 的注释与
+    // isAggressiveActual）。
     const record = buildRecord('golden-24-co-should-have-folded', 'air-19', BUTTON_FOR.CO, s => {
       s = actTo(s, 3);
       s = foldUntil(s, HERO_SEAT);
