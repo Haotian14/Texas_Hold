@@ -7,6 +7,7 @@ import { chipsGreater } from '../core/chips';
 import type { MistakeTag } from './taxonomy';
 import { PREFLOP_OK_FREQ, VALUE_BET_EQUITY_FLOOR } from './taxonomy';
 import type { PreflopNode } from './preflopNode';
+import { isForcedShortStackAllin } from './preflopNode';
 
 /**
  * matchCandidate 里「进攻类」动作互相兼容的类型族。
@@ -271,6 +272,13 @@ export function tagFor(
  * bet/raise（evEstimate.ts 170-182 行的 if 分支，两个分支互斥），下面几个要求
  * rec.actionType 是 bet/raise 的分支天然不会被"跟注"误配上进攻类的判断依据。
  *
+ * 这个边界判据与 preflopNode.ts::preflopNodeFor 判断"这次 allin 该不该计入
+ * 翻前加注次数"用的是同一个物理问题（评审发现④），因此直接复用
+ * preflopNode.ts 导出的 isForcedShortStackAllin，不在这里再写一遍
+ * `chipsGreater(toCall, 0) && !chipsGreater(heroStack, toCall)`——preflopNode.ts
+ * 原来就是因为没有这条判据（把任何 allin 都当真正加注）才产生了"phantom
+ * open"缺陷，两处各自维护一份同样的算式，早晚会有一处漏改。
+ *
  * 刻意不覆盖 should_have_folded / call_too_light_vs_raise / chasing_bad_odds
  * 那一组分支（本文件 tagFor 里 184-187 行）：那一组问的是"选了 call/raise/allin
  * 中的任意一个而不是 fold"，跟"是不是主动进攻"是两个不同的问题——强制全下
@@ -279,9 +287,7 @@ export function tagFor(
 function isAggressiveActual(actual: Action, situation: Situation): boolean {
   if (actual.type === 'bet' || actual.type === 'raise') return true;
   if (actual.type !== 'allin') return false;
-  const forcedShortStackCall =
-    chipsGreater(situation.toCall, 0) && !chipsGreater(situation.heroStack, situation.toCall);
-  return !forcedShortStackCall;
+  return !isForcedShortStackAllin(situation.toCall, situation.heroStack);
 }
 
 /**
