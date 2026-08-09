@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { startHand, applyAction, settleHand } from '../core/gameEngine';
+import { startHand, applyAction, settleHand, legalActions } from '../core/gameEngine';
 import { toHandRecord } from '../core/handRecord';
 import type { HandRecord } from '../core/types';
 import { HERO_SEAT } from '../core/types';
 import { heroDecisionPoints } from './situationFromRecord';
+import { initialRange } from '../core/opponentRange';
+import { rangeFraction } from '../core/rangeSet';
 
 /** 造一份 hero 至少行动两次的记录：hero 加注、其余弃牌到大盲、大盲跟注、翻牌 hero 下注 */
 function makeRecord(seed: string): HandRecord {
@@ -22,9 +24,9 @@ function makeRecord(seed: string): HandRecord {
       // hero 在翻牌及以后都只 check，此时轮到 seat 2 时 toCall 恒为 0，
       // 硬塞 fold 会被引擎拒绝。brief 原文的三元表达式在这个分支上没有
       // 考虑到这一点，这里按 toCall 分流，保持每条 expect 断言原封不动。
-      const seat = s.seats[s.toAct!];
-      const toCall = s.currentBet - seat.streetContribution;
-      s = applyAction(s, toCall > 0 ? { type: 'fold' } : { type: 'check' });
+      // 判断是否该 fold 时问引擎本身（legalActions）而不是用裸算术复刻
+      // 它的规则 —— 后者会随 legalActions 的规则演化而悄悄跑偏。
+      s = applyAction(s, legalActions(s).some(a => a.type === 'fold') ? { type: 'fold' } : { type: 'check' });
     }
   }
   s = settleHand(s);
@@ -64,13 +66,27 @@ describe('heroDecisionPoints', () => {
     }
   });
 
-  it('对手范围随其动作收窄 —— 跟注过的对手范围严格小于全范围', () => {
+  it('对手范围随其动作收窄 —— 决策点的 rangeFraction 严格小于其起手范围', () => {
+    // size（169 类的类别数）在这里不能证伪任何东西：169 是理论上限，
+    // fullRange()、完全没收窄过的 initialRange，乃至任意输出都满足
+    // size > 0 且 size <= 169。改用 rangeFraction —— 它是按 1326 种
+    // 具体组合加权算出的比例，narrowByAction 实际操作的正是这个量纲
+    // （keepTop/dropTop 按权重切，不是按类别数切），所以能真正测出收窄。
+    //
+    // 实测（seed 'rev-4'，唯一跟到最后一个 hero 决策点的对手在 CO，
+    // 翻前跟注 hero 的加注，之后每条街都过牌）：
+    //   起手 rangeFraction(initialRange('CO')) ≈ 0.2368
+    //   决策点 rangeFraction(o.range)            ≈ 0.0700
+    // 即收窄到起手的约 29.5%。margin 取「小于起手的一半」，
+    // 相对上面 29.5% 留出一倍以上的余量，不会因为收窄力度的微调而误报。
     const rec = makeRecord('rev-4');
     const pts = heroDecisionPoints(rec, { strengthIterations: 15 });
     const last = pts[pts.length - 1];
+    expect(last.situation.opponents.length).toBeGreaterThan(0);
     for (const o of last.situation.opponents) {
-      expect(o.range.size).toBeGreaterThan(0);
-      expect(o.range.size).toBeLessThanOrEqual(169);
+      const startFraction = rangeFraction(initialRange(o.position));
+      const nowFraction = rangeFraction(o.range);
+      expect(nowFraction).toBeLessThan(startFraction * 0.5);
     }
   });
 
@@ -100,7 +116,7 @@ describe('heroDecisionPoints', () => {
 });
 
 describe('不得使用对手底牌', () => {
-  it('把对手底牌换成别的牌，判定所依赖的局面不变', () => {
+  it('对手底牌字段不参与构造（说明性，见注释）', () => {
     // 这是本模块最重要的一条性质（spec §8.5）：复盘用对手的实际底牌评判用户决策
     // 就是结果论。底牌在 record 里唾手可得，很容易被"顺手"用上。
     const rec = makeRecord('rev-hole');
@@ -133,5 +149,24 @@ describe('不得使用对手底牌', () => {
     // 同样的相对路径写法），原文写法会让 npm run typecheck 失败。
     const src = readFileSync('src/review/situationFromRecord.ts', 'utf8');
     expect(src.includes('holeCards')).toBe(false);
+  });
+
+  it('构造过程从不读取 record 里任何座位的底牌', () => {
+    // 比源码字符串扫描强：能抓到通过任何辅助函数的读取，也能抓到
+    // 未来从 src/review 其他文件里的读取。本模块连 hero 的底牌都不读
+    // —— 牌全部由 startHand 按 seed 重新发出 —— 所以六个座位都能设陷阱。
+    const rec = makeRecord('rev-proxy');
+    const trapped: HandRecord = {
+      ...rec,
+      seats: rec.seats.map(s =>
+        new Proxy(s, {
+          get(t, k) {
+            if (k === 'holeCards') throw new Error('读取了 record 里的底牌');
+            return Reflect.get(t, k);
+          },
+        }),
+      ),
+    };
+    expect(() => heroDecisionPoints(trapped, { strengthIterations: 15 })).not.toThrow();
   });
 });

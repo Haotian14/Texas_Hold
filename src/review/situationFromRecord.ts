@@ -57,6 +57,10 @@ export function heroDecisionPoints(
   const ranges = new Map<number, RangeSet>();
   for (const s of state.seats) ranges.set(s.seat, initialRange(s.position));
 
+  // record.seats[].personaId 不是底牌数据 —— 展示层要用它（"你在跟一个
+  // maniac 打"），这里如实带过去，而不是让每个对手都变成 'unknown'。
+  const personaIds = new Map(record.seats.map(s => [s.seat, s.personaId]));
+
   const points: HeroDecisionPoint[] = [];
 
   record.actions.forEach((action, index) => {
@@ -70,7 +74,7 @@ export function heroDecisionPoints(
     if (action.seat === record.heroSeat) {
       points.push({
         actionIndex: index,
-        situation: situationFromGameState(state, { ranges, personaIds: new Map() }),
+        situation: situationFromGameState(state, { ranges, personaIds }),
         actual: action,
         state,
       });
@@ -90,7 +94,7 @@ export function heroDecisionPoints(
         street: before.street,
         board: before.board,
         dead: before.board,
-        potBefore: before.seats.reduce((a, x) => a + x.totalContribution, 0),
+        potBefore: applied.potBefore,
         betSize: applied?.amount ?? 0,
         strengthIterations,
         rng,
