@@ -41,8 +41,11 @@ export function analyzeHand(record: HandRecord, opts: AnalyzeOptions = {}): Hand
     const ev = estimateEv(p.situation, { iterations, strengthIterations, rng });
 
     const actualCand = matchCandidate(ev, p.actual);
-    const actualEv = actualCand ? actualCand.ev : null;
     const degraded = ev.degraded !== null;
+    // degraded 时对手范围被替换过，actualCand.ev 不可信——即使 matchCandidate
+    // 匹配上了候选，也必须强制为 null，不能让这个数字流到 UI（见 types.ts
+    // 上 actualEv/recommended 的注释，这是本次修复要堵上的两个漏洞之一）。
+    const actualEv = degraded ? null : actualCand ? actualCand.ev : null;
 
     // preflopNodeFor 只调用一次,判失误短路和 tagFor 的"是否在开池"判断
     // 共用同一个节点值 —— 两处若各自算一次,不仅重复计算,还留下"万一两处算出
@@ -70,7 +73,13 @@ export function analyzeHand(record: HandRecord, opts: AnalyzeOptions = {}): Hand
       situation: p.situation,
       actual: p.actual,
       actualEv,
-      recommended: ev.recommended,
+      // degraded 时同样强制为 null——ev.recommended 里的 .ev/.investment/
+      // .foldEquity/.equityWhenCalled 全部用替换过的对手范围算出来，字面
+      // 名字又恰好是「推荐」，最容易被 UI 不加检查地直接渲染（见 types.ts
+      // 上 recommended 字段的注释）。explain() 下面单独接收 ev.recommended
+      // 本身（未经这层 null 化），因为它已经在最前面用 input.degraded 短路，
+      // 从不会在降级时读到 recommended.label 之外的任何数字。
+      recommended: degraded ? null : ev.recommended,
       evLoss,
       severity,
       tag,

@@ -66,4 +66,32 @@ describe('analyzeHand degraded 短路（合成 EvResult，直接验证守卫本�
       expect(d.tag).toBeNull();
     }
   });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 缺陷复现与修复回归（评审发现①）：evLoss/severity/tag/explanation 四个
+  // 字段都在 degraded 时被正确清零/置空，但 actualEv 与 recommended 两个
+  // 字段此前完全没有 degraded 检查——analyzeHand.ts 原来是
+  //   const actualEv = actualCand ? actualCand.ev : null;
+  //   ...
+  //   recommended: ev.recommended,
+  // 两处都直接读取用替换过的对手范围算出来的数字/候选，把 BB 数字从
+  // “降级、不可信”的缺口里原样漏给调用方。UI 只要照着字面意思渲染
+  // `recommended.label`/`recommended.ev`（这是这个字段最直白的用法），就会
+  // 把一个被替换范围算出来的数字当成真实推荐展示给用户。
+  //
+  // 修复后两个字段在 degraded 时都强制为 null——不是加一个「trust: false」
+  // 标志：null 会让 TypeScript 在编译期强制任何消费方处理“没有这个值”的
+  // 分支，而 trust 标志只有消费方主动检查才有效，跟本缺陷的成因（一个显眼
+  // 字段被想当然地直接使用）是同一种风险，不该用来做防御。
+  // ───────────────────────────────────────────────────────────────────────
+  it('estimateEv 报告 degraded 时，actualEv 与 recommended 也被强制为 null（评审发现①，此前完全没有 degraded 检查）', () => {
+    const rec = makeRecord('an-degraded-1');
+    const a = analyzeHand(rec, { iterations: 200, strengthIterations: 15 });
+    expect(a.decisions.length).toBeGreaterThan(0);
+    for (const d of a.decisions) {
+      expect(d.degraded).toBe(true);
+      expect(d.actualEv).toBeNull();
+      expect(d.recommended).toBeNull();
+    }
+  });
 });

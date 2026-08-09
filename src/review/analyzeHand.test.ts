@@ -99,7 +99,15 @@ describe('analyzeHand 端到端：可读结论', () => {
     for (const d of a.decisions) {
       expect(['preflop', 'flop', 'turn', 'river']).toContain(d.street);
       expect(d.actual.type).toBeTruthy();
-      expect(d.recommended.label).toBeTruthy();
+      // recommended 在 degraded 时强制为 null（见 analyzeHand.degraded.test.ts）；
+      // 这条记录不受 mock 影响，走真实 estimateEv，只在两个分支里都断言，
+      // 不弱化"非降级时 recommended.label 必须非空"这条原始检查。
+      if (d.degraded) {
+        expect(d.recommended).toBeNull();
+      } else {
+        expect(d.recommended).not.toBeNull();
+        expect(d.recommended!.label).toBeTruthy();
+      }
       expect(typeof d.evLoss).toBe('number');
       expect(['ok', 'minor', 'notable', 'severe']).toContain(d.severity);
       expect(typeof d.explanation).toBe('string');
