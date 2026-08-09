@@ -46,6 +46,21 @@ export const SEVERITY_THRESHOLDS: readonly { min: number; severity: Severity }[]
   { min: 3, severity: 'severe' },
 ];
 
+/**
+ * 「价值下注」判定要求的最低 hero 胜率。
+ *
+ * 下注拿价值的前提是身位领先 —— 对手范围里会跟注的部分，大部分应该是
+ * 被我们的牌打败的。低于这条线时，即使 EV 估算推荐下注，那也是诈唬或
+ * 半诈唬，不该被 tagFor 贴上 missed_value_bet（"该拿价值却没下注"）标签，
+ * 见 judge.ts 里对这个常量的引用。
+ *
+ * 0.5 不是精算出来的数字，只是"至少要在对手跟注范围前占先"这个直觉的
+ * 一个粗略经验边界，不代表真实的价值下注门槛（那取决于对手跟注范围、
+ * 成手牌力分布等，本引擎不建模到这个精细度）。调整判定松紧时改这一个
+ * 数即可，不用去翻 judge.ts。
+ */
+export const VALUE_BET_EQUITY_FLOOR = 0.5;
+
 export function severityOf(evLoss: number): Severity {
   let out: Severity = 'ok';
   for (const t of SEVERITY_THRESHOLDS) {

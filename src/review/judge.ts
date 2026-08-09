@@ -5,7 +5,7 @@ import { classifyHand } from '../core/handClass';
 import { actionFreqs } from '../core/ranges';
 import { chipsGreater } from '../core/chips';
 import type { MistakeTag } from './taxonomy';
-import { PREFLOP_OK_FREQ } from './taxonomy';
+import { PREFLOP_OK_FREQ, VALUE_BET_EQUITY_FLOOR } from './taxonomy';
 import type { PreflopNode } from './preflopNode';
 
 /**
@@ -120,8 +120,19 @@ export function tagFor(
   }
   if ((actual.type === 'check' || actual.type === 'call') && (rec.actionType === 'bet' || rec.actionType === 'raise')) {
     if (situation.street === 'flop' && situation.heroIsPreflopAggressor && actual.type === 'check') {
+      // c-bet 本来就常常是弱牌下的：持续下注是在利用翻前主动权和范围优势，
+      // 不是在宣称这手牌是价值牌。missed_cbet 的文案也没有提"价值"或胜率，
+      // 所以这里刻意不设胜率门槛 —— 见 taxonomy.ts 对 VALUE_BET_EQUITY_FLOOR 的说明。
       return 'missed_cbet';
     }
+    // missed_value_bet 的字面意思是"这手牌该拿价值却没下注"——只有 hero 的
+    // 胜率达到 VALUE_BET_EQUITY_FLOOR（至少在对手跟注范围前占先）时，
+    // 把推荐的下注称为"价值"才站得住。低于这条线时推荐的下注实质是诈唬，
+    // 归不进"价值"这一类，返回 null（宁可少标一类，也不能贴错标签 ——
+    // 损失额与推荐动作仍然会正常展示，只是不带这个具体分类）。
+    // heroEquity 是概率不是筹码金额，这里用普通数值比较是对的，
+    // 不需要也不应该换成 chips.ts 里给筹码用的容差比较。
+    if (ev.heroEquity < VALUE_BET_EQUITY_FLOOR) return null;
     return 'missed_value_bet';
   }
   if ((actual.type === 'bet' || actual.type === 'raise') && rec.actionType === 'fold') {

@@ -5,6 +5,7 @@ import type { Situation } from '../core/situation';
 import { parseCard } from '../core/cards';
 import { matchCandidate, judgePreflopFrequency, tagFor } from './judge';
 import type { PreflopNode } from './preflopNode';
+import { VALUE_BET_EQUITY_FLOOR } from './taxonomy';
 
 function cand(
   label: string,
@@ -143,10 +144,10 @@ function tagAct(
   return { seat: 0, street: 'flop', type, amount, potBefore: 10, toCall: 0, stackBefore: 100, ...overrides };
 }
 
-function evFor(recommended: EvCandidate, others: EvCandidate[] = []): EvResult {
+function evFor(recommended: EvCandidate, others: EvCandidate[] = [], heroEquity = 0.5): EvResult {
   return {
     candidates: [recommended, ...others],
-    heroEquity: 0.5,
+    heroEquity,
     requiredEquity: 0.33,
     recommended,
     iterations: 500,
@@ -308,5 +309,49 @@ describe('tagFor —— 翻后', () => {
     // 前置条件：确认两者投入确实相等
     expect(actualCand.investment).toBe(rec.investment);
     expect(tagFor(s, actual, actualCand, evFor(rec, [actualCand]))).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// tag/equity 一致性回归测试。
+//
+// 复现的缺陷：河牌圈用户过牌，推荐 all-in（97 BB 投入，EV 1.0846），
+// heroEquity 只有 9%，tagFor 只看街道与翻前攻击者身份就把它判成
+// missed_value_bet（"该拿价值却没下注"），但 9% 胜率下推荐下注只可能是
+// 诈唬，不是价值 —— 文案与数字自相矛盾。
+// 现在 tagFor 在返回 missed_value_bet 前会检查 ev.heroEquity 是否达到
+// taxonomy.ts 里的 VALUE_BET_EQUITY_FLOOR。
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('tagFor — missed_value_bet 必须与 heroEquity 一致（回归缺陷复现）', () => {
+  // 用 river + heroIsPreflopAggressor: false，确保落入 missed_value_bet 分支
+  // 而不会被 missed_cbet（只认翻牌）截走 —— 街道/尺度与缺陷报告里的现场一致。
+  const s = sit({ street: 'river', toCall: 0, pot: 7.5, heroIsPreflopAggressor: false });
+  const actual = tagAct('check', 0, { street: 'river', toCall: 0, potBefore: 7.5 });
+  const rec = cand('all-in', 'bet', 97, 1.0846);
+
+  it('胜率低于 VALUE_BET_EQUITY_FLOOR 时绝不返回 missed_value_bet（复现报告里 9%/16% 胜率被打成"拿价值"的缺陷）', () => {
+    for (const heroEquity of [0, 0.09, 0.16, 0.3, 0.49, 0.499]) {
+      expect(tagFor(s, actual, null, evFor(rec, [], heroEquity))).not.toBe('missed_value_bet');
+    }
+  });
+
+  it('胜率低于门槛时返回 null，而不是随便挑一个别的标签', () => {
+    // §8.7 的翻后分类里没有"该拿价值但其实是诈唬"这一条 —— 见任务书对此的
+    // 选择：宁可少标一类，不能贴错标签；损失额与推荐动作仍照常展示。
+    expect(tagFor(s, actual, null, evFor(rec, [], 0.09))).toBeNull();
+  });
+
+  it('胜率达到或超过 VALUE_BET_EQUITY_FLOOR 时仍正常返回 missed_value_bet（门槛闭区间，等于门槛值也算价值）', () => {
+    for (const heroEquity of [VALUE_BET_EQUITY_FLOOR, 0.6, 0.9, 1]) {
+      expect(tagFor(s, actual, null, evFor(rec, [], heroEquity))).toBe('missed_value_bet');
+    }
+  });
+
+  it('missed_cbet 分支不受这个胜率门槛影响 —— c-bet 本来就常用弱牌打出，翻牌、翻前攻击者、过牌时即便胜率很低也该是 missed_cbet 而不是被误伤成 null', () => {
+    const flopS = sit({ street: 'flop', toCall: 0, pot: 10, heroIsPreflopAggressor: true });
+    const flopActual = tagAct('check', 0, { toCall: 0, potBefore: 10 });
+    const flopRec = cand('bet 1/2', 'bet', 5, 2);
+    expect(tagFor(flopS, flopActual, null, evFor(flopRec, [], 0.05))).toBe('missed_cbet');
   });
 });

@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { explain } from './explain';
-import { POSTFLOP_TAGS, PREFLOP_TAGS } from './taxonomy';
+import { POSTFLOP_TAGS, PREFLOP_TAGS, VALUE_BET_EQUITY_FLOOR } from './taxonomy';
+import { tagFor } from './judge';
+import type { Situation } from '../core/situation';
+import type { Action } from '../core/types';
+import type { EvResult, EvCandidate } from '../core/evEstimate';
+import { parseCard } from '../core/cards';
 
 // 构造一个最小可用的输入；situation 只需 explain 实际读到的字段
 function input(overrides: Partial<Parameters<typeof explain>[0]> = {}) {
@@ -112,5 +117,86 @@ describe('explain', () => {
     }));
     expect(text).toBe('本手此处对手范围过窄，估算已降级，不做判定。');
     expect(text).not.toMatch(/\d+(\.\d+)?\s*BB/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// tag/equity 一致性回归测试（缺陷：河牌圈 9% 胜率被 tagFor 打成
+// missed_value_bet，explain 渲染出"这手牌有 9% 的胜率...本该下注拿价值"，
+// 自相矛盾）。
+//
+// 这里不是孤立地给 explain 喂手工指定的 tag，而是像 analyzeHand.ts 那样
+// 先用 tagFor 算出真实会产出的 tag，再喂给 explain —— 这样测的是两个模块
+// 拼起来之后、产品实际会展示的文本，而不是 explain 单元本身的行为。
+// ─────────────────────────────────────────────────────────────────────────
+
+// 与缺陷报告里的现场一致：河牌圈、过牌、推荐 all-in 97 BB 进 7.5 BB 底池
+function coherenceSituation(): Situation {
+  return {
+    heroSeat: 0,
+    heroPosition: 'BTN',
+    heroCards: [parseCard('7c'), parseCard('2d')],
+    board: [parseCard('Ah'), parseCard('Kd'), parseCard('5s'), parseCard('9c'), parseCard('2h')],
+    street: 'river',
+    pot: 7.5,
+    toCall: 0,
+    heroStack: 100,
+    heroStreetContribution: 0,
+    opponents: [],
+    heroIsPreflopAggressor: false,
+  };
+}
+
+function coherenceAction(): Action {
+  return { seat: 0, street: 'river', type: 'check', amount: 0, potBefore: 7.5, toCall: 0, stackBefore: 100 };
+}
+
+function coherenceRec(): EvCandidate {
+  return { label: 'all-in', actionType: 'bet', investment: 97, ev: 1.0846, isRecommended: true };
+}
+
+function coherenceEv(heroEquity: number): EvResult {
+  const recommended = coherenceRec();
+  return {
+    candidates: [recommended],
+    heroEquity,
+    requiredEquity: null,
+    recommended,
+    iterations: 500,
+    degraded: null,
+    degradedOpponentCount: 0,
+  };
+}
+
+describe('tag/equity 一致性 —— 渲染出的文案不能包含被同一份数字否定的说法', () => {
+  it('审计结果：十五个模板里只有 missed_value_bet 会写"拿价值"；其余模板即便打印胜率，也不宣称这手牌是冲着价值去的', () => {
+    for (const tag of [...PREFLOP_TAGS, ...POSTFLOP_TAGS]) {
+      if (tag === 'missed_value_bet') continue; // 该模板的胜率门槛由下一条测试单独覆盖
+      const text = explain(input({ tag, severity: 'minor', evLoss: 0.5, heroEquity: 0.09 }));
+      expect(text).not.toContain('拿价值');
+    }
+  });
+
+  it('missed_value_bet 模板渲染出"拿价值"，当且仅当驱动它的 tagFor 判定胜率达到 VALUE_BET_EQUITY_FLOOR —— 低于门槛时 tagFor 返回 null，explain 落到"建议 X"的兜底文案，不再提价值', () => {
+    for (const heroEquity of [0, 0.09, 0.16, 0.3, 0.49, 0.499, VALUE_BET_EQUITY_FLOOR, 0.6, 0.9, 1]) {
+      const ev = coherenceEv(heroEquity);
+      const tag = tagFor(coherenceSituation(), coherenceAction(), null, ev);
+      const text = explain(input({
+        tag,
+        severity: 'minor',
+        evLoss: 0.5,
+        heroEquity,
+        recommended: ev.recommended,
+        requiredEquity: null,
+      }));
+
+      if (heroEquity < VALUE_BET_EQUITY_FLOOR) {
+        expect(tag).not.toBe('missed_value_bet');
+        expect(text).not.toContain('拿价值');
+      } else {
+        expect(tag).toBe('missed_value_bet');
+        expect(text).toContain('拿价值');
+      }
+    }
   });
 });
