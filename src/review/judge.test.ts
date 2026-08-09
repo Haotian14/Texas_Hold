@@ -59,6 +59,81 @@ describe('matchCandidate', () => {
     const ev = result([cand('fold', 'fold', 0, 0)]);
     expect(matchCandidate(ev, act('bet', 5))).toBeNull();
   });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 缺陷复现与修复回归：estimateEv 给自愿全下的候选定的 actionType 是
+  // 'raise' 或 'bet'（取决于 toCall 是否 > 0，见 evEstimate.ts makeBetCandidate），
+  // 从不是 'allin'；只有 sit.heroStack <= sit.toCall 的强制短筹码分支
+  // （玩家没有加注权，被迫跟出仅剩筹码）才会产出 actionType==='allin' 的候选，
+  // 语义是"跟注"不是"加注"。用户实际选择 legalActions 里的 'allin' 类型
+  // （自愿把加注封顶到全部筹码，见 gameEngine.ts legalActions：只要有加注权，
+  // 'raise'/'bet' 与 'allin' 同时合法）时，旧实现按字符串精确匹配会找不到
+  // 候选，返回 null，analyzeHand 的短路规则把这判成"没有失误"——100 BB 的
+  // 自愿全下被静默放过。
+  // ───────────────────────────────────────────────────────────────────────
+
+  it('用户 allin，候选是 raise 类型、标签为 all-in（面对加注时自愿全下）→ 匹配上该候选', () => {
+    const ev = result([
+      cand('fold', 'fold', 0, 0),
+      cand('call', 'call', 5, 1),
+      cand('bet 1/2', 'raise', 8, 2),
+      cand('all-in', 'raise', 100, 3),
+    ]);
+    const matched = matchCandidate(ev, act('allin', 100));
+    expect(matched).not.toBeNull();
+    expect(matched!.label).toBe('all-in');
+    expect(matched!.actionType).toBe('raise');
+  });
+
+  it('用户 allin，候选是 bet 类型、标签为 all-in（未加注池自愿全下）→ 匹配上该候选', () => {
+    const ev = result([
+      cand('check', 'check', 0, 0),
+      cand('bet 1/2', 'bet', 5, 1),
+      cand('all-in', 'bet', 100, 3),
+    ]);
+    const matched = matchCandidate(ev, act('allin', 100));
+    expect(matched).not.toBeNull();
+    expect(matched!.label).toBe('all-in');
+    expect(matched!.actionType).toBe('bet');
+  });
+
+  it('用户 call 面对全下，候选里只有强制短筹码的 call-for-less（actionType 为 allin）→ 仍匹配上该候选', () => {
+    // estimateEv 的强制短筹码分支（heroStack <= toCall）只产出这一个候选，
+    // actionType 硬编码为 'allin' 但语义是"跟注"——用户实际动作类型仍是
+    // 'call'（legalActions 在这个分支下也只给 'allin' 一个选项，但这里直接
+    // 测 matchCandidate 本身的行为，不依赖引擎怎么记录）。
+    const ev = result([
+      cand('fold', 'fold', 0, 0),
+      cand('call all-in', 'allin', 8, 1.5),
+    ]);
+    const matched = matchCandidate(ev, act('call', 8));
+    expect(matched).not.toBeNull();
+    expect(matched!.actionType).toBe('allin');
+    expect(matched!.label).toBe('call all-in');
+  });
+
+  it('用户 allin 不会被误配到 call 候选（即便候选集里同时有 call 和一个进攻候选）', () => {
+    // 防止把 call↔allin 的兼容做成对称：一次真正的自愿加注全下不能被错配成
+    // "跟注"，那会把进攻动作的 EV 算成跟注的 EV——比原缺陷更隐蔽的错误答案。
+    const ev = result([
+      cand('call', 'call', 5, 1),
+      cand('all-in', 'raise', 100, 3),
+    ]);
+    const matched = matchCandidate(ev, act('allin', 100));
+    expect(matched).not.toBeNull();
+    expect(matched!.actionType).toBe('raise');
+    expect(matched!.label).toBe('all-in');
+  });
+
+  it('多个进攻候选（bet/raise/allin 类型混合）时，就近取投入额最接近的一档', () => {
+    const ev = result([
+      cand('bet 1/3', 'bet', 3, 1),
+      cand('bet 1/2', 'bet', 4.5, 2),
+      cand('all-in', 'raise', 100, 3),
+    ]);
+    expect(matchCandidate(ev, act('allin', 96))!.label).toBe('all-in');
+    expect(matchCandidate(ev, act('allin', 3.6))!.label).toBe('bet 1/3');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────

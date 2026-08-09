@@ -346,21 +346,41 @@ function actTo(state: GameState, totalAmount: number): GameState {
 function callCur(state: GameState): GameState { need(state, 'call'); return applyAction(state, { type: 'call' }); }
 function checkCur(state: GameState): GameState { need(state, 'check'); return applyAction(state, { type: 'check' }); }
 function foldCur(state: GameState): GameState { need(state, 'fold'); return applyAction(state, { type: 'fold' }); }
-/** 当前行动者全下——发现过一个坑：toCall>0 且筹码够跟注时，estimateEv 把"全下"这个
- * 候选归类成 actionType 'raise'（标签叫 "all-in"，类型不是 'allin'），只有"筹码不够
- * 跟注、被迫短全下"时才会出现 actionType==='allin' 的候选。hero 若在筹码充足时选
- * legalActions 里的 'allin' 类型，matchCandidate 按 actionType 过滤会找不到匹配候选，
- * actualEv 变成 null，被 analyzeHand 的短路规则悄悄吃掉（evLoss 强制 0，不是没有失误，
- * 是没算出来）。因此"投入全部筹码"统一用 actTo 到 (streetContribution+stack)，
- * 让引擎记录的 actionType 是 'raise'/'bet'，能对得上 estimateEv 的候选。
- * 见 goldenScenarios 报告"三、通用发现"一节。 */
+/** 当前行动者全下，走 legalActions 里的 'raise'/'bet' 类型把金额填到筹码上限
+ * （而不是 legalActions 单独提供的 'allin' 类型）。
+ *
+ * 曾经是绕开 matchCandidate 缺陷的必要手段：judge.ts::matchCandidate 按
+ * actionType 字符串精确匹配时，玩家自愿选 legalActions 里的 'allin' 类型会
+ * 找不到 estimateEv 给出的 'raise'/'bet' 候选（那个缺陷已经在 judge.ts 修复，
+ * 见 matchCandidate 上的 AGGRESSIVE_ACTION_TYPES 注释与 goldenScenarios 报告
+ * "已知不可达"一节之后的验证——修完之后场景 24 已经改用 allInCur 走真实
+ * 'allin' 动作，见下方）。
+ *
+ * 这里仍然保留、仍在场景 19/21 里使用，是因为发现了一个更窄、不在本次任务
+ * 范围内的独立缺口：tagFor（judge.ts）里 bet_size_too_small/too_large 与
+ * over_bluffing 的判断只写了 `actual.type === 'bet' || actual.type === 'raise'`，
+ * 没有把 'allin' 并进这两个分支（should_have_folded 那个分支倒是写了）。
+ * 场景 19/21 测的正是这两个分支，若这里改用真实 'allin' 动作，tagFor 会在
+ * 那两个分支上都不匹配、落到末尾 `return null`，断言会失败——这不是
+ * matchCandidate 的问题（EV 数字算得对，actualEv 不再是 null），是 tagFor
+ * 自己另一处未覆盖 'allin' 的窄口子，任务书把这次修复的范围限定在
+ * matchCandidate，没有要求动 tagFor，因此这里保留 actTo 到筹码上限的写法，
+ * 不因为 matchCandidate 已修好就跟着换。 */
 function allInViaRaise(state: GameState): GameState {
   const seat = state.seats[state.toAct!];
   return actTo(state, round2(seat.streetContribution + seat.stack));
 }
-/** 短筹码对手在没有加注权/筹码不够跟注时的真全下——这种情况下 legalActions 的
- * 'allin' 类型和 estimateEv 的候选能对上（见 evEstimate.ts 里 "call all-in" 分支），
- * 用于本节"短筹码对手 shove"系列里"对手"一侧的动作。 */
+/** 走 legalActions 里的 'allin' 类型全下。
+ *
+ * 本节"短筹码对手 shove"系列里用于对手一侧：没有加注权/筹码不够跟注时，
+ * legalActions 只给 'allin' 一个选项，这是唯一合法的写法。
+ *
+ * 场景 24 里也用它来驱动 hero 自己的动作：hero 在有加注权的情况下自愿选
+ * 'allin'（而不是把 'raise' 填到筹码上限），这正是本次修复要覆盖的真实场景——
+ * matchCandidate 修复前这里若用真实 'allin'，会被静默判成"没有失误"
+ * （原缺陷的复现）；tagFor 的 should_have_folded 分支本来就写了
+ * `actual.type === 'allin'`，不受上面 allInViaRaise 注释里那个独立缺口影响，
+ * 所以可以放心换成真实的全下动作，不需要再借道 raise。 */
 function allInCur(state: GameState): GameState { need(state, 'allin'); return applyAction(state, { type: 'allin' }); }
 
 /** 收尾：翻前弃到街结束；翻后能过牌就过牌，能跟注就跟注，能用 allin 跟就跟——
@@ -1095,20 +1115,28 @@ describe('金标准场景 —— 翻后扩展：短筹码对手全下（chasing_
     // 5 BB。UTG 全下 2 BB 后，hero 不跟注也不弃牌，反而把自己的 97 BB 全部
     // 推入——面对一个已经不能弃牌的对手，反加注不会带来任何额外的弃牌率，
     // 纯粹是拿一手弱牌去冒更大的风险，答案无争议。
+    //
+    // hero 这一步走的是真实的 legalActions 'allin' 类型（allInCur），不是借道
+    // 'raise' 填满筹码上限（allInViaRaise）——这正是本次修复要覆盖的"自愿全下"
+    // 场景本身：hero 有加注权，本可以选 'raise' 把金额填到筹码上限，却选了
+    // 'allin'。matchCandidate 修复前，这条路径会因为字符串不匹配找不到候选，
+    // actualEv 变 null，evLoss 被短路成 0、tag 变 null，是原缺陷的直接复现；
+    // tagFor 的 should_have_folded 分支本就显式包含 'allin'（judge.ts:128 一带），
+    // 不受 allInViaRaise 注释里那个独立的 tagFor 缺口影响，可以放心去掉借道。
     const record = buildRecord('golden-24-co-should-have-folded', 'air-19', BUTTON_FOR.CO, s => {
       s = actTo(s, 3);
       s = foldUntil(s, HERO_SEAT);
       s = callCur(s);
       s = foldRestOfPreflop(s);
       s = allInCur(s); // UTG 全下
-      s = allInViaRaise(s); // hero 反加注全下（被测决策点）
+      s = allInCur(s); // hero 自愿全下（被测决策点，真实 'allin' 类型，不借道 raise）
       s = finishHand(s);
       return s;
     }, { [seatOf(BUTTON_FOR.CO, 'UTG')]: 5 });
     expect(classifyHand(record.seats[0].holeCards[0], record.seats[0].holeCards[1])).toBe('J9s');
 
     const a = analyzeHand(record, EV_OPTS);
-    const idx = record.actions.findIndex(act => act.seat === 0 && act.street === 'flop' && act.type === 'raise');
+    const idx = record.actions.findIndex(act => act.seat === 0 && act.street === 'flop' && act.type === 'allin');
     const d = a.decisions.find(dd => dd.actionIndex === idx)!;
     expect(d).toBeDefined();
     expect(d.tag).toBe('should_have_folded');

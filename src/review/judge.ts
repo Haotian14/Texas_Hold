@@ -9,6 +9,62 @@ import { PREFLOP_OK_FREQ, VALUE_BET_EQUITY_FLOOR } from './taxonomy';
 import type { PreflopNode } from './preflopNode';
 
 /**
+ * matchCandidate 里「进攻类」动作互相兼容的类型族。
+ *
+ * 根因与 src/ai/decide.ts 的 BET_LIKE 完全同源：estimateEv（core/evEstimate.ts）
+ * 按 `chipsGreater(sit.toCall, 0) ? 'raise' : 'bet'` 给下注/加注候选定类型，
+ * 这条规则从不产出 'allin'——唯一的例外是筹码不足以跟平时的「不足额跟注」
+ * 分支（makeBetCandidate 完全不参与，见 evEstimate.ts 'call all-in' 那个候选，
+ * actionType 硬编码为 'allin'，语义是「跟注」不是「加注」，下面单独处理）。
+ * 而引擎记录用户实际动作时（core/gameEngine.ts legalActions/applyAction），
+ * 只要玩家有加注权，'raise'（或 toCall===0 时的 'bet'）与 'allin' 是两个
+ * 同时合法、玩家可以任选其一的动作类型——选 'allin' 只是「自愿把加注封顶到
+ * 全部筹码」，跟选 'raise' 后把金额填到 stack 上限是同一个决定的两种记录方式。
+ * 旧实现按 actionType 字符串精确相等匹配，导致玩家选 'allin' 时永远配不上
+ * estimateEv 只会给出的 'raise'/'bet' 候选——这正是本次修复的缺陷本体：
+ * 100 BB 的自愿全下被静默判成"没有问题"。
+ *
+ * 与 decide.ts 的 BET_LIKE 不同的是，这里不需要处理 bet/raise 命名歧义（那是
+ * toCall 与 currentBet 在大盲被平跟到选项上的分歧，属于 legalActions 与
+ * estimateEv 之间的另一对命名不一致，decide.ts 的 matchesLegal 已经在那一层
+ * 解决过）——matchCandidate 匹配的是「玩家选了哪个 actionType」对「EV 引擎
+ * 算了哪个 actionType」，两边对 bet/raise 的判断依据相同（是否有活跃下注），
+ * 从不分歧，只有 allin 这一个类型字符串会分歧，所以这里只需要把 allin 也
+ * 并入 bet/raise 的同一族，不需要再区分 bet 与 raise。
+ */
+const AGGRESSIVE_ACTION_TYPES: ReadonlySet<Action['type']> = new Set(['bet', 'raise', 'allin']);
+
+/**
+ * 判断用户实际动作的类型能否对应到某个 EV 候选的类型。
+ *
+ * 两条规则：
+ * 1) 字符串相等，直接匹配（fold/check/call 之间从不分歧，原样保留）。
+ * 2) 'bet'/'raise'/'allin' 互相兼容——见上面 AGGRESSIVE_ACTION_TYPES 的注释。
+ *
+ * 刻意不做的第三条：不把 'call' 与 'allin' 做成对称的双向兼容。'allin' 只在
+ * 一种情况下语义等于"跟注"——estimateEv 的强制短筹码分支（sit.toCall > 0 且
+ * sit.heroStack <= sit.toCall，玩家没有加注权，被迫把仅剩的筹码跟出去，
+ * 见 evEstimate.ts "call all-in" 候选）。这个分支永远不会同时产出 bet/raise
+ * 候选（同一个 if/else，见 evEstimate.ts 第 171 行），所以 actionType==='allin'
+ * 的候选只可能是这一种「跟注」语义，把它加进 'call' 能匹配的类型里是安全的、
+ * 不会误配到别的东西。但反过来不能把这条规则做成对称的——如果 'call' 也
+ * 被塞进 AGGRESSIVE_ACTION_TYPES、允许 'allin' 反向匹配 'call' 候选，会让一次
+ * 真正的自愿加注全下（玩家有加注权、选了 'allin' 表示"封顶到底"）在候选集
+ * 里同时有 call 候选（stack > toCall 时才会产出，即玩家本可以只跟注）的场景下
+ * 被错误地配成"跟注"，把一次进攻动作的 EV 算成跟注的 EV——这正是任务书点名
+ * 要提防的"更隐蔽的错误答案"。所以只在 actual.type==='call' 时额外放行
+ * candidateType==='allin'，方向不对称。
+ */
+function candidateTypeMatches(actualType: Action['type'], candidateType: EvCandidate['actionType']): boolean {
+  if (actualType === candidateType) return true;
+  if (AGGRESSIVE_ACTION_TYPES.has(actualType) && AGGRESSIVE_ACTION_TYPES.has(candidateType)) {
+    return true;
+  }
+  if (actualType === 'call' && candidateType === 'allin') return true;
+  return false;
+}
+
+/**
  * 把用户的实际动作对应到一个 EV 候选。
  *
  * 已知近似：用户的下注尺度可能落在两个候选档之间（比如 0.4 池），
@@ -17,7 +73,7 @@ import type { PreflopNode } from './preflopNode';
  * 不是缺陷 —— 但要在 UI 与文档里说明。
  */
 export function matchCandidate(ev: EvResult, actual: Action): EvCandidate | null {
-  const same = ev.candidates.filter(c => c.actionType === actual.type);
+  const same = ev.candidates.filter(c => candidateTypeMatches(actual.type, c.actionType));
   if (same.length === 0) return null;
   if (same.length === 1) return same[0];
 
