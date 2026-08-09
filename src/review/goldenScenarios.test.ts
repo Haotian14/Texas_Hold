@@ -1171,6 +1171,46 @@ describe('金标准场景 —— 翻后扩展：短筹码对手全下（chasing_
   });
 });
 
+describe('金标准场景 —— 翻前扩展：短筹码弃牌该继续（preflop_fold_too_tight 补上 allin 判据，评审发现③）', () => {
+  it('场景 27：BB 拿 J9s（3 BB 短筹码）面对 UTG 开池、HJ/CO/BTN 跟注，弃牌 → preflop_fold_too_tight（此前因推荐候选是 allin 类型而判不出来）', () => {
+    // 种子 mw-3、buttonSeat=4（BB=座位0=hero，起始筹码覆盖为 3 BB）：hero 发到
+    // JsTh? 不——发到 J9 同花（J9s）。动作序列：UTG 开池到 6 → HJ/CO/BTN 跟注
+    // → SB 弃牌 → hero（3 BB 起始，toCall=5，筹码不足以完整跟注）弃牌
+    //   （被测决策点，本该 all-in 跟注）。
+    //
+    // hero 筹码不足以完整跟注（heroStack=3 < toCall=5），estimateEv 走强制
+    // 短筹码分支，只产出 fold 与 'call all-in'（actionType 硬编码为 'allin'，
+    // 语义是"跟注"，见 evEstimate.ts 170-182 行）两个候选，EV 引擎推荐后者。
+    // tagFor 的 preflop_fold_too_tight 分支此前只判
+    // `rec.actionType === 'call' || rec.actionType === 'raise'`，不包含
+    // 'allin'——短筹码翻前弃牌该继续的失误因此完全判不出来：损失照常算
+    // （actualEv/evLoss 不受影响），但 tag 归不进 preflop_fold_too_tight，
+    // 也不会计入 spec §9 的 mistakeTags 漏洞统计。这是短筹码翻前最常见的
+    // 失误形态之一（面对多人入池的短筹码弃牌），补上 'allin' 后能正确分类。
+    const record = buildRecord('golden-27-bb-j9s-fold-multiway-shove', 'mw-3', BUTTON_FOR.BB, s => {
+      s = actTo(s, 6); // UTG 开池
+      s = callCur(s); // HJ 跟注
+      s = callCur(s); // CO 跟注
+      s = callCur(s); // BTN 跟注
+      s = foldCur(s); // SB 弃牌
+      s = foldCur(s); // hero BB 弃牌（被测决策点）
+      s = finishHand(s);
+      return s;
+    }, { [HERO_SEAT]: 3 });
+    expect(classifyHand(record.seats[0].holeCards[0], record.seats[0].holeCards[1])).toBe('J9s');
+
+    const a = analyzeHand(record, EV_OPTS);
+    const idx = record.actions.findIndex(act => act.seat === 0 && act.street === 'preflop');
+    const d = a.decisions.find(dd => dd.actionIndex === idx)!;
+    expect(d).toBeDefined();
+    expect(d.tag).toBe('preflop_fold_too_tight');
+    expect(atLeast(d.severity, 'notable')).toBe(true);
+    // 实测 evLoss≈1.55 BB；区间留足余量。
+    expect(d.evLoss).toBeGreaterThan(0.6);
+    expect(d.evLoss).toBeLessThan(3);
+  });
+});
+
 /**
  * ── ineffective_bluff：没有场景，是代码结构决定的，不是没找到合适局面 ──
  *

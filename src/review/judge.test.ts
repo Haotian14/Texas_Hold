@@ -248,6 +248,20 @@ describe('tagFor —— 翻前', () => {
     expect(tagFor(s, actual, null, evFor(rec), VS_OPEN_NODE)).toBe('preflop_fold_too_tight');
   });
 
+  // ───────────────────────────────────────────────────────────────────────
+  // 'allin' 补入 fold_too_tight 判据回归（评审发现③）：短筹码翻前场景里
+  // EV 引擎推荐的常常是 estimateEv 强制短筹码分支产出的 'call all-in' 候选
+  // （actionType 硬编码为 'allin'，语义是"跟注"，见 evEstimate.ts 170-182 行）。
+  // 此前 fold_too_tight 只判 `rec.actionType === 'call' || 'raise'`，这类候选
+  // 会漏判，弃牌该继续的失误算得出损失却归不进任何一类。
+  // ───────────────────────────────────────────────────────────────────────
+  it('弃牌而推荐 call all-in（短筹码强制跟注候选，actionType 为 allin）→ preflop_fold_too_tight', () => {
+    const s = sit({ street: 'preflop', toCall: 6, heroStack: 3 });
+    const actual = tagAct('fold', 0, { street: 'preflop', toCall: 6, stackBefore: 3 });
+    const rec = cand('call all-in', 'allin', 3, 1.4);
+    expect(tagFor(s, actual, null, evFor(rec), VS_OPEN_NODE)).toBe('preflop_fold_too_tight');
+  });
+
   it('跟注而推荐加注 → preflop_missed_3bet', () => {
     const s = sit({ street: 'preflop', toCall: 3 });
     const actual = tagAct('call', 3, { street: 'preflop', toCall: 3 });

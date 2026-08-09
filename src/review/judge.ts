@@ -151,7 +151,16 @@ export function tagFor(
   const isOpen = node?.kind === 'rfi';
 
   if (isPreflop) {
-    if (actual.type === 'fold' && (rec.actionType === 'call' || rec.actionType === 'raise')) {
+    // 'allin' 补入这条判据（评审发现③）：短筹码翻前场景里 EV 引擎推荐的往往
+    // 是 estimateEv 强制短筹码分支产出的 'call all-in' 候选（actionType 硬编码
+    // 为 'allin'，语义是"跟注"，见 evEstimate.ts 170-182 行），这类候选此前
+    // 不满足 `rec.actionType === 'call' || rec.actionType === 'raise'`，弃牌
+    // 该继续的失误因此完全判不出来——损失照常算（actualEv/evLoss 不受影响），
+    // 但归不进 preflop_fold_too_tight，也不会计入 tags 索引供 spec §9 的漏洞
+    // 统计使用。这是短筹码翻前最常见的失误形态之一（面对多人入池全下跟注的
+    // 赔率判断），不能漏判。
+    if (actual.type === 'fold' &&
+        (rec.actionType === 'call' || rec.actionType === 'raise' || rec.actionType === 'allin')) {
       return 'preflop_fold_too_tight';
     }
     // !isOpen 守卫（评审发现②）：missed_3bet 说的是"面对一次加注，只跟注、
