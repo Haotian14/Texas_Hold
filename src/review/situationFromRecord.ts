@@ -95,7 +95,7 @@ export function heroDecisionPoints(
         board: before.board,
         dead: before.board,
         potBefore: applied.potBefore,
-        betSize: applied?.amount ?? 0,
+        betSize: applied.amount,
         strengthIterations,
         rng,
       }),
