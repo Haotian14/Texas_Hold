@@ -616,54 +616,30 @@ describe('金标准场景 —— 翻前扩展：面对 3bet 节点（vs-3bet）'
   });
 });
 
-/**
- * ═════════════════════════════════════════════════════════════════════════
- * 以下四条按任务书的铁律用 it.skip 挂起：构造完成、断言写的是任务书原始预期，
- * 但实测结果与预期不符。没有改预期让它们通过。每条都附：hero 手牌/位置/公共牌、
- * 完整动作序列、EvResult 里的全部候选（label/actionType/investment/ev/
- * foldEquity/W'），以及引擎最终判定与原因。
- *
- * 四条的根因都指向同一处机制：estimateEv 里下注/加注候选的 foldEquity 只由
- * 下注尺度与底池的几何关系决定（mdf = pot/(pot+b)，foldEquity=(1-mdf)^k），
- * 完全不看对手范围的强弱——这在"只剩一个能弃牌的对手"的节点上（k=1）会让
- * "去下大注/加注/全下"系统性地显得比"弃牌"更有利可图，不论 hero 实际手牌多差。
- * 这不是 spec §12 原文点名的"超额下注尺度"局限的简单重复，而是它更深一层的
- * 后果：不仅下注尺度的数字会失真，连"该不该继续/该不该反加"这个方向性判断
- * 都可能被带偏。三条场景（S1/S3/S4）都在这类"单一活对手"节点上，S2 是一个
- * 相关但独立的现象（未行动对手先验范围把冷跟的门槛推得过高）。
- * ═════════════════════════════════════════════════════════════════════════
- */
-describe('金标准场景 —— 已知不可达（it.skip，附完整候选证据）', () => {
-  it.skip('场景 S1：SB 拿 92o 跛入 → 预期 preflop_sb_limp，实测 preflop_missed_3bet', () => {
+describe('金标准场景 —— 翻前扩展：SB 跛入（sb_limp，原 it.skip 场景 S1，isOpen 守卫修复后转为可达）', () => {
+  it('场景 26：SB 拿 92o 跛入 → preflop_sb_limp（原任务书预期，此前被 missed_3bet 抢先命中而不可达）', () => {
     // 局面：种子 pf-58、buttonSeat=5（SB=座位0=hero），hero 发到 9s2c（92o）。
     // 动作序列：UTG/HJ/CO/BTN 弃牌 → hero 跟注 0.5（补齐大盲，"跛入"）→ BB 过牌
-    //   → 翻牌/转牌/河牌一路过牌到摊牌。
+    //   → 翻牌/转牌/河牌一路过牌到摊牌。局面构造与种子跟原 it.skip 版本完全一致，
+    //   改的只有 judge.ts::tagFor 本身。
     //
-    // EvResult 全部候选（heroEquity=0.392, requiredEquity=0.25）：
+    // 根因不是 evEstimate 的超额下注/foldEquity 局限（本节其余三条 it.skip
+    // 场景的根因），是 tagFor 里一处纯粹的判定顺序缺陷：missed_3bet 分支
+    // （`actual.type==='call' && rec.actionType==='raise'`）此前没有检查
+    // "是否真的有人加注过"，SB 补齐大盲时 node.kind==='rfi'（isOpen=true，
+    // 桌上还没有人加注），但 actual.type 仍是 'call'——只要 EV 引擎推荐的是
+    // raise 类型（这个节点上几乎总是如此，raise 候选的 foldEquity 项拉得
+    // 很高），就会被 missed_3bet 抢先命中，sb_limp 分支排在它后面永远轮不到。
+    // 现在 missed_3bet 加了 `!isOpen` 守卫（judge.ts::tagFor，"面对加注"这句话
+    // 要求真的有加注者），SB 跛入时 isOpen 恒为 true，missed_3bet 不会再命中，
+    // sb_limp 分支正常生效。
+    //
+    // EvResult 全部候选（本次实测，iterations=2000/strengthIterations=60）：
     //   fold                投入0    ev=0
-    //   call                投入0.5  ev=0.284       ← hero 实际动作匹配到这一档
-    //   bet 1/3   (raise)   投入1    ev=0.5918  foldEquity=0.40  W'=0.3288
-    //   bet 1/2   (raise)   投入1.25 ev=0.6171  foldEquity=0.4545 W'=0.3233
-    //   bet 2/3   (raise)   投入1.5  ev=0.6265  foldEquity=0.50  W'=0.3132
-    //   bet pot   (raise)   投入2    ev=0.6471  foldEquity=0.5714 W'=0.302  ← 推荐
-    //   all-in    (raise)   投入99.5 ev=0.3119  foldEquity=0.9851 W'=0.105
-    //
-    // 引擎结论：evLoss≈0.36、severity=minor、tag=preflop_missed_3bet
-    //   （tagFor 先检查 `actual==='call' && rec.actionType==='raise'` 这一条，
-    //   命中就直接返回 missed_3bet，排在 sb_limp 检查之前——见 judge.ts:101-111）。
-    //
-    // 为什么任务书预期的 preflop_sb_limp 判不出来：sb_limp 分支要求
-    // `rec.actionType !== 'raise'`（否则先被 missed_3bet 截走）。用 32o
-    // （w-6 种子、同样的构造）复测过一次交叉验证——即便是全副 169 手起手牌里
-    // 最差的一手，EV 引擎依然推荐 bet pot（raise），foldEquity=0.5714：
-    //   fold 0 / call(0.5,ev0.136) / bet1/3(1,ev0.5414,fe0.40) /
-    //   bet1/2(1.25,ev0.5632,fe0.4545) / bet2/3(1.5,ev0.62,fe0.50) /
-    //   bet pot(2,ev0.6348,fe0.5714,推荐) / all-in(99.5,ev0.4106,fe0.9851)
-    // 两次独立测试（92o 与 32o）都显示：SB 先手面对 BB 单一对手时，无论手牌多差，
-    // "raise" candidate 的 foldEquity 项都足够大，EV 恒高于 fold(0) 与 call。
-    // 这意味着 preflop_sb_limp 这个分类在当前 EV 引擎下可能对任何手牌都不可达——
-    // 不是这条场景运气不好，是 tagFor 排在 missed_3bet 后面的这个分支，在
-    // "SB 先手、只面对 BB 一个对手"的物理结构下，本来就没有能触发它的路径。
+    //   call                投入0.5  ev≈0.24        ← hero 实际动作匹配到这一档
+    //   bet pot   (raise)   投入2    ev≈0.65         ← 推荐（推荐的具体档位/数值
+    //     每次跑可能因蒙特卡洛抖动略有不同，但方向稳定：某个 raise 候选 EV 明显
+    //     高于 call，"该主动加注却选择跛入"这个方向性结论不受抖动影响）。
     const record = buildRecord('golden-s1-sb-92o-limp', 'pf-58', BUTTON_FOR.SB, s => {
       s = foldUntil(s, HERO_SEAT);
       s = callCur(s);
@@ -675,9 +651,37 @@ describe('金标准场景 —— 已知不可达（it.skip，附完整候选证�
     const a = analyzeHand(record, EV_OPTS);
     const idx = record.actions.findIndex(act => act.seat === 0 && act.street === 'preflop');
     const d = a.decisions.find(dd => dd.actionIndex === idx)!;
-    expect(d.tag).toBe('preflop_sb_limp'); // 实测为 preflop_missed_3bet，断言按任务书原始预期保留，故意失败
+    expect(d.tag).toBe('preflop_sb_limp');
+    expect(atLeast(d.severity, 'minor')).toBe(true);
+    // 实测 evLoss≈0.41 BB；区间留足余量，量级与场景 10（KK 面对 CO 开池只跟注，
+    // 同样是 missed_3bet 类判定，evLoss≈0.22）相近，都是"该加注却只跟注"里
+    // 损失较小的一档。
+    expect(d.evLoss).toBeGreaterThan(0.1);
+    expect(d.evLoss).toBeLessThan(1.2);
   });
+});
 
+/**
+ * ═════════════════════════════════════════════════════════════════════════
+ * 以下三条按任务书的铁律用 it.skip 挂起：构造完成、断言写的是任务书原始预期，
+ * 但实测结果与预期不符。没有改预期让它们通过。每条都附：hero 手牌/位置/公共牌、
+ * 完整动作序列、EvResult 里的全部候选（label/actionType/investment/ev/
+ * foldEquity/W'），以及引擎最终判定与原因。
+ *
+ * 原本是四条（S1/S2/S3/S4），S1 的根因经复核确认不属于这里描述的机制——见上面
+ * "翻前扩展：SB 跛入" 一节，S1 已经在 judge.ts 的 !isOpen 守卫修复后转为可达，
+ * 挪出本节、解除 skip。剩下三条的根因都指向同一处机制：estimateEv 里下注/
+ * 加注候选的 foldEquity 只由下注尺度与底池的几何关系决定
+ * （mdf = pot/(pot+b)，foldEquity=(1-mdf)^k），完全不看对手范围的强弱——这在
+ * "只剩一个能弃牌的对手"的节点上（k=1）会让"去下大注/加注/全下"系统性地
+ * 显得比"弃牌"更有利可图，不论 hero 实际手牌多差。这不是 spec §12 原文点名的
+ * "超额下注尺度"局限的简单重复，而是它更深一层的后果：不仅下注尺度的数字会
+ * 失真，连"该不该继续/该不该反加"这个方向性判断都可能被带偏。S3/S4 都在这类
+ * "单一活对手"节点上，S2 是一个相关但独立的现象（未行动对手先验范围把冷跟的
+ * 门槛推得过高）。
+ * ═════════════════════════════════════════════════════════════════════════
+ */
+describe('金标准场景 —— 已知不可达（it.skip，附完整候选证据）', () => {
   it.skip('场景 S2：BTN 拿 AKs 面对 UTG 开池只跟注 → 预期 preflop_missed_3bet，实测 preflop_cold_call_too_wide', () => {
     // 局面：种子 pf-261、buttonSeat=0（BTN=座位0=hero），hero 发到 AdKd（AKs）。
     // 动作序列：UTG 开池到 3 → HJ/CO 弃牌 → hero 跟注 3（被测决策点）→ SB/BB 弃牌

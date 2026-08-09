@@ -314,6 +314,29 @@ describe('tagFor —— 翻前', () => {
     expect(tagFor(reraiseSit, reraiseActual, null, evFor(reraiseRec), VS_OPEN_NODE)).toBe('preflop_over_aggressive');
   });
 
+  // ───────────────────────────────────────────────────────────────────────
+  // !isOpen 守卫回归（评审发现②）：missed_3bet / cold_call_too_wide 都要求
+  // "面对加注"，node.kind==='rfi'（isOpen）时桌上还没有人加注过，即使
+  // actual.type==='call' 也不该命中这两条——SB 补齐大盲已经由 sb_limp 分支
+  // 单独覆盖（见上面几条用例），这里补的是没有 !isOpen 守卫时会漏判的另一种
+  // 处境：跛入者身后再跛入（非 SB，isOpen 仍为 true，因为跛入不计入加注）。
+  // ───────────────────────────────────────────────────────────────────────
+  it('无人加注时跟注（非 SB 的跛入者身后再跛入）不应判 preflop_missed_3bet，即使推荐动作是 raise —— !isOpen 守卫回归（judge.ts:157 附近）', () => {
+    const node: PreflopNode = { key: 'HJ_rfi', kind: 'rfi', opener: null };
+    const s = sit({ street: 'preflop', heroPosition: 'HJ', toCall: 1 });
+    const actual = tagAct('call', 1, { street: 'preflop', toCall: 1 });
+    const rec = cand('raise', 'raise', 3, 1);
+    expect(tagFor(s, actual, null, evFor(rec), node)).toBeNull();
+  });
+
+  it('无人加注时跟注（非 SB 的跛入者身后再跛入）不应判 preflop_cold_call_too_wide，即使推荐动作是 fold —— !isOpen 守卫回归（judge.ts:168 附近）', () => {
+    const node: PreflopNode = { key: 'HJ_rfi', kind: 'rfi', opener: null };
+    const s = sit({ street: 'preflop', heroPosition: 'HJ', toCall: 1 });
+    const actual = tagAct('call', 1, { street: 'preflop', toCall: 1 });
+    const rec = cand('fold', 'fold', 0, 0);
+    expect(tagFor(s, actual, null, evFor(rec), node)).toBeNull();
+  });
+
   it('加注且推荐动作也是加注（无失误）→ null（翻前合法但归不进任何一类）', () => {
     const s = sit({ street: 'preflop', toCall: 3 });
     const actual = tagAct('raise', 9, { street: 'preflop', toCall: 3 });

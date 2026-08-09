@@ -154,7 +154,14 @@ export function tagFor(
     if (actual.type === 'fold' && (rec.actionType === 'call' || rec.actionType === 'raise')) {
       return 'preflop_fold_too_tight';
     }
-    if (actual.type === 'call' && rec.actionType === 'raise') {
+    // !isOpen 守卫（评审发现②）：missed_3bet 说的是"面对一次加注，只跟注、
+    // 没有反加"——这句话只有在真的有人加注过时才成立。node.kind === 'rfi'
+    // （isOpen）意味着桌上还没有人加注：小盲补齐大盲、或跛入者身后再跛入，
+    // 都会落进 actual.type==='call'，但两者都不是"面对加注"。没有这条守卫时，
+    // 这个分支排在 sb_limp 检查之前，会把 SB 跛入误判成 missed_3bet（渲染出
+    // "面对加注只跟注了 0.5 BB"这种没有加注者存在的假句子），也会把跛入者
+    // 身后的跛入误判成 missed_3bet（如果 rec 恰好是 raise）。
+    if (actual.type === 'call' && !isOpen && rec.actionType === 'raise') {
       return 'preflop_missed_3bet';
     }
     // sb_limp 排在 cold_call_too_wide 前面（原顺序相反）：SB 补齐大盲时没有人
@@ -165,7 +172,13 @@ export function tagFor(
     if (actual.type === 'call' && isOpen && situation.heroPosition === 'SB') {
       return 'preflop_sb_limp';
     }
-    if (actual.type === 'call' && rec.actionType === 'fold') {
+    // 同样的 !isOpen 守卫（评审发现②）：cold_call_too_wide 说的是"冷跟一次
+    // 加注却手牌不够格"，没有 !isOpen 时，跛入者身后再跛入（isOpen 仍为
+    // true，因为跛入不计入 preflopNodeFor 的加注计数）在 rec 是 fold 时会被
+    // 误判成这一类，渲染出"面对加注跟注 X BB……不在冷跟范围内"——同样是没有
+    // 加注者存在的假句子。SB 补齐大盲的情况已经被上面的 sb_limp 分支截走，
+    // 这里只需要处理"非 SB 的跛入者身后再跛入"这一种此前会被误判的处境。
+    if (actual.type === 'call' && !isOpen && rec.actionType === 'fold') {
       return 'preflop_cold_call_too_wide';
     }
     if (isAggressiveActual(actual, situation) && rec.actionType === 'fold') {
