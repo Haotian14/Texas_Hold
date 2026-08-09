@@ -156,47 +156,87 @@ function evFor(recommended: EvCandidate, others: EvCandidate[] = [], heroEquity 
   };
 }
 
+// 下面这些 PreflopNode 值不是随手编的，是 preflopNodeFor（src/review/preflopNode.ts）
+// 对真实局面会返回的那一种：node.kind 决定 tagFor 里的 isOpen，toCall 则取引擎
+// 在对应节点上会产出的真实数字（1 BB = UTG 面对大盲开池的 toCall；0.5 BB = SB
+// 补齐大盲的 toCall；3 BB = 面对一次开池到 3 的 toCall）。
+const RFI_NODE: PreflopNode = { key: 'UTG_rfi', kind: 'rfi', opener: null };
+const SB_RFI_NODE: PreflopNode = { key: 'SB_rfi', kind: 'rfi', opener: null };
+const VS_OPEN_NODE: PreflopNode = { key: 'BTN_vs_UTG_open', kind: 'vs-open', opener: 'UTG' };
+
 describe('tagFor —— 翻前', () => {
   it('弃牌而推荐继续（call）→ preflop_fold_too_tight', () => {
+    // toCall=3：面对一次开池到 3（真实节点，vs-open），不是引擎无法产生的状态。
     const s = sit({ street: 'preflop', toCall: 3 });
     const actual = tagAct('fold', 0, { street: 'preflop', toCall: 3 });
     const rec = cand('call', 'call', 3, 1);
-    expect(tagFor(s, actual, null, evFor(rec))).toBe('preflop_fold_too_tight');
+    expect(tagFor(s, actual, null, evFor(rec), VS_OPEN_NODE)).toBe('preflop_fold_too_tight');
   });
 
   it('跟注而推荐加注 → preflop_missed_3bet', () => {
     const s = sit({ street: 'preflop', toCall: 3 });
     const actual = tagAct('call', 3, { street: 'preflop', toCall: 3 });
     const rec = cand('raise', 'raise', 9, 2);
-    expect(tagFor(s, actual, null, evFor(rec))).toBe('preflop_missed_3bet');
+    expect(tagFor(s, actual, null, evFor(rec), VS_OPEN_NODE)).toBe('preflop_missed_3bet');
   });
 
   it('跟注而推荐弃牌 → preflop_cold_call_too_wide', () => {
     const s = sit({ street: 'preflop', toCall: 3 });
     const actual = tagAct('call', 3, { street: 'preflop', toCall: 3 });
     const rec = cand('fold', 'fold', 0, 0);
-    expect(tagFor(s, actual, null, evFor(rec))).toBe('preflop_cold_call_too_wide');
+    expect(tagFor(s, actual, null, evFor(rec), VS_OPEN_NODE)).toBe('preflop_cold_call_too_wide');
   });
 
   it('SB 无人加注时跟注（跛入）→ preflop_sb_limp', () => {
-    const s = sit({ street: 'preflop', heroPosition: 'SB', toCall: 0 });
-    const actual = tagAct('call', 0.5, { street: 'preflop', toCall: 0 });
+    // toCall=0.5：SB 已经投入 0.5 BB 盲注，补齐到大盲的 1 BB 还差 0.5——这才是
+    // 引擎会产出的数字，不是原先测试里那个引擎永远造不出来的 toCall=0。
+    const s = sit({ street: 'preflop', heroPosition: 'SB', toCall: 0.5 });
+    const actual = tagAct('call', 0.5, { street: 'preflop', toCall: 0.5 });
     const rec = cand('call', 'call', 0.5, 0.1); // 不是 raise 也不是 fold，才能落到 sb_limp 分支
-    expect(tagFor(s, actual, null, evFor(rec))).toBe('preflop_sb_limp');
+    expect(tagFor(s, actual, null, evFor(rec), SB_RFI_NODE)).toBe('preflop_sb_limp');
   });
 
-  it('面对下注时加注而推荐弃牌 → preflop_over_aggressive', () => {
+  it('SB 跛入即使推荐动作是弃牌，也判 preflop_sb_limp 而不是 preflop_cold_call_too_wide' +
+    '（分支顺序修正的回归测试——sb_limp 现在排在 cold_call_too_wide 前面）', () => {
+    const s = sit({ street: 'preflop', heroPosition: 'SB', toCall: 0.5 });
+    const actual = tagAct('call', 0.5, { street: 'preflop', toCall: 0.5 });
+    const rec = cand('fold', 'fold', 0, 0); // 刻意让 rec 也是 fold，两条分支都"够格"命中
+    expect(tagFor(s, actual, null, evFor(rec), SB_RFI_NODE)).toBe('preflop_sb_limp');
+  });
+
+  it('面对下注时加注而推荐弃牌 → preflop_over_aggressive（vs-open 节点，不是开池）', () => {
     const s = sit({ street: 'preflop', toCall: 3 });
     const actual = tagAct('raise', 9, { street: 'preflop', toCall: 3 });
     const rec = cand('fold', 'fold', 0, 0);
-    expect(tagFor(s, actual, null, evFor(rec))).toBe('preflop_over_aggressive');
+    expect(tagFor(s, actual, null, evFor(rec), VS_OPEN_NODE)).toBe('preflop_over_aggressive');
   });
 
-  it('无人加注时开池而推荐弃牌 → preflop_open_too_wide', () => {
-    const s = sit({ street: 'preflop', toCall: 0 });
-    const actual = tagAct('raise', 3, { street: 'preflop', toCall: 0 });
+  it('无人加注时开池而推荐弃牌 → preflop_open_too_wide（rfi 节点，toCall=1 是 UTG 面对大盲的真实数字）', () => {
+    const s = sit({ street: 'preflop', toCall: 1 });
+    const actual = tagAct('raise', 3, { street: 'preflop', toCall: 1 });
     const rec = cand('fold', 'fold', 0, 0);
-    expect(tagFor(s, actual, null, evFor(rec))).toBe('preflop_open_too_wide');
+    expect(tagFor(s, actual, null, evFor(rec), RFI_NODE)).toBe('preflop_open_too_wide');
+  });
+
+  it('4bet 之后（node 为 null，范围表未覆盖）加注而推荐弃牌 → preflop_over_aggressive，不是 preflop_open_too_wide', () => {
+    // node===null 在翻前只可能表示 4bet 及以上：显然不是"开池"，isOpen 应取 false。
+    const s = sit({ street: 'preflop', toCall: 20 });
+    const actual = tagAct('allin', 100, { street: 'preflop', toCall: 20 });
+    const rec = cand('fold', 'fold', 0, 0);
+    expect(tagFor(s, actual, null, evFor(rec), null)).toBe('preflop_over_aggressive');
+  });
+
+  it('开池过宽（rfi 节点）判 preflop_open_too_wide，面对开池再加注过宽（vs-open 节点）判 ' +
+    'preflop_over_aggressive —— 这正是缺陷把两者混为一谈的那一对场景', () => {
+    const openNode = sit({ street: 'preflop', toCall: 1 });
+    const openActual = tagAct('raise', 3, { street: 'preflop', toCall: 1 });
+    const openRec = cand('fold', 'fold', 0, 0);
+    expect(tagFor(openNode, openActual, null, evFor(openRec), RFI_NODE)).toBe('preflop_open_too_wide');
+
+    const reraiseSit = sit({ street: 'preflop', toCall: 3 });
+    const reraiseActual = tagAct('raise', 9, { street: 'preflop', toCall: 3 });
+    const reraiseRec = cand('fold', 'fold', 0, 0);
+    expect(tagFor(reraiseSit, reraiseActual, null, evFor(reraiseRec), VS_OPEN_NODE)).toBe('preflop_over_aggressive');
   });
 
   it('加注且推荐动作也是加注（无失误）→ null（翻前合法但归不进任何一类）', () => {
@@ -206,7 +246,7 @@ describe('tagFor —— 翻前', () => {
     // 前置条件：确认这确实不会先命中 fold_too_tight / missed_3bet 等分支
     expect(actual.type).toBe('raise');
     expect(rec.actionType).toBe('raise');
-    expect(tagFor(s, actual, null, evFor(rec))).toBeNull();
+    expect(tagFor(s, actual, null, evFor(rec), VS_OPEN_NODE)).toBeNull();
   });
 });
 

@@ -82,10 +82,17 @@ export function tagFor(
   actual: Action,
   actualCand: EvCandidate | null,
   ev: EvResult,
+  node: PreflopNode | null = null,
 ): MistakeTag | null {
   const rec = ev.recommended;
   const isPreflop = situation.street === 'preflop';
-  const facingBet = chipsGreater(situation.toCall, 0);
+  // "hero 是否在开池"问的是「有没有人已经加注」，不是「要不要付钱」——
+  // UTG 开池也要付 1 BB 的大盲、SB 补齐也要付 0.5 BB，toCall 在这两个分支里
+  // 恒为正，用它来分辨"开池"与"面对加注"在物理上不可能成立（这正是缺陷本身）。
+  // node.kind === 'rfi' 直接回答"还没有人加注"，node === null 在翻前只可能
+  // 表示 4bet 及以上（范围表未覆盖的节点，见 preflopNode.ts 的注释），
+  // 4bet 显然不是"开池"，所以 node === null 时 isOpen 取 false 是对的。
+  const isOpen = node?.kind === 'rfi';
 
   if (isPreflop) {
     if (actual.type === 'fold' && (rec.actionType === 'call' || rec.actionType === 'raise')) {
@@ -94,14 +101,19 @@ export function tagFor(
     if (actual.type === 'call' && rec.actionType === 'raise') {
       return 'preflop_missed_3bet';
     }
+    // sb_limp 排在 cold_call_too_wide 前面（原顺序相反）：SB 补齐大盲时没有人
+    // 加注过，"跛入"描述的是这个动作本身的性质（该开池却选择了补齐），跟
+    // "冷跟一次加注却手牌不够格"是两件不同的事——即使这一步的推荐动作恰好也是
+    // fold，"补齐大盲"仍然是更具体、更贴切的描述，本文件顶部"规则按最具体的
+    // 先判排序"的原则要求它优先命中。
+    if (actual.type === 'call' && isOpen && situation.heroPosition === 'SB') {
+      return 'preflop_sb_limp';
+    }
     if (actual.type === 'call' && rec.actionType === 'fold') {
       return 'preflop_cold_call_too_wide';
     }
-    if (actual.type === 'call' && !facingBet && situation.heroPosition === 'SB') {
-      return 'preflop_sb_limp';
-    }
     if ((actual.type === 'raise' || actual.type === 'allin') && rec.actionType === 'fold') {
-      return facingBet ? 'preflop_over_aggressive' : 'preflop_open_too_wide';
+      return isOpen ? 'preflop_open_too_wide' : 'preflop_over_aggressive';
     }
     return null;
   }

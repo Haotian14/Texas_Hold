@@ -44,20 +44,25 @@ export function analyzeHand(record: HandRecord, opts: AnalyzeOptions = {}): Hand
     const actualEv = actualCand ? actualCand.ev : null;
     const degraded = ev.degraded !== null;
 
+    // preflopNodeFor 只调用一次,判失误短路和 tagFor 的"是否在开池"判断
+    // 共用同一个节点值 —— 两处若各自算一次,不仅重复计算,还留下"万一两处算出
+    // 不一致的节点"这种本不该存在的隐患。
+    const node = p.situation.street === 'preflop' ? preflopNodeFor(p.state) : null;
+
     // ── 三条短路,顺序有意义
     // 1) 估算降级:对手范围被替换过,这个数字不能拿去告诉用户亏了多少(②-B-1 的硬约束)
     // 2) 翻前频率达标:均衡策略是混合的,低频但合法的选择不算失误(spec §8.2)
     // 3) 匹配不到候选:算不出损失就不报损失,宁可少算
     const preflopOk =
       p.situation.street === 'preflop' &&
-      judgePreflopFrequency(preflopNodeFor(p.state), p.situation, p.actual);
+      judgePreflopFrequency(node, p.situation, p.actual);
 
     const skip = degraded || preflopOk || actualEv === null;
 
     const evLoss = skip ? 0 : Math.max(0, round4(ev.recommended.ev - actualEv));
     const severity = severityOf(evLoss);
     const tag: MistakeTag | null =
-      skip || severity === 'ok' ? null : tagFor(p.situation, p.actual, actualCand, ev);
+      skip || severity === 'ok' ? null : tagFor(p.situation, p.actual, actualCand, ev, node);
 
     decisions.push({
       actionIndex: p.actionIndex,
