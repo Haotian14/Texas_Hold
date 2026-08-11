@@ -4,6 +4,7 @@ import type { ActionType, GameState, HandRecord } from '../core/types';
 import { HERO_SEAT, SEAT_COUNT, STARTING_STACK } from '../core/types';
 import { toHandRecord } from '../core/handRecord';
 import { createRng } from '../core/rng';
+import { chipsGreater } from '../core/chips';
 import type { RangeSet } from '../core/rangeSet';
 import { narrowByAction } from '../core/opponentRange';
 import { assignPersonas, getPersona, GTO_PERSONA } from '../ai/personas';
@@ -12,7 +13,7 @@ import { decide } from '../ai/decide';
 import type { SessionLedger } from './ledger';
 import { createLedger, recordHandPlayed } from './ledger';
 
-/** 超过此深度（BB）即认为复盘精度下降 */
+/** 达到此深度（BB）即认为复盘精度下降 */
 export const DEEP_STACK_BB = 150;
 
 export type SessionPhase = 'aiToAct' | 'awaitingHero' | 'handOver';
@@ -39,6 +40,12 @@ export interface HandSessionState {
   /** 座位号 -> persona id，hero 座位为 'hero' */
   personaIds: ReadonlyMap<number, string>;
   phase: SessionPhase;
+  /** 本手牌的基础 seed，供省略 cfg 的 hero 动作继续派生确定性随机流 */
+  seed: string;
+  /** 开手时固定的范围牌力迭代数 */
+  strengthIterations: number | undefined;
+  /** 开手时求值一次的纯数值时间戳 */
+  handTimestamp: number;
   /** 本手是第几手（从 0 起），参与 rng 派生与按钮位轮转 */
   handIndex: number;
   /** 本手已推进的步数，参与 rng 派生 */
@@ -79,6 +86,7 @@ export function beginHand(
   ledger: SessionLedger,
   totalTableBuyIn: number,
 ): HandSessionState {
+  const handTimestamp = (cfg.now ?? (() => 0))();
   const game = startHand({
     seed: `${cfg.seed}-h${handIndex}`,
     buttonSeat: handIndex % SEAT_COUNT,
@@ -111,6 +119,9 @@ export function beginHand(
     ranges,
     personaIds,
     phase: phaseOf(game),
+    seed: cfg.seed,
+    strengthIterations: cfg.strengthIterations,
+    handTimestamp,
     handIndex,
     stepIndex: 0,
     lastAction: null,
@@ -177,7 +188,7 @@ function advance(
     id: `${cfg.seed}-h${s.handIndex}`,
     heroSeat: HERO_SEAT,
     personaIds: Object.fromEntries(s.personaIds),
-    timestamp: (cfg.now ?? (() => 0))(),
+    timestamp: s.handTimestamp,
   });
 
   return {
@@ -230,20 +241,14 @@ export function applyHero(
   if (s.phase !== 'awaitingHero') {
     throw new Error(`applyHero 只能在 awaitingHero 阶段调用，当前为 ${s.phase}`);
   }
-  // cfg 只用于取 seed 与 strengthIterations；未传时从 game.seed 还原基础 seed
-  const effective: SessionConfig = cfg ?? { seed: baseSeedOf(s) };
+  const effective: SessionConfig = cfg ?? {
+    seed: s.seed,
+    strengthIterations: s.strengthIterations,
+  };
   return advance(s, effective, input);
-}
-
-/** 从本手的引擎 seed（`${base}-h${n}`）还原基础 seed */
-function baseSeedOf(s: HandSessionState): string {
-  const suffix = `-h${s.handIndex}`;
-  return s.game.seed.endsWith(suffix)
-    ? s.game.seed.slice(0, -suffix.length)
-    : s.game.seed;
 }
 
 /** 本手开局时是否有任一座位达到深筹码阈值 */
 export function isDeepStackHand(s: HandSessionState): boolean {
-  return s.game.seats.some(seat => seat.startingStack >= DEEP_STACK_BB);
+  return s.game.seats.some(seat => !chipsGreater(DEEP_STACK_BB, seat.startingStack));
 }
