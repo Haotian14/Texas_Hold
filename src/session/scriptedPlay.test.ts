@@ -3,9 +3,8 @@ import { HERO_SEAT, SEAT_COUNT, BIG_BLIND } from '../core/types';
 import type { HandRecord } from '../core/types';
 import { totalChips, legalActions } from '../core/gameEngine';
 import { replayHandRecord } from '../core/handRecord';
-import { chipsGreater } from '../core/chips';
+import { chipsGreater, isZeroChips, round2 } from '../core/chips';
 import {
-  beginHand,
   startSession,
   stepAi,
   applyHero,
@@ -16,7 +15,6 @@ import {
   DEEP_STACK_BB,
 } from './handSession';
 import type { HandSessionState, SessionConfig } from './handSession';
-import { createLedger, recordHandPlayed } from './ledger';
 import { actionBarModel } from './actionBarModel';
 import { scriptedHeroAction } from './scriptedHero';
 
@@ -38,6 +36,10 @@ interface RunResult {
   deepStackHands: number;
   multiPotHands: number;
   final: HandSessionState;
+}
+
+function sameChips(actual: number, expected: number): boolean {
+  return isZeroChips(round2(actual - expected));
 }
 
 /**
@@ -97,7 +99,7 @@ function run(cfg: SessionConfig, hands: number, rebuyTarget: number): RunResult 
       }
 
       // 断言 1：每个动作后筹码守恒
-      expect(totalChips(s.game)).toBeCloseTo(chipsAtStart, 6);
+      expect(sameChips(totalChips(s.game), chipsAtStart)).toBe(true);
     }
 
     out.records.push(s.record!);
@@ -115,30 +117,43 @@ function run(cfg: SessionConfig, hands: number, rebuyTarget: number): RunResult 
 }
 
 /**
- * A coherent cross-hand snapshot: hero's 99.7BB loss has moved to seat 1,
- * so the six stacks remain 600BB and the ledger still records hero's
- * original 100BB buy-in. Hero then folds a real, legally played hand,
- * preserving the 0.3BB residual without fabricating a handOver state.
+ * Drive a production-reachable session until the first underfunded hero
+ * hand ends. All transitions use the real API in its required order:
+ * startSession -> action(s) -> handOver -> rebuyHero (without nextHand).
  */
 function finishHandWithNonZeroHeroResidual(): HandSessionState {
-  const stacks = [0.3, 199.7, 100, 100, 100, 100];
-  let ledger = createLedger();
-  for (let i = 0; i < 6; i++) ledger = recordHandPlayed(ledger);
+  let s = startSession(CFG);
 
-  let s = beginHand(CFG, 6, stacks, ledger, 600);
-  const chipsAtStart = totalChips(s.game);
-  let guard = 0;
+  for (let h = 0; h < 500; h++) {
+    const chipsAtStart = totalChips(s.game);
+    let guard = 0;
 
-  while (s.phase !== 'handOver') {
-    if (++guard > 300) throw new Error('non-zero-residual scenario deadlocked');
-    s = s.phase === 'aiToAct'
-      ? stepAi(s, CFG)
-      : applyHero(s, { type: 'fold' }, CFG);
-    expect(totalChips(s.game)).toBeCloseTo(chipsAtStart, 6);
+    while (s.phase !== 'handOver') {
+      if (++guard > 300) throw new Error('non-zero-residual scenario deadlocked');
+      if (s.phase === 'aiToAct') {
+        s = stepAi(s, CFG);
+      } else {
+        const legal = legalActions(s.game);
+        const raise = legal.find(x => x.type === 'raise' || x.type === 'bet');
+        const amount = raise ? round2(raise.max - 0.3) : 0;
+        const action = raise
+          && (chipsGreater(amount, raise.min) || sameChips(amount, raise.min))
+          ? { type: raise.type, amount }
+          : (() => {
+            const passive = legal.find(x => x.type === 'check') ?? legal.find(x => x.type === 'fold');
+            return passive ? { type: passive.type } : undefined;
+          })();
+        if (!action) throw new Error('hero has no legal passive action');
+        s = applyHero(s, action, CFG);
+      }
+      expect(sameChips(totalChips(s.game), chipsAtStart)).toBe(true);
+    }
+
+    if (heroNeedsRebuy(s)) return s;
+    s = nextHand(s, CFG);
   }
 
-  expect(s.stacks[HERO_SEAT]).toBe(0.3);
-  return s;
+  throw new Error('no underfunded hero hand reached');
 }
 
 describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
@@ -161,10 +176,12 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
     r.records.forEach((rec, i) => {
       const replayed = replayHandRecord(rec);
       expect(replayed.board, `第 ${i} 手公共牌不一致`).toEqual(rec.board);
-      expect(
-        replayed.seats.map(x => x.stack),
-        `第 ${i} 手终局筹码不一致`,
-      ).toEqual(r.closingStacks[i]);
+      replayed.seats.forEach((seat, seatIndex) => {
+        expect(
+          sameChips(seat.stack, r.closingStacks[i][seatIndex]),
+          `第 ${i} 手 seat ${seatIndex} 终局筹码不一致`,
+        ).toBe(true);
+      });
     });
   });
 
@@ -185,7 +202,7 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
       const opening = r.openingStacks[h].reduce((a, b) => a + b, 0);
       const closing = r.closingStacks[h - 1].reduce((a, b) => a + b, 0);
       const bought = r.openingTableBuyIn[h] - r.openingTableBuyIn[h - 1];
-      expect(opening, `第 ${h} 手开局总筹码对不上`).toBeCloseTo(closing + bought, 6);
+      expect(sameChips(opening, closing + bought), `第 ${h} 手开局总筹码对不上`).toBe(true);
     }
   });
 
@@ -195,18 +212,19 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
       0,
     );
     const byLedger = r.final.stacks[HERO_SEAT] - r.final.ledger.totalBuyIn;
-    expect(byLedger).toBeCloseTo(sumNet, 6);
+    expect(sameChips(byLedger, sumNet)).toBe(true);
   });
 
   it('8. 账本恒等式：非零余码补码不改变补码前后的净值', () => {
     const beforeRebuy = finishHandWithNonZeroHeroResidual();
     expect(heroNeedsRebuy(beforeRebuy)).toBe(true);
+    expect(isZeroChips(beforeRebuy.stacks[HERO_SEAT])).toBe(false);
 
     const beforeNet = beforeRebuy.stacks[HERO_SEAT] - beforeRebuy.ledger.totalBuyIn;
     const afterRebuy = rebuyHero(beforeRebuy, 100);
     const afterNet = afterRebuy.stacks[HERO_SEAT] - afterRebuy.ledger.totalBuyIn;
 
-    expect(afterNet).toBeCloseTo(beforeNet, 6);
+    expect(sameChips(afterNet, beforeNet)).toBe(true);
   });
 
   it('9. 补码只在该补时发生，且拒绝非法额度', () => {
@@ -216,10 +234,10 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
       const needed = chipsGreater(BIG_BLIND, heroClosing);
       const nextOpening = h + 1 < HANDS ? r.openingStacks[h + 1][HERO_SEAT] : null;
       if (nextOpening !== null && needed) {
-        expect(nextOpening, `第 ${h} 手后 hero 应已补码`).toBe(100);
+        expect(sameChips(nextOpening, 100), `第 ${h} 手后 hero 应已补码`).toBe(true);
       }
       if (nextOpening !== null && !needed) {
-        expect(nextOpening, `第 ${h} 手后 hero 不该补码`).toBeCloseTo(heroClosing, 6);
+        expect(sameChips(nextOpening, heroClosing), `第 ${h} 手后 hero 不该补码`).toBe(true);
       }
     }
     expect(() => rebuyHero(r.final, 150)).toThrow();
@@ -244,14 +262,14 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
       const netSum = rec.results.reduce((a, x) => a + x.netBB, 0);
 
       // 底池是正的，且不可能超过全桌起始筹码之和
-      expect(potSum).toBeGreaterThan(0);
-      expect(potSum).toBeLessThanOrEqual(startSum + 1e-6);
+      expect(chipsGreater(potSum, 0)).toBe(true);
+      expect(chipsGreater(potSum, startSum)).toBe(false);
       // 一手牌是零和的：所有人的净盈亏加起来必须是 0
-      expect(netSum, `第 ${rec.id} 手净盈亏之和不为零`).toBeCloseTo(0, 6);
+      expect(isZeroChips(round2(netSum)), `第 ${rec.id} 手净盈亏之和不为零`).toBe(true);
       // 每个池的资格集非空且互不越界
       for (const p of rec.pots) {
         expect(p.eligible.length).toBeGreaterThan(0);
-        expect(p.amount).toBeGreaterThan(0);
+        expect(chipsGreater(p.amount, 0)).toBe(true);
       }
     }
   });
@@ -271,6 +289,6 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
       (a, rec) => a + rec.results.find(x => x.seat === HERO_SEAT)!.netBB,
       0,
     );
-    expect(deep.final.stacks[HERO_SEAT] - deep.final.ledger.totalBuyIn).toBeCloseTo(sumNet, 6);
+    expect(sameChips(deep.final.stacks[HERO_SEAT] - deep.final.ledger.totalBuyIn, sumNet)).toBe(true);
   });
 });

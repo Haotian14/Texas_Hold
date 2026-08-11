@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { totalChips } from '../core/gameEngine';
 import { SEAT_COUNT, STARTING_STACK } from '../core/types';
 import { cardToString } from '../core/cards';
@@ -13,6 +13,17 @@ import type { RangeSet } from '../core/rangeSet';
 // 环境类型。测试实际跑在 vitest 的 node 环境里，console 运行时确实存在，
 // 只是缺类型——用一个局部 ambient 声明补上，不改动 tsconfig 或 src/core。
 declare const console: { log: (...args: unknown[]) => void };
+
+/**
+ * Vitest 3 has a 60s worker RPC deadline. These synchronous, CPU-bound
+ * self-play tests can exceed that deadline as a file while preventing the
+ * worker from servicing queued RPC responses. Yield one macrotask between
+ * tests so the worker can flush those responses without changing any hand,
+ * iteration, assertion, or timeout in the workload itself.
+ */
+afterEach(async () => {
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+});
 
 const CHIPS = SEAT_COUNT * STARTING_STACK;
 
