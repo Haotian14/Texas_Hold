@@ -1,0 +1,29 @@
+:root {
+  --felt: #0b3d2e;
+  --felt-light: #12513c;
+  --text: #f2f5f3;
+  --text-dim: #9bb0a6;
+  --gold: #d8b45a;
+  --danger: #c8503c;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--felt);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  overflow: hidden;
+}
