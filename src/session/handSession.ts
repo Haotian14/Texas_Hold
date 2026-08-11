@@ -1,17 +1,17 @@
 import type { ActionInput } from '../core/gameEngine';
 import { startHand, applyAction, settleHand } from '../core/gameEngine';
 import type { ActionType, GameState, HandRecord } from '../core/types';
-import { HERO_SEAT, SEAT_COUNT, STARTING_STACK } from '../core/types';
+import { BIG_BLIND, HERO_SEAT, SEAT_COUNT, STARTING_STACK } from '../core/types';
 import { toHandRecord } from '../core/handRecord';
 import { createRng } from '../core/rng';
-import { chipsGreater } from '../core/chips';
+import { chipsGreater, round2 } from '../core/chips';
 import type { RangeSet } from '../core/rangeSet';
 import { narrowByAction } from '../core/opponentRange';
 import { assignPersonas, getPersona, GTO_PERSONA } from '../ai/personas';
 import { personaInitialRange } from '../ai/personaRange';
 import { decide } from '../ai/decide';
 import type { SessionLedger } from './ledger';
-import { createLedger, recordHandPlayed } from './ledger';
+import { addBuyIn, createLedger, recordHandPlayed } from './ledger';
 
 /** 达到此深度（BB）即认为复盘精度下降 */
 export const DEEP_STACK_BB = 150;
@@ -251,4 +251,66 @@ export function applyHero(
 /** 本手开局时是否有任一座位达到深筹码阈值 */
 export function isDeepStackHand(s: HandSessionState): boolean {
   return s.game.seats.some(seat => !chipsGreater(DEEP_STACK_BB, seat.startingStack));
+}
+
+/** Target stack amounts in BB for rebuys; they are targets, not added amounts. */
+export const REBUY_OPTIONS: readonly number[] = [100, 200];
+
+function needsRebuy(stack: number): boolean {
+  return chipsGreater(BIG_BLIND, stack);
+}
+
+export function heroNeedsRebuy(s: HandSessionState): boolean {
+  return needsRebuy(s.stacks[HERO_SEAT]);
+}
+
+/**
+ * Rebuy the hero to a target stack. The ledger records only the chips actually
+ * added, preserving the identity of current stack minus cumulative buy-ins.
+ */
+export function rebuyHero(s: HandSessionState, targetStack: number): HandSessionState {
+  if (!REBUY_OPTIONS.includes(targetStack)) {
+    throw new Error(`rebuy target must be one of ${REBUY_OPTIONS.join(' / ')}; got ${targetStack}`);
+  }
+  if (!heroNeedsRebuy(s)) {
+    throw new Error('hero has sufficient chips and does not need a rebuy');
+  }
+
+  const added = round2(targetStack - s.stacks[HERO_SEAT]);
+  const stacks = [...s.stacks];
+  stacks[HERO_SEAT] = targetStack;
+
+  return {
+    ...s,
+    stacks,
+    ledger: addBuyIn(s.ledger, s.handIndex + 1, added),
+    totalTableBuyIn: round2(s.totalTableBuyIn + added),
+  };
+}
+
+/**
+ * Starts the next completed-hand transition. Underfunded AI seats rebuy to a
+ * deterministic target; an underfunded hero must be handled explicitly by UI.
+ */
+export function nextHand(s: HandSessionState, cfg: SessionConfig): HandSessionState {
+  if (s.phase !== 'handOver') {
+    throw new Error(`nextHand can only run after handOver; current phase is ${s.phase}`);
+  }
+  if (heroNeedsRebuy(s)) {
+    throw new Error('hero needs a rebuy before starting the next hand');
+  }
+
+  const handIndex = s.handIndex + 1;
+  const stacks = [...s.stacks];
+  let totalTableBuyIn = s.totalTableBuyIn;
+
+  for (let seat = 0; seat < SEAT_COUNT; seat++) {
+    if (seat === HERO_SEAT || !needsRebuy(stacks[seat])) continue;
+    const rng = createRng(`${cfg.seed}-rebuy-${handIndex}-${seat}`);
+    const target = REBUY_OPTIONS[rng.nextInt(REBUY_OPTIONS.length)];
+    totalTableBuyIn = round2(totalTableBuyIn + (target - stacks[seat]));
+    stacks[seat] = target;
+  }
+
+  return beginHand(cfg, handIndex, stacks, s.ledger, totalTableBuyIn);
 }

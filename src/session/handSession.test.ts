@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { HERO_SEAT, SEAT_COUNT, STARTING_STACK } from '../core/types';
+import { BIG_BLIND, HERO_SEAT, SEAT_COUNT, STARTING_STACK } from '../core/types';
 import { totalChips, legalActions } from '../core/gameEngine';
 import { replayHandRecord } from '../core/handRecord';
 import { createLedger } from './ledger';
@@ -10,6 +10,10 @@ import {
   applyHero,
   isDeepStackHand,
   DEEP_STACK_BB,
+  nextHand,
+  heroNeedsRebuy,
+  rebuyHero,
+  REBUY_OPTIONS,
 } from './handSession';
 import type { HandSessionState, SessionConfig } from './handSession';
 
@@ -217,6 +221,111 @@ describe('handSession 单手', () => {
   it('开手筹码恰好达到 150BB 时算深筹码', () => {
     const stacks = [DEEP_STACK_BB, ...new Array<number>(SEAT_COUNT - 1).fill(STARTING_STACK)];
     const s = beginHand(CFG, 0, stacks, createLedger(), stacks.reduce((a, b) => a + b, 0));
+    expect(isDeepStackHand(s)).toBe(true);
+  });
+});
+
+function sessionWithHeroStack(stack: number): HandSessionState {
+  const stacks = [stack, 100, 100, 100, 100, 100];
+  const s = beginHand(CFG, 3, stacks, createLedger(), 600);
+  return { ...s, phase: 'handOver', record: null, stacks };
+}
+
+describe('handSession across hands', () => {
+  it('exposes target rebuy options of 100 / 200 BB', () => {
+    expect(REBUY_OPTIONS).toEqual([100, 200]);
+  });
+
+  it('nextHand advances the button and hand index', () => {
+    const s = runHandPassively(startSession(CFG), CFG);
+    const n = nextHand(s, CFG);
+    expect(n.handIndex).toBe(1);
+    expect(n.game.buttonSeat).toBe(1);
+    expect(n.phase).not.toBe('handOver');
+    expect(n.record).toBeNull();
+  });
+
+  it('rotates the hero through all six positions', () => {
+    let s = runHandPassively(startSession(CFG), CFG);
+    const positions: string[] = [s.game.seats[HERO_SEAT].position];
+    for (let i = 0; i < SEAT_COUNT - 1; i++) {
+      s = runHandPassively(nextHand(s, CFG), CFG);
+      positions.push(s.game.seats[HERO_SEAT].position);
+    }
+    expect(new Set(positions).size).toBe(SEAT_COUNT);
+  });
+
+  it('carries final stacks to the next hand starting stacks', () => {
+    const s = runHandPassively(startSession(CFG), CFG);
+    const n = nextHand(s, CFG);
+    expect(n.game.seats.map(x => x.startingStack)).toEqual(s.stacks);
+  });
+
+  it('needs a hero rebuy only below one big blind', () => {
+    expect(heroNeedsRebuy(sessionWithHeroStack(0))).toBe(true);
+    expect(heroNeedsRebuy(sessionWithHeroStack(BIG_BLIND / 2))).toBe(true);
+    expect(heroNeedsRebuy(sessionWithHeroStack(BIG_BLIND))).toBe(false);
+    expect(heroNeedsRebuy(sessionWithHeroStack(15))).toBe(false);
+  });
+
+  it('rejects a next hand until an underfunded hero rebuys', () => {
+    expect(() => nextHand(sessionWithHeroStack(0), CFG)).toThrow(/rebuy/);
+  });
+
+  it('records actual added chips when the hero rebuys to a target stack', () => {
+    const s = sessionWithHeroStack(0.3);
+    const r = rebuyHero(s, 100);
+    expect(r.stacks[HERO_SEAT]).toBe(100);
+    const last = r.ledger.buyIns[r.ledger.buyIns.length - 1];
+    expect(last.amount).toBeCloseTo(99.7, 6);
+    expect(last.handIndex).toBe(s.handIndex + 1);
+  });
+
+  it('does not change hero net profit and loss on rebuy', () => {
+    const s = sessionWithHeroStack(0.3);
+    const before = s.stacks[HERO_SEAT] - s.ledger.totalBuyIn;
+    const r = rebuyHero(s, 200);
+    const after = r.stacks[HERO_SEAT] - r.ledger.totalBuyIn;
+    expect(after).toBeCloseTo(before, 6);
+  });
+
+  it('rejects targets outside the rebuy options', () => {
+    const s = sessionWithHeroStack(0);
+    expect(() => rebuyHero(s, 150)).toThrow();
+    expect(() => rebuyHero(s, 0)).toThrow();
+  });
+
+  it('rejects rebuy when the hero has sufficient chips', () => {
+    expect(() => rebuyHero(sessionWithHeroStack(50), 100)).toThrow();
+  });
+
+  it('automatically rebuys a bankrupt AI to an allowed target', () => {
+    const stacks = [100, 0, 100, 100, 100, 100];
+    const s: HandSessionState = {
+      ...beginHand(CFG, 2, stacks, createLedger(), 500),
+      phase: 'handOver',
+      stacks,
+    };
+    const n = nextHand(s, CFG);
+    expect(REBUY_OPTIONS).toContain(n.game.seats[1].startingStack);
+    expect(n.totalTableBuyIn).toBeGreaterThan(s.totalTableBuyIn);
+  });
+
+  it('derives reproducible AI rebuy targets from seed and hand index', () => {
+    const stacks = [100, 0, 100, 100, 100, 100];
+    const make = (): HandSessionState => ({
+      ...beginHand(CFG, 2, stacks, createLedger(), 500),
+      phase: 'handOver',
+      stacks,
+    });
+    expect(nextHand(make(), CFG).game.seats[1].startingStack).toBe(
+      nextHand(make(), CFG).game.seats[1].startingStack,
+    );
+  });
+
+  it('recognizes a hand as deep-stacked when any seat reaches 150 BB', () => {
+    const stacks = [DEEP_STACK_BB, 100, 100, 100, 100, 100];
+    const s = beginHand(CFG, 0, stacks, createLedger(), 650);
     expect(isDeepStackHand(s)).toBe(true);
   });
 });
