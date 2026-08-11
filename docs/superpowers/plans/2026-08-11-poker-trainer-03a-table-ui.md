@@ -1776,7 +1776,11 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
     expect(() => rebuyHero(r.final, 150)).toThrow();
   });
 
-  it('10. 多池确实出现过，且池金额之和等于全桌总投入', () => {
+  it('10. 多池确实出现过，且每个池的结构自洽', () => {
+    // 数字要进报告，不能只说「大于 0」
+    console.log(
+      `[验收关卡] 200 手中多池手数 ${r.multiPotHands}，深筹码手数 ${r.deepStackHands}`,
+    );
     expect(
       r.multiPotHands,
       '200 手里一次多池都没有 —— 停下来查边池，不要换 seed',
@@ -1819,12 +1823,6 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
       0,
     );
     expect(deep.final.stacks[HERO_SEAT] - deep.final.ledger.totalBuyIn).toBeCloseTo(sumNet, 6);
-  });
-
-  it('多池手数是一个具体数字，记进报告', () => {
-    // 这条不是断言而是记录：报告里要写出真实数字，不能只说「大于 0」
-    console.log(`200 手中多池手数：${r.multiPotHands}，深筹码手数：${r.deepStackHands}`);
-    expect(r.multiPotHands).toBeGreaterThan(0);
   });
 });
 ```
