@@ -7,4 +7,8 @@
 // 源文件文本用，不给 core 代码本身使用。
 declare module 'node:fs' {
   export function readFileSync(path: string, encoding: string): string;
+  export function readdirSync(
+    path: string,
+    options: { recursive: boolean },
+  ): string[];
 }
