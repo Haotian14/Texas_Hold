@@ -269,6 +269,9 @@ export function heroNeedsRebuy(s: HandSessionState): boolean {
  * added, preserving the identity of current stack minus cumulative buy-ins.
  */
 export function rebuyHero(s: HandSessionState, targetStack: number): HandSessionState {
+  if (s.phase !== 'handOver') {
+    throw new Error(`rebuyHero can only run after handOver; current phase is ${s.phase}`);
+  }
   if (!REBUY_OPTIONS.includes(targetStack)) {
     throw new Error(`rebuy target must be one of ${REBUY_OPTIONS.join(' / ')}; got ${targetStack}`);
   }

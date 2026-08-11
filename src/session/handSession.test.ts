@@ -272,6 +272,12 @@ describe('handSession across hands', () => {
     expect(() => nextHand(sessionWithHeroStack(0), CFG)).toThrow(/rebuy/);
   });
 
+  it('rejects rebuy while a hand is still in progress', () => {
+    const s = beginHand(CFG, 3, [0, 100, 100, 100, 100, 100], createLedger(), 500);
+    expect(s.phase).not.toBe('handOver');
+    expect(() => rebuyHero(s, 100)).toThrow(/handOver/);
+  });
+
   it('records actual added chips when the hero rebuys to a target stack', () => {
     const s = sessionWithHeroStack(0.3);
     const r = rebuyHero(s, 100);
