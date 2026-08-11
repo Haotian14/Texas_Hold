@@ -50,15 +50,20 @@ describe('actionBarModel', () => {
   });
 
   it('快捷尺度全部落在 [min, max] 内，落不进去的档位不出现', () => {
+    let checkedCount = 0;
     for (let button = 0; button < SEAT_COUNT; button++) {
       const s = advanceTo(startHand({ seed: `abm-p${button}`, buttonSeat: button }), HERO_SEAT);
       const m = actionBarModel(s);
       if (!m.raise) continue;
+      checkedCount++;
       for (const p of m.raise.presets) {
         expect(p.amount).toBeGreaterThanOrEqual(m.raise.min);
         expect(p.amount).toBeLessThanOrEqual(m.raise.max);
       }
     }
+    // 保证这次真的检查过至少一个存在 raise 的局面，而不是六个座位全都没有
+    // raise、导致上面的循环体从未执行、测试静默通过。
+    expect(checkedCount).toBeGreaterThanOrEqual(1);
   });
 
   it('快捷尺度按「跟注后的底池」计价：投入额 = toCall + f × (pot + toCall)', () => {
@@ -71,19 +76,31 @@ describe('actionBarModel', () => {
     const pot = s.seats.reduce((a, x) => a + x.totalContribution, 0);
     const potAfterCall = pot + toCall;
 
-    const half = m.raise!.presets.find(p => p.label === '1/2 池');
-    if (half) {
-      expect(half.amount).toBeCloseTo(toCall + 0.5 * potAfterCall, 2);
+    const FRACTIONS: Record<string, number> = {
+      '1/3 池': 1 / 3,
+      '1/2 池': 1 / 2,
+      '2/3 池': 2 / 3,
+      '池': 1,
+    };
+
+    // 对 presets 里实际存在的每一档都按公式断言，而不只挑 1/2 池；
+    // 并保证至少检查过一档，避免「一档都没出现」被静默放过。
+    let checkedCount = 0;
+    for (const p of m.raise!.presets) {
+      const f = FRACTIONS[p.label];
+      expect(f).toBeDefined();
+      expect(p.amount).toBeCloseTo(toCall + f * potAfterCall, 2);
+      checkedCount++;
     }
+    expect(checkedCount).toBeGreaterThanOrEqual(1);
   });
 
   it('all-in 是独立字段，不混在 presets 里', () => {
     const s = advanceTo(startHand({ seed: 'abm-5', buttonSeat: 0 }), HERO_SEAT);
     const m = actionBarModel(s);
-    if (m.raise) {
-      expect(m.raise.presets.some(p => p.label.includes('全下'))).toBe(false);
-      expect(m.raise.presets.some(p => p.label.toLowerCase().includes('allin'))).toBe(false);
-    }
+    expect(m.raise).not.toBeNull();
+    expect(m.raise!.presets.some(p => p.label.includes('全下'))).toBe(false);
+    expect(m.raise!.presets.some(p => p.label.toLowerCase().includes('allin'))).toBe(false);
     expect(m.allin).not.toBeNull();
     expect(m.allin!.amount).toBe(s.seats[HERO_SEAT].stack);
   });
