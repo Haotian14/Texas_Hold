@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { totalChips } from '../core/gameEngine';
 import { SEAT_COUNT, STARTING_STACK } from '../core/types';
 import { cardToString } from '../core/cards';
@@ -13,6 +13,31 @@ import type { RangeSet } from '../core/rangeSet';
 // 环境类型。测试实际跑在 vitest 的 node 环境里，console 运行时确实存在，
 // 只是缺类型——用一个局部 ambient 声明补上，不改动 tsconfig 或 src/core。
 declare const console: { log: (...args: unknown[]) => void };
+
+/**
+ * Vitest 3 has a 60s worker RPC deadline. These synchronous, CPU-bound
+ * self-play tests can exceed that deadline as a file while preventing the
+ * worker from servicing queued RPC responses. Yield one macrotask between
+ * tests so the worker can flush those responses without changing any hand,
+ * iteration, assertion, or timeout in the workload itself.
+ *
+ * 适用边界（如实写清，不要夸大这个让步的效力）：
+ * (a) 这个宏任务让步只在「测试之间」生效——它给 worker 一个冲刷排队 RPC
+ *     响应的机会，无法让单条测试内部让出事件循环。
+ * (b) 如果某一条测试自己在同步代码里阻塞超过 60s，这个 afterEach 完全
+ *     无能为力——它要等那条测试跑完才轮到执行。
+ * (c) src/session/scriptedPlay.test.ts 同样是 CPU 密集的长跑测试（collect
+ *     阶段一次性打完 200 手，断言 3 里为验证可复现性再跑一次 200 手），
+ *     受同样的 60s 单测约束。实测（2026-08-15，`npx.cmd vitest run
+ *     src/session/scriptedPlay.test.ts`，逐条耗时见该次运行输出）：单文件
+ *     最长的一条（断言 3「同 seed 跑两遍」，内含重新跑一次 200 手）约 14.7
+ *     秒，整个文件跑完（含 collect 阶段那次 200 手基线自对弈）约 33 秒，
+ *     仍在预算之内，因此未加同类让步；如果迭代数或手数上调导致单测逼近或
+ *     超过 60s，需要重新用同一条命令实测更新这里的数字。
+ */
+afterEach(async () => {
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+});
 
 const CHIPS = SEAT_COUNT * STARTING_STACK;
 

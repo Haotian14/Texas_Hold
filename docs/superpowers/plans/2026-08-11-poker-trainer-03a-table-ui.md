@@ -1952,6 +1952,15 @@ describe('BB → 实额', () => {
   it('零显示为 0', () => {
     expect(chips(0)).toBe('0');
   });
+
+  it('四舍五入后为零的小额负数不带负号', () => {
+    expect(chips(-0.01)).toBe('0');
+    expect(chips(-0.005)).toBe('0');
+  });
+
+  it('四舍五入后仍非零的小额负数保留负号', () => {
+    expect(chips(-0.02)).toBe('-1');
+  });
 });
 ```
 
@@ -1984,7 +1993,7 @@ export const CHIPS_PER_BB = 40;
 
 /** BB → 实额字符串，带千位分隔，取整到个位 */
 export function chips(bb: number): string {
-  const v = Math.round(bb * CHIPS_PER_BB);
+  const v = Math.round(bb * CHIPS_PER_BB) || 0;
   return v.toLocaleString('en-US');
 }
 
@@ -2666,25 +2675,39 @@ EOF
 
 创建 `src/ui/components/RaiseControl.tsx`：
 
+**滑块拖到全下额时提交按钮本身就是全下确认**：`max` 恒等于 hero 的剩余筹码
+（见 `RaiseModel.max` 的定义），所以滑块拖满就是全下，在牌局语义上不能零确认
+地当成一次「恰好花光筹码的加注」提交出去。判断「是否到达全下额」必须用
+`src/core/chips.ts` 的 `chipsGreater`，禁止裸 `===`；到达全下额时按钮文案变
+成「确认全下 X」，并且提交的动作类型改成 `'allin'`——这是全局唯一一处
+「什么算全下动作」的判断，下面 `ActionBar` 里独立的全下二次确认面板与这里
+共用同一个 `{ type: 'allin' }` 分支，不重复定义。
+
 ```tsx
 import { useEffect, useState } from 'react';
 import type { RaiseModel } from '../../session/actionBarModel';
+import { chipsGreater } from '../../core/chips';
 import { chips } from '../format';
 
 export interface RaiseControlProps {
   model: RaiseModel;
   label: string;
-  onSubmit: (amount: number) => void;
+  /** 全下额；没有全下项时为 null（防御性处理，正常路径下 raise 存在时它必然存在） */
+  allinAmount: number | null;
+  onSubmit: (amount: number, isAllin: boolean) => void;
   onCancel: () => void;
 }
 
-export function RaiseControl({ model, label, onSubmit, onCancel }: RaiseControlProps) {
+export function RaiseControl({ model, label, allinAmount, onSubmit, onCancel }: RaiseControlProps) {
   const [amount, setAmount] = useState(model.min);
 
   // 局面变了就把滑块拉回最小值，避免残留一个已经非法的额度
   useEffect(() => setAmount(model.min), [model.min, model.max]);
 
   const clamped = Math.min(Math.max(amount, model.min), model.max);
+  // 滑块拉到全下额时，这次提交在牌局语义上就是全下，必须走全下确认路径，
+  // 不能悄悄提交成一个恰好等于全部筹码的加注。
+  const isAllin = allinAmount !== null && !chipsGreater(allinAmount, clamped);
 
   return (
     <div className="raise-panel">
@@ -2710,8 +2733,11 @@ export function RaiseControl({ model, label, onSubmit, onCancel }: RaiseControlP
         <button className="btn btn-ghost" onClick={onCancel}>
           取消
         </button>
-        <button className="btn btn-primary" onClick={() => onSubmit(clamped)}>
-          {label} {chips(clamped)}
+        <button
+          className={isAllin ? 'btn btn-danger' : 'btn btn-primary'}
+          onClick={() => onSubmit(clamped, isAllin)}
+        >
+          {isAllin ? `确认全下 ${chips(clamped)}` : `${label} ${chips(clamped)}`}
         </button>
       </div>
     </div>
@@ -2760,10 +2786,17 @@ export function ActionBar({
         <RaiseControl
           model={model.raise}
           label={model.raise.type === 'bet' ? '下注' : '加注'}
+          allinAmount={model.allin?.amount ?? null}
           onCancel={() => setPanel('none')}
-          onSubmit={amount => {
+          onSubmit={(amount, isAllin) => {
             setPanel('none');
-            onAction({ type: model.raise!.type, amount });
+            // 全下动作的唯一定义在这里：与下方独立的全下确认面板共用同一个
+            // { type: 'allin' } 分支，滑块路径不另造第二套判断。
+            if (isAllin) {
+              onAction({ type: 'allin' });
+            } else {
+              onAction({ type: model.raise!.type, amount });
+            }
           }}
         />
       </div>
@@ -2863,12 +2896,14 @@ function BottomSlot({
 在 `src/ui/styles/app.css` 末尾追加：
 
 ```css
-/* ---- 底部动作条：固定定位，位于拇指可达区 ---- */
+/* ---- 底部动作条 ----
+ * .bottom 是 .app（display:flex; flex-direction:column; height:100%）的
+ * 最后一个子元素，不需要 position: fixed 就能天然贴底占位；body 上的
+ * overflow: hidden 已经保证页面不随内容滚动。用 fixed 反而会让它脱离文档
+ * 流悬浮在 .hero 之上，把 hero 手牌区压住——不要写死 padding-bottom 在
+ * .app 上来补偿，动作条 / 加注面板 / 结算条三者高度不同，写死会再出问题。
+ */
 .bottom {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
   padding: 8px 10px calc(8px + var(--safe-bottom));
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(8px);

@@ -2,9 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 // 用 npm test / vitest run 的默认工作目录（项目根目录 E:\puke）拼相对路径，
-// 而不是 import.meta.url + URL：项目的 tsconfig 没有 DOM/node 的 lib，
-// ImportMeta.url 和全局 URL 都没有类型声明，会需要额外的 ambient 声明；
-// 相对路径更省事，且这个仓库里所有 npm scripts 都是从根目录跑的。
+// 而不是 import.meta.url + URL：相对路径更省事，且这个仓库里所有 npm
+// scripts 都是从根目录跑的。
 function readSource(relPath: string): string {
   return readFileSync(relPath, 'utf-8');
 }
