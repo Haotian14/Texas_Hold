@@ -466,3 +466,15 @@ body {
   }
   .pot.pot-won { animation: none; }
 }
+
+.topbar-mute {
+  margin-left: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.topbar-mute:hover { color: var(--text); }
