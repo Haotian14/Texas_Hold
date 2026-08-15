@@ -379,3 +379,85 @@ body {
   color: var(--gold);
   font-variant-numeric: tabular-nums;
 }
+
+/* ================= m2 动效 =================
+   全部用 CSS transition / keyframes，不引动画库，也不在 React 里编排时间线。 */
+
+/* 筹码滑向牌桌中心并淡出。对手在上半部，向下即朝中心；hero 在下方，方向相反。
+   元素常驻挂载（见 Seat.tsx / HeroHand.tsx），卸载就没有过渡可言。 */
+.seat-bet,
+.hero-bet {
+  transition:
+    transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.seat-bet[data-empty='true'] {
+  opacity: 0;
+  transform: translateY(26px) scale(0.7);
+  pointer-events: none;
+}
+.hero-bet[data-empty='true'] {
+  opacity: 0;
+  transform: translateY(-26px) scale(0.7);
+  pointer-events: none;
+}
+
+/* 底池收到筹码时轻轻一涨。由 Pot.tsx 的 key 变化触发重挂载 */
+@keyframes pot-bump {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+.pot-amount {
+  display: inline-block;
+  animation: pot-bump 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 公共牌逐张落下 */
+@keyframes card-drop {
+  from { opacity: 0; transform: translateY(-20px) scale(0.88); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.board .card {
+  animation: card-drop 220ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.board .card:nth-child(2) { animation-delay: 70ms; }
+.board .card:nth-child(3) { animation-delay: 140ms; }
+.board .card:nth-child(4) { animation-delay: 210ms; }
+.board .card:nth-child(5) { animation-delay: 280ms; }
+
+/* 赢池脉冲：结算条出现时，底池闪两下琥珀描边 */
+@keyframes pot-win-pulse {
+  0%, 100% { box-shadow: none; }
+  25%, 75% { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(244, 185, 66, 0.55); }
+}
+/* padding 与 border-radius 放在 .pot 上常驻，不放在 .pot-won 里——
+   否则类名出现的那一刻底池会因为盒子变大而跳一下 */
+.pot {
+  border-radius: 8px;
+  padding: 2px 10px;
+}
+.pot.pot-won {
+  animation: pot-win-pulse 600ms ease-in-out;
+}
+
+/* 系统开启「减少动态效果」时全部退化为纯淡入淡出：无位移、无缩放 */
+@media (prefers-reduced-motion: reduce) {
+  .seat-bet,
+  .hero-bet {
+    transition: opacity 120ms linear;
+  }
+  .seat-bet[data-empty='true'],
+  .hero-bet[data-empty='true'] {
+    transform: none;
+  }
+  .pot-amount { animation: none; }
+  .board .card {
+    animation: card-drop 120ms linear backwards;
+  }
+  @keyframes card-drop {
+    from { opacity: 0; transform: none; }
+    to { opacity: 1; transform: none; }
+  }
+  .pot.pot-won { animation: none; }
+}

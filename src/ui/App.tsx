@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer } from 'react';
 import type { ActionInput } from '../core/gameEngine';
 import { HERO_SEAT } from '../core/types';
+import { chipsGreater } from '../core/chips';
 import {
   startSession,
   stepAi,
@@ -89,6 +90,11 @@ export function App() {
     state.phase === 'handOver' &&
     (state.record?.results.some(r => r.showdown) ?? false);
 
+  // 本手已结束且 hero 净盈亏为正 —— 触发底池的赢池脉冲
+  const heroWon =
+    state.phase === 'handOver' &&
+    chipsGreater(state.record?.results.find(r => r.seat === HERO_SEAT)?.netBB ?? 0, 0);
+
   const onHero = useCallback((input: ActionInput) => dispatch({ kind: 'hero', input }), []);
   const onNext = useCallback(() => dispatch({ kind: 'nextHand' }), []);
   const onRebuy = useCallback(
@@ -105,7 +111,12 @@ export function App() {
         totalBuyIn={state.ledger.totalBuyIn}
         deepStack={isDeepStackHand(state)}
       />
-      <Table game={state.game} lastAction={state.lastAction} revealed={revealed} />
+      <Table
+        game={state.game}
+        lastAction={state.lastAction}
+        revealed={revealed}
+        heroWon={heroWon}
+      />
       <HeroHand seat={hero} isButton={state.game.buttonSeat === HERO_SEAT} />
       <BottomSlot state={state} onHero={onHero} onNext={onNext} onRebuy={onRebuy} />
     </div>
