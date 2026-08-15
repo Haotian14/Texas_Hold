@@ -196,18 +196,37 @@ body {
 .board { display: flex; gap: 6px; }
 
 /* ---- 四色牌 ---- */
+/* c3 极简牌面：点数占满，花色缩到右上角。
+   角标花色刻意比示意稿大一档——形状本身要可辨，不能只靠颜色区分花色。 */
 .card {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #f7f7f2;
+  background: #f7f8f7;
   border-radius: 4px;
-  font-weight: 700;
+  font-weight: 900;
   font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
 }
-.card-sm { width: 22px; height: 30px; font-size: 12px; }
-.card-md { width: 30px; height: 42px; font-size: 15px; }
-.card-lg { width: 40px; height: 56px; font-size: 19px; }
+.card-rank { line-height: 1; }
+.card-suit {
+  position: absolute;
+  right: 3px;
+  top: 2px;
+  line-height: 1;
+  font-weight: 800;
+}
+.card-sm { width: 24px; height: 33px; }
+.card-sm .card-rank { font-size: 14px; }
+.card-sm .card-suit { font-size: 9px; }
+.card-md { width: 30px; height: 42px; }
+.card-md .card-rank { font-size: 18px; }
+.card-md .card-suit { font-size: 11px; }
+.card-lg { width: 42px; height: 59px; }
+.card-lg .card-rank { font-size: 26px; }
+.card-lg .card-suit { font-size: 14px; }
+/* 牌背没有子元素，上面的 .card-rank/.card-suit 规则对它无副作用 */
 .card-back {
   background: repeating-linear-gradient(45deg, #24506f, #24506f 3px, #1b3d55 3px, #1b3d55 6px);
 }

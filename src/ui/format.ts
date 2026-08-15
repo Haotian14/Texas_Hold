@@ -54,11 +54,19 @@ const RANK_TEXT: Record<number, string> = {
   10: 'T',
 };
 
-/** 牌面文字，如 'A♠' */
+/** 点数文字，如 'A' / 'T' / '7' */
+export function rankText(c: Card): string {
+  return RANK_TEXT[c.rank] ?? String(c.rank);
+}
+
+/** 花色符号，如 '♠' */
+export function suitText(c: Card): string {
+  return { s: '♠', h: '♥', d: '♦', c: '♣' }[c.suit];
+}
+
+/** 牌面文字，如 'A♠'。点数与花色分开渲染时用上面两个 */
 export function cardText(c: Card): string {
-  const rank = RANK_TEXT[c.rank] ?? String(c.rank);
-  const suit = { s: '♠', h: '♥', d: '♦', c: '♣' }[c.suit];
-  return `${rank}${suit}`;
+  return `${rankText(c)}${suitText(c)}`;
 }
 
 /** 四色牌的 CSS 类名：♠黑 ♥红 ♦蓝 ♣绿 */
