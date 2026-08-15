@@ -28,9 +28,12 @@ declare const console: { log: (...args: unknown[]) => void };
  *     无能为力——它要等那条测试跑完才轮到执行。
  * (c) src/session/scriptedPlay.test.ts 同样是 CPU 密集的长跑测试（collect
  *     阶段一次性打完 200 手，断言 3 里为验证可复现性再跑一次 200 手），
- *     受同样的 60s 单测约束，但目前最长的单条测试实测约 30-50 秒，仍在
- *     预算之内，因此未加同类让步；如果迭代数或手数上调导致单测逼近或
- *     超过 60s，需要重新评估。
+ *     受同样的 60s 单测约束。实测（2026-08-15，`npx.cmd vitest run
+ *     src/session/scriptedPlay.test.ts`，逐条耗时见该次运行输出）：单文件
+ *     最长的一条（断言 3「同 seed 跑两遍」，内含重新跑一次 200 手）约 14.7
+ *     秒，整个文件跑完（含 collect 阶段那次 200 手基线自对弈）约 33 秒，
+ *     仍在预算之内，因此未加同类让步；如果迭代数或手数上调导致单测逼近或
+ *     超过 60s，需要重新用同一条命令实测更新这里的数字。
  */
 afterEach(async () => {
   await new Promise<void>(resolve => setTimeout(resolve, 0));

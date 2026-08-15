@@ -57,7 +57,9 @@ export function App() {
   const [state, dispatch] = useReducer(reducer, CFG, startSession);
 
   // 时间只存在于这一层：会话层没有 setTimeout、没有 async。
-  // 延迟值由 seed 与步数派生，使同一局的节奏也是可复现的。
+  // 延迟值只由 handIndex 与 stepIndex 派生（不读 CFG.seed），同一局内每一步
+  // 的节奏因此是确定、可复现的；但换一次 seed（刷新页面）不会让延迟序列变化，
+  // 它不是随 seed 变化的随机量。
   useEffect(() => {
     if (state.phase !== 'aiToAct') return;
     const span = THINK_MAX - THINK_MIN;

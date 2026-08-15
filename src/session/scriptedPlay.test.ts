@@ -332,8 +332,12 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
       expect(recDeep, `第 ${h} 手深筹码判定不一致`).toBe(deep);
     });
 
-    // 真正测 isDeepStackHand 判定本身：用独立重算的计数对上 out.deepStackHands
-    // （它在 run() 里累加，但此前唯一消费者是 console.log，没有任何断言检查过）。
+    // 用独立重算的计数对上 out.deepStackHands（它在 run() 里累加自真实的
+    // isDeepStackHand 调用，此前唯一消费者是 console.log，没有任何断言检查
+    // 过）。重算谓词和 isDeepStackHand 内部逻辑同形，跑在同一份 openingStacks
+    // 快照上，能抓常量返回、阈值错、> vs >=、every vs some、座位集错这些
+    // 具体实现缺陷；但两边是同一处逻辑分别抄出来的两份代码，抓不到「测试
+    // 自己的谓词与生产错得一样」这种双方共享的系统性错误。
     const recomputedDeepStackHands = r.openingStacks.filter(stacks =>
       stacks.some(x => !chipsGreater(DEEP_STACK_BB, x)),
     ).length;

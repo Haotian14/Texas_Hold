@@ -78,6 +78,10 @@ function phaseOf(game: GameState): SessionPhase {
  * 每个座位的初始范围与 playAiHand 的构造方式一致：从该位置的开池范围起手，
  * 按该座位性格的 rangeWidthMul 收紧或放宽。hero 没有性格，按 GTO 原型处理，
  * 与 decide.ts 把 'hero' 映射到 GTO_PERSONA 的规则一致。
+ *
+ * 注意：本函数不是幂等的——它调用 cfg.now() 取一次性的 handTimestamp，
+ * 重复调用两次会得到时间戳不同的两个状态。stepAi / applyHero 那种「重复
+ * 调用得到逐位相同结果」的幂等性质不覆盖这里，也不覆盖下面调用它的 nextHand。
  */
 export function beginHand(
   cfg: SessionConfig,
@@ -230,8 +234,10 @@ export function stepAi(s: HandSessionState, cfg: SessionConfig): HandSessionStat
 /**
  * 施加 hero 的动作。hero 座位的范围同样收窄，使复盘走的是同一条链路。
  *
- * cfg 可省略：省略时从 game.seed 还原基础 seed，这样界面层每次点击不必
- * 把配置传进来。验收关卡显式传 cfg，因为它要控制迭代数。
+ * cfg 可省略：省略时用 s.seed / s.strengthIterations —— 开手时（beginHand）
+ * 存进状态快照的那份配置，不是从 game.seed 反解回去。这样界面层每次点击
+ * 不必把配置传进来，也不会因为反解基础 seed 有歧义而出错（比如 seed 本身
+ * 含分隔符时反解会二义）。验收关卡显式传 cfg，因为它要控制迭代数。
  */
 export function applyHero(
   s: HandSessionState,
@@ -294,6 +300,9 @@ export function rebuyHero(s: HandSessionState, targetStack: number): HandSession
 /**
  * Starts the next completed-hand transition. Underfunded AI seats rebuy to a
  * deterministic target; an underfunded hero must be handled explicitly by UI.
+ *
+ * Not idempotent: this delegates to beginHand, which reads cfg.now() once.
+ * Calling it twice yields two states with different handTimestamp values.
  */
 export function nextHand(s: HandSessionState, cfg: SessionConfig): HandSessionState {
   if (s.phase !== 'handOver') {
