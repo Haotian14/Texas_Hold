@@ -50,10 +50,25 @@ function valueImportOffense(src: string, mod: string): string | null {
   return null;
 }
 
+// 剥离行注释与块注释后再匹配 Math.random 的真实调用，避免像
+// src/core/rng.ts 顶部那种「core 层禁止使用 Math.random()」的说明性注释
+// 被误判成违规调用。块注释按非贪婪跨行匹配去掉，再去掉行注释。
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+}
+
+// tsconfig 为了 src/ui 全仓加了 DOM lib 之后，document/window/setTimeout/
+// setInterval/Math.random 在 core/ai/review 里也能编译通过了——纯度只能
+// 靠这类测试守，不能再指望「压根编译不过」。
+const PURE_LAYER_DIRS = ['src/core', 'src/ai', 'src/review', 'src/session'] as const;
+const BROWSER_GLOBAL_LAYER_DIRS = ['src/core', 'src/ai', 'src/review'] as const;
+
 describe('三期分层守卫', () => {
   it('src/session/ 不导入 React，也不碰浏览器 API', () => {
     const offenders: string[] = [];
-    for (const file of sourceFiles('src/session')) {
+    const files = sourceFiles('src/session');
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
       const src = readFileSync(file, 'utf-8');
       if (/from\s+['"]react(-dom)?['"]/.test(src)) offenders.push(`${file}: react`);
       if (/\bsetTimeout\b|\bsetInterval\b/.test(src)) offenders.push(`${file}: 计时器`);
@@ -64,7 +79,9 @@ describe('三期分层守卫', () => {
 
   it('src/session/ 不使用 Math.random', () => {
     const offenders: string[] = [];
-    for (const file of sourceFiles('src/session')) {
+    const files = sourceFiles('src/session');
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
       if (/Math\.random/.test(readFileSync(file, 'utf-8'))) offenders.push(file);
     }
     expect(offenders).toEqual([]);
@@ -82,6 +99,31 @@ describe('三期分层守卫', () => {
         const offense = valueImportOffense(src, mod);
         if (offense) offenders.push(`${file} -> ${mod} (${offense})`);
       }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('跨层纯度守卫（tsconfig 加了 DOM lib 之后，编译期不再天然拦这些）', () => {
+  it.each(PURE_LAYER_DIRS)('%s 不使用 Math.random（真实调用；注释里提及不算）', dir => {
+    const offenders: string[] = [];
+    const files = sourceFiles(dir);
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const code = stripComments(readFileSync(file, 'utf-8'));
+      if (/Math\.random\s*\(/.test(code)) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it.each(BROWSER_GLOBAL_LAYER_DIRS)('%s 不碰浏览器全局（document/window/setTimeout/setInterval）', dir => {
+    const offenders: string[] = [];
+    const files = sourceFiles(dir);
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const src = readFileSync(file, 'utf-8');
+      if (/\bdocument\.|\bwindow\./.test(src)) offenders.push(`${file}: DOM`);
+      if (/\bsetTimeout\b|\bsetInterval\b/.test(src)) offenders.push(`${file}: 计时器`);
     }
     expect(offenders).toEqual([]);
   });

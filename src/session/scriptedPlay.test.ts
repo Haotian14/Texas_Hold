@@ -88,6 +88,27 @@ function run(cfg: SessionConfig, hands: number, rebuyTarget: number): RunResult 
         expect(model.raise !== null).toBe(legalTypes.has('bet') || legalTypes.has('raise'));
         expect(model.allin !== null).toBe(legalTypes.has('allin'));
 
+        // 断言 6 补充：UI 真正提交的是 model.raise 里的金额（min/max/预设档），
+        // 不是动作类型。这里把这些金额真的走一遍 applyHero，而不只是确认
+        // 「raise 类型可用」。用 s（当前状态，此时还未被脚本的真实动作推进）
+        // 起一次性 dry run：applyHero/advance 都是纯函数，不会修改传入的
+        // state，也不会影响下面 s = applyHero(s, action, cfg) 的主轨迹。
+        if (model.raise) {
+          const { type: raiseType, min, max, presets } = model.raise;
+          const amounts = [min, max, ...presets.map(p => p.amount)];
+          for (const amount of amounts) {
+            expect(
+              () => applyHero(s, { type: raiseType, amount }, cfg),
+              `第 ${h} 手 ${raiseType} 金额 ${amount}（min=${min}, max=${max}）应能被 applyHero 接受`,
+            ).not.toThrow();
+          }
+          const maxResult = applyHero(s, { type: raiseType, amount: max }, cfg);
+          expect(
+            maxResult.game.seats[HERO_SEAT].allIn,
+            `第 ${h} 手拉满 raise.max=${max} 后 hero 座位应标记为 allIn`,
+          ).toBe(true);
+        }
+
         const action = scriptedHeroAction(s, cfg);
 
         // 脚本选中的动作必须落在模型的启用项里
