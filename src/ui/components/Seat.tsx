@@ -2,6 +2,7 @@ import type { ActionType, SeatState } from '../../core/types';
 import { chipsGreater } from '../../core/chips';
 import { chips } from '../format';
 import { CardBack, CardView } from './Card';
+import { Chips } from './Chips';
 
 const ACTION_TEXT: Record<ActionType, string> = {
   fold: '弃牌',
@@ -59,7 +60,10 @@ export function Seat({ seat, isButton, isToAct, bubble, revealed }: SeatProps) {
         <span className="seat-stack">{chips(seat.stack)}</span>
       </div>
       {chipsGreater(seat.streetContribution, 0) && (
-        <div className="seat-bet">{chips(seat.streetContribution)}</div>
+        <div className="seat-bet">
+          <Chips bb={seat.streetContribution} />
+          <span className="seat-bet-amount">{chips(seat.streetContribution)}</span>
+        </div>
       )}
     </div>
   );

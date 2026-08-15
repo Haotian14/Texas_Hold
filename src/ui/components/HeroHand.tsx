@@ -2,6 +2,7 @@ import type { SeatState } from '../../core/types';
 import { chipsGreater } from '../../core/chips';
 import { chips } from '../format';
 import { CardView } from './Card';
+import { Chips } from './Chips';
 
 export function HeroHand({ seat, isButton }: { seat: SeatState; isButton: boolean }) {
   return (
@@ -18,7 +19,10 @@ export function HeroHand({ seat, isButton }: { seat: SeatState; isButton: boolea
         </span>
         <span className="hero-stack">{chips(seat.stack)}</span>
         {chipsGreater(seat.streetContribution, 0) && (
-          <span className="hero-bet">投入 {chips(seat.streetContribution)}</span>
+          <span className="hero-bet">
+            <Chips bb={seat.streetContribution} />
+            投入 {chips(seat.streetContribution)}
+          </span>
         )}
       </div>
     </div>
