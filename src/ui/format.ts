@@ -14,7 +14,7 @@ export const CHIPS_PER_BB = 40;
 
 /** BB → 实额字符串，带千位分隔，取整到个位 */
 export function chips(bb: number): string {
-  const v = Math.round(bb * CHIPS_PER_BB);
+  const v = Math.round(bb * CHIPS_PER_BB) || 0;
   return v.toLocaleString('en-US');
 }
 
