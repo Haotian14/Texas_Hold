@@ -26,4 +26,22 @@ describe('三期分层守卫', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  it('src/ui/ 不从引擎与 AI 取值，只允许类型导入', () => {
+    const banned = ['core/gameEngine', 'ai/decide', 'ai/selfPlayAi'];
+    const offenders: string[] = [];
+    const files = sourceFiles('src/ui');
+    expect(files.length).toBeGreaterThan(0);
+
+    for (const file of files) {
+      const src = readFileSync(file, 'utf-8');
+      for (const mod of banned) {
+        // 匹配「不是 import type 的」导入语句。import type 编译后不产生
+        // 运行时依赖，Card / Position 这类类型是渲染必需的，不该被禁。
+        const re = new RegExp(`import\\s+(?!type\\b)[^;]*?from\\s+['"][^'"]*${mod}['"]`, 's');
+        if (re.test(src)) offenders.push(`${file} -> ${mod}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
 });
