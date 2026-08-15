@@ -20,6 +20,17 @@ declare const console: { log: (...args: unknown[]) => void };
  * worker from servicing queued RPC responses. Yield one macrotask between
  * tests so the worker can flush those responses without changing any hand,
  * iteration, assertion, or timeout in the workload itself.
+ *
+ * 适用边界（如实写清，不要夸大这个让步的效力）：
+ * (a) 这个宏任务让步只在「测试之间」生效——它给 worker 一个冲刷排队 RPC
+ *     响应的机会，无法让单条测试内部让出事件循环。
+ * (b) 如果某一条测试自己在同步代码里阻塞超过 60s，这个 afterEach 完全
+ *     无能为力——它要等那条测试跑完才轮到执行。
+ * (c) src/session/scriptedPlay.test.ts 同样是 CPU 密集的长跑测试（collect
+ *     阶段一次性打完 200 手，断言 3 里为验证可复现性再跑一次 200 手），
+ *     受同样的 60s 单测约束，但目前最长的单条测试实测约 30-50 秒，仍在
+ *     预算之内，因此未加同类让步；如果迭代数或手数上调导致单测逼近或
+ *     超过 60s，需要重新评估。
  */
 afterEach(async () => {
   await new Promise<void>(resolve => setTimeout(resolve, 0));

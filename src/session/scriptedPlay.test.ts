@@ -35,6 +35,8 @@ interface RunResult {
   closingStacks: number[][];
   deepStackHands: number;
   multiPotHands: number;
+  /** 断言 6（动作条模型对照）实际执行过的 hero 行动次数 */
+  heroActionCount: number;
   final: HandSessionState;
 }
 
@@ -54,6 +56,7 @@ function run(cfg: SessionConfig, hands: number, rebuyTarget: number): RunResult 
     closingStacks: [],
     deepStackHands: 0,
     multiPotHands: 0,
+    heroActionCount: 0,
     final: startSession(cfg),
   };
 
@@ -74,6 +77,7 @@ function run(cfg: SessionConfig, hands: number, rebuyTarget: number): RunResult 
         s = stepAi(s, cfg);
       } else {
         // 断言 6：动作条模型与引擎的合法动作一一对应
+        out.heroActionCount++;
         const model = actionBarModel(s.game);
         const legalTypes = new Set(legalActions(s.game).map(a => a.type));
         expect(model.enabled).toBe(true);
@@ -99,7 +103,10 @@ function run(cfg: SessionConfig, hands: number, rebuyTarget: number): RunResult 
       }
 
       // 断言 1：每个动作后筹码守恒
-      expect(sameChips(totalChips(s.game), chipsAtStart)).toBe(true);
+      expect(
+        sameChips(totalChips(s.game), chipsAtStart),
+        `第 ${h} 手筹码不守恒：当前 ${totalChips(s.game)}，开局 ${chipsAtStart}`,
+      ).toBe(true);
     }
 
     out.records.push(s.record!);
@@ -146,7 +153,10 @@ function finishHandWithNonZeroHeroResidual(): HandSessionState {
         if (!action) throw new Error('hero has no legal passive action');
         s = applyHero(s, action, CFG);
       }
-      expect(sameChips(totalChips(s.game), chipsAtStart)).toBe(true);
+      expect(
+        sameChips(totalChips(s.game), chipsAtStart),
+        `第 ${h} 手筹码不守恒：当前 ${totalChips(s.game)}，开局 ${chipsAtStart}`,
+      ).toBe(true);
     }
 
     if (heroNeedsRebuy(s)) return s;
@@ -176,10 +186,14 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
     r.records.forEach((rec, i) => {
       const replayed = replayHandRecord(rec);
       expect(replayed.board, `第 ${i} 手公共牌不一致`).toEqual(rec.board);
-      replayed.seats.forEach((seat, seatIndex) => {
+      // 长度守卫：若 replay 返回的座位数不对，下面按下标逐一比较会漏检
+      // （更少座位意味着更少甚至零次比较却仍然「通过」）。
+      expect(replayed.seats, `第 ${i} 手 replay 座位数不对`).toHaveLength(SEAT_COUNT);
+      r.closingStacks[i].forEach((expectedStack, seatIndex) => {
+        const actualStack = replayed.seats[seatIndex]?.stack;
         expect(
-          sameChips(seat.stack, r.closingStacks[i][seatIndex]),
-          `第 ${i} 手 seat ${seatIndex} 终局筹码不一致`,
+          typeof actualStack === 'number' && sameChips(actualStack, expectedStack),
+          `第 ${i} 手 seat ${seatIndex} 终局筹码不一致：期望 ${expectedStack}，实际 ${actualStack}`,
         ).toBe(true);
       });
     });
@@ -197,6 +211,13 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
     }
   });
 
+  it('6. 动作条模型对照（断言 6）在 200 手里确实执行过', () => {
+    expect(
+      r.heroActionCount,
+      '200 手里 hero 一次都没有轮到行动 —— 断言 6 是空转的',
+    ).toBeGreaterThan(0);
+  });
+
   it('7. 跨手筹码守恒：本手开局总额 = 上手收局总额 + 期间买入', () => {
     for (let h = 1; h < HANDS; h++) {
       const opening = r.openingStacks[h].reduce((a, b) => a + b, 0);
@@ -206,16 +227,19 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
     }
   });
 
-  it('8. 账本恒等式：当前筹码 − 累计买入 = 每手 netBB 之和', () => {
+  it('8a. 账本恒等式：当前筹码 − 累计买入 = 每手 netBB 之和', () => {
     const sumNet = r.records.reduce(
       (a, rec) => a + rec.results.find(x => x.seat === HERO_SEAT)!.netBB,
       0,
     );
     const byLedger = r.final.stacks[HERO_SEAT] - r.final.ledger.totalBuyIn;
-    expect(sameChips(byLedger, sumNet)).toBe(true);
+    expect(
+      sameChips(byLedger, sumNet),
+      `账本净值 ${byLedger} 与逐手 netBB 之和 ${sumNet} 不一致`,
+    ).toBe(true);
   });
 
-  it('8. 账本恒等式：非零余码补码不改变补码前后的净值', () => {
+  it('8b. 账本恒等式：非零余码补码不改变补码前后的净值', () => {
     const beforeRebuy = finishHandWithNonZeroHeroResidual();
     expect(heroNeedsRebuy(beforeRebuy)).toBe(true);
     expect(isZeroChips(beforeRebuy.stacks[HERO_SEAT])).toBe(false);
@@ -224,7 +248,10 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
     const afterRebuy = rebuyHero(beforeRebuy, 100);
     const afterNet = afterRebuy.stacks[HERO_SEAT] - afterRebuy.ledger.totalBuyIn;
 
-    expect(sameChips(afterNet, beforeNet)).toBe(true);
+    expect(
+      sameChips(afterNet, beforeNet),
+      `补码前净值 ${beforeNet}，补码后净值 ${afterNet}，二者应相等`,
+    ).toBe(true);
   });
 
   it('9. 补码只在该补时发生，且拒绝非法额度', () => {
@@ -269,18 +296,34 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
       // 每个池的资格集非空且互不越界
       for (const p of rec.pots) {
         expect(p.eligible.length).toBeGreaterThan(0);
-        expect(chipsGreater(p.amount, 0)).toBe(true);
+        expect(chipsGreater(p.amount, 0), `第 ${rec.id} 手池金额 ${p.amount} 应为正`).toBe(true);
       }
     }
   });
 
   it('11. 深筹码标记与开局筹码一致', () => {
+    // record 一致性：两份视图（openingStacks vs record.seats）都来自同一次
+    // beginHand 输出，理应逐手一致——这条验的是「记录复制正确」。
     r.openingStacks.forEach((stacks, h) => {
       const deep = stacks.some(x => !chipsGreater(DEEP_STACK_BB, x));
       const rec = r.records[h];
       const recDeep = rec.seats.some(x => !chipsGreater(DEEP_STACK_BB, x.startingStack));
       expect(recDeep, `第 ${h} 手深筹码判定不一致`).toBe(deep);
     });
+
+    // 真正测 isDeepStackHand 判定本身：用独立重算的计数对上 out.deepStackHands
+    // （它在 run() 里累加，但此前唯一消费者是 console.log，没有任何断言检查过）。
+    const recomputedDeepStackHands = r.openingStacks.filter(stacks =>
+      stacks.some(x => !chipsGreater(DEEP_STACK_BB, x)),
+    ).length;
+    expect(
+      recomputedDeepStackHands,
+      `重算的深筹码手数 ${recomputedDeepStackHands} 与 isDeepStackHand 累加的 ${r.deepStackHands} 不一致`,
+    ).toBe(r.deepStackHands);
+    expect(
+      r.deepStackHands,
+      '200 手里一次深筹码都没有出现 —— 停下来查 isDeepStackHand，不要换 seed',
+    ).toBeGreaterThan(0);
   });
 
   it('补 200BB 的变体也守恒（40 手）', () => {
