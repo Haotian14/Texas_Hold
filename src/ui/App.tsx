@@ -9,6 +9,7 @@ import {
   heroNeedsRebuy,
   rebuyHero,
   isDeepStackHand,
+  REBUY_OPTIONS,
 } from '../session/handSession';
 import type { HandSessionState, SessionConfig } from '../session/handSession';
 import { heroNet } from '../session/ledger';
@@ -17,6 +18,8 @@ import { TopBar } from './components/TopBar';
 import { Table } from './components/Table';
 import { HeroHand } from './components/HeroHand';
 import { ActionBar } from './components/ActionBar';
+import { SummaryBar } from './components/SummaryBar';
+import { RebuyPrompt } from './components/RebuyPrompt';
 
 const CFG: SessionConfig = {
   // 每次刷新换一局。③-C 会把 seed 一并持久化，届时刷新可续上。
@@ -94,16 +97,40 @@ export function App() {
   );
 }
 
-/** 底部区域：Task 9 接动作条，Task 10 接结算条与补码 */
+/** 底部区域：动作条、结算条、补码选择三态互斥 */
 function BottomSlot({
   state,
   onHero,
+  onNext,
+  onRebuy,
 }: {
   state: HandSessionState;
   onHero: (input: ActionInput) => void;
   onNext: () => void;
   onRebuy: (targetStack: number) => void;
 }) {
+  if (state.phase === 'handOver') {
+    if (heroNeedsRebuy(state)) {
+      return (
+        <div className="bottom">
+          <RebuyPrompt
+            options={REBUY_OPTIONS}
+            buyInCount={state.ledger.buyIns.length}
+            totalBuyIn={state.ledger.totalBuyIn}
+            onRebuy={onRebuy}
+          />
+        </div>
+      );
+    }
+    const netBB = state.record?.results.find(r => r.seat === HERO_SEAT)?.netBB ?? 0;
+    const showdown = state.record?.results.some(r => r.showdown) ?? false;
+    return (
+      <div className="bottom">
+        <SummaryBar netBB={netBB} showdown={showdown} onNext={onNext} />
+      </div>
+    );
+  }
+
   const model = actionBarModel(state.game);
   return (
     <div className="bottom">

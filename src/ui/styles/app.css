@@ -244,3 +244,19 @@ body {
 .confirm { display: flex; flex-direction: column; gap: 8px; }
 .confirm-text { text-align: center; font-size: 15px; }
 .confirm-actions { display: flex; gap: 8px; }
+
+.summary { display: flex; flex-direction: column; gap: 8px; }
+.summary-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.summary-line .pos { color: #7fd18a; }
+.summary-line .neg { color: var(--danger); }
+.summary-note { color: var(--text-dim); font-size: 13px; }
+
+.rebuy { display: flex; flex-direction: column; gap: 8px; }
+.rebuy-note { color: var(--text-dim); font-size: 12px; text-align: center; }
+.rebuy-actions { display: flex; gap: 8px; }
