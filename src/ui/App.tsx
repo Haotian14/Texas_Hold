@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import type { ActionInput } from '../core/gameEngine';
 import { HERO_SEAT } from '../core/types';
-import { chipsGreater } from '../core/chips';
+import { chipsGreater, round2 } from '../core/chips';
 import { playSound, soundFor, isMuted, setMuted, unlockAudio } from './sound';
 import {
   startSession,
@@ -127,7 +127,12 @@ export function App() {
   useEffect(() => {
     const a = state.lastAction;
     if (!a) return;
-    const pot = state.game.seats.reduce((sum, s) => sum + s.totalContribution, 0);
+    // state.game 的 totalContribution 已经含了本次动作的投入（gameEngine 在
+    // applyAction 内部就累加了），而轻/重的判据要的是**决策时**的底池。
+    // Action.amount 记的正是本次实际投入额，减掉即得动作前的底池——
+    // 不减的话判据会退化成 amount ≥ potBefore，也就是「满池下注才算重」。
+    const potAfter = state.game.seats.reduce((sum, s) => sum + s.totalContribution, 0);
+    const pot = round2(potAfter - a.amount);
     playSound(soundFor(a.type, a.amount, pot));
   }, [state.stepIndex]);
 
