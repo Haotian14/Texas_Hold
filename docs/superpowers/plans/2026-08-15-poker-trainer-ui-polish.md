@@ -459,6 +459,17 @@ body {
 }
 ```
 
+在 `html, body, #root { height: 100%; margin: 0; }` 规则之后追加一条独立规则：
+
+```css
+/* 桌面上把 .app 在视口里居中。窄屏时 .app 撑满，这条不产生任何效果 */
+#root {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+```
+
 把
 
 ```css
@@ -478,11 +489,17 @@ body {
   flex-direction: column;
   height: 100%;
   padding-top: var(--safe-top);
-  /* 桌面上限宽居中，两侧露出更深的底色；窄屏（手机）时自动满屏 */
-  max-width: 760px;
+  /* 桌面上限宽限高并居中，牌桌才是横椭圆而不是竖椭圆——只限宽的话
+     .table 的 flex:1 会吃掉全部竖向空间，在高视口下把牌桌立起来。
+     窄屏（手机）时两个上限都够不着，行为与限制前完全一致。 */
+  width: 100%;
+  max-width: 1040px;
+  max-height: 760px;
   margin-inline: auto;
 }
 ```
+
+（注意 `width: 100%` 是新加的：`#root` 变成 flex 容器后，`.app` 作为 flex item 不再自动撑满宽度，不加会缩成内容宽。）
 
 - [ ] **Step 3: 牌桌毡面**
 
