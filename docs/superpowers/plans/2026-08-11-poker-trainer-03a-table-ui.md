@@ -1952,6 +1952,15 @@ describe('BB → 实额', () => {
   it('零显示为 0', () => {
     expect(chips(0)).toBe('0');
   });
+
+  it('四舍五入后为零的小额负数不带负号', () => {
+    expect(chips(-0.01)).toBe('0');
+    expect(chips(-0.005)).toBe('0');
+  });
+
+  it('四舍五入后仍非零的小额负数保留负号', () => {
+    expect(chips(-0.02)).toBe('-1');
+  });
 });
 ```
 
@@ -1984,7 +1993,7 @@ export const CHIPS_PER_BB = 40;
 
 /** BB → 实额字符串，带千位分隔，取整到个位 */
 export function chips(bb: number): string {
-  const v = Math.round(bb * CHIPS_PER_BB);
+  const v = Math.round(bb * CHIPS_PER_BB) || 0;
   return v.toLocaleString('en-US');
 }
 
