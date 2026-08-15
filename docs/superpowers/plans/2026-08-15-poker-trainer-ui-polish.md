@@ -66,8 +66,10 @@
 在 `src/ui/format.test.ts` 顶部的 import 改为：
 
 ```ts
-import { CHIPS_PER_BB, chips, chipDenominations, MAX_CHIPS_DRAWN } from './format';
+import { CHIPS_PER_BB, chips, chipDenominations, CHIP_DENOMINATIONS, MAX_CHIPS_DRAWN } from './format';
 ```
+
+（`CHIP_DENOMINATIONS` 被本段最后一条「面额表是从大到小的」用到，别漏。）
 
 在文件末尾追加：
 
