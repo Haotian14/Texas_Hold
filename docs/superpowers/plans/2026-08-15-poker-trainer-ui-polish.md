@@ -939,7 +939,7 @@ import { chipsGreater } from '../../core/chips';
 import { chipsGreater, isZeroChips, round2 } from '../../core/chips';
 ```
 
-文件顶部加 `import { useRef } from 'react';`。
+文件顶部加 `import { useEffect, useRef } from 'react';`。
 
 在组件函数体**最前面**（`const cls = [...]` 之前）加入这一整块：
 
@@ -950,8 +950,11 @@ import { chipsGreater, isZeroChips, round2 } from '../../core/chips';
   const lastBetRef = useRef(0);
   const betEmpty = isZeroChips(round2(seat.streetContribution));
   const shownBet = betEmpty ? lastBetRef.current : seat.streetContribution;
-  if (!betEmpty) lastBetRef.current = seat.streetContribution;
-```
+  // ref 在 effect 里写，不在渲染中写——渲染必须是纯的。时序正好合用：
+  // 金额归零的那一次渲染，读到的是上一次 effect 存下的非零值。
+  useEffect(() => {
+    if (!betEmpty) lastBetRef.current = seat.streetContribution;
+  });
 
 把 Task 2 写下的那段下注框
 
@@ -977,19 +980,21 @@ import { chipsGreater, isZeroChips, round2 } from '../../core/chips';
 
 - [ ] **Step 3: hero 下注框同样常驻**
 
-`src/ui/components/HeroHand.tsx`：顶部加 `import { useRef } from 'react';`，import 区改为
+`src/ui/components/HeroHand.tsx`：顶部加 `import { useEffect, useRef } from 'react';`，import 区改为
 
 ```tsx
 import { isZeroChips, round2 } from '../../core/chips';
 ```
 
-组件体内加：
+在组件函数体最前面加入这一整块（与 `Seat.tsx` 同一模式，理由见上）：
 
 ```tsx
   const lastBetRef = useRef(0);
   const betEmpty = isZeroChips(round2(seat.streetContribution));
   const shownBet = betEmpty ? lastBetRef.current : seat.streetContribution;
-  if (!betEmpty) lastBetRef.current = seat.streetContribution;
+  useEffect(() => {
+    if (!betEmpty) lastBetRef.current = seat.streetContribution;
+  });
 ```
 
 把 Task 2 写下的 hero 下注那段替换为：
@@ -1059,9 +1064,13 @@ import { isZeroChips, round2 } from '../../core/chips';
   0%, 100% { box-shadow: none; }
   25%, 75% { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(244, 185, 66, 0.55); }
 }
-.pot.pot-won {
+/* padding 与 border-radius 放在 .pot 上常驻，不放在 .pot-won 里——
+   否则类名出现的那一刻底池会因为盒子变大而跳一下 */
+.pot {
   border-radius: 8px;
   padding: 2px 10px;
+}
+.pot.pot-won {
   animation: pot-win-pulse 600ms ease-in-out;
 }
 
@@ -1642,26 +1651,26 @@ import { playSound, soundFor, isMuted, setMuted, unlockAudio } from './sound';
   // 是因为两个相邻动作可能完全相同（例如连续两个 fold），对象比较会漏播。
   // 必须先判 lastAction 存在——新一手开局时 stepIndex 也会变，但那一刻
   // 没有动作，不判会把上一手的残留动作重播一次。
+  // 依赖数组刻意只放 stepIndex，不放 state.lastAction / state.game：
+  // 这个 effect 要的是「步进了一次」这个事件，不是「这些对象变了」。
+  // 本项目没有 eslint，不需要写 disable 注释；这条注释才是给人看的。
   useEffect(() => {
     const a = state.lastAction;
     if (!a) return;
     const pot = state.game.seats.reduce((sum, s) => sum + s.totalContribution, 0);
     playSound(soundFor(a.type, a.amount, pot));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.stepIndex]);
 
-  // 公共牌翻开
+  // 公共牌翻开。依赖只放长度——牌面对象每手都会换新，放进依赖会每手多响一次
   useEffect(() => {
     if (state.game.board.length === 0) return;
     playSound('board-flip');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.game.board.length]);
 
   // 新一手开局发牌。第一手不会响——那时用户还没做过任何手势，
   // 浏览器不允许播放。这是自动播放策略的必然结果，不特殊处理。
   useEffect(() => {
     playSound('deal-card');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.handIndex]);
 
   // hero 赢下底池
