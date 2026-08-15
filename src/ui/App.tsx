@@ -12,9 +12,11 @@ import {
 } from '../session/handSession';
 import type { HandSessionState, SessionConfig } from '../session/handSession';
 import { heroNet } from '../session/ledger';
+import { actionBarModel } from '../session/actionBarModel';
 import { TopBar } from './components/TopBar';
 import { Table } from './components/Table';
 import { HeroHand } from './components/HeroHand';
+import { ActionBar } from './components/ActionBar';
 
 const CFG: SessionConfig = {
   // 每次刷新换一局。③-C 会把 seed 一并持久化，届时刷新可续上。
@@ -93,11 +95,19 @@ export function App() {
 }
 
 /** 底部区域：Task 9 接动作条，Task 10 接结算条与补码 */
-function BottomSlot(_props: {
+function BottomSlot({
+  state,
+  onHero,
+}: {
   state: HandSessionState;
   onHero: (input: ActionInput) => void;
   onNext: () => void;
   onRebuy: (targetStack: number) => void;
 }) {
-  return <div className="bottom" />;
+  const model = actionBarModel(state.game);
+  return (
+    <div className="bottom">
+      <ActionBar model={model} onAction={onHero} />
+    </div>
+  );
 }

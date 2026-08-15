@@ -180,3 +180,68 @@ body {
 .hero-pos { color: var(--text-dim); }
 .hero-stack { font-size: 16px; font-variant-numeric: tabular-nums; }
 .hero-bet { color: var(--gold); font-variant-numeric: tabular-nums; }
+
+/* ---- 底部动作条：固定定位，位于拇指可达区 ---- */
+.bottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8px 10px calc(8px + var(--safe-bottom));
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.actionbar-idle {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 12px 0;
+}
+
+.actionbar-row {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  flex: 1;
+  min-height: 52px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--felt-light);
+  cursor: pointer;
+}
+.btn-primary { background: #1b6b4a; }
+.btn-danger { background: var(--danger); }
+.btn-ghost { background: rgba(255, 255, 255, 0.12); }
+.btn:active { filter: brightness(1.2); }
+
+.raise-panel { display: flex; flex-direction: column; gap: 8px; }
+.raise-presets { display: flex; gap: 6px; }
+.preset {
+  flex: 1;
+  min-height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.raise-slider { display: flex; align-items: center; gap: 10px; }
+.raise-slider input { flex: 1; }
+.raise-amount {
+  min-width: 72px;
+  text-align: right;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.raise-actions { display: flex; gap: 8px; }
+
+.confirm { display: flex; flex-direction: column; gap: 8px; }
+.confirm-text { text-align: center; font-size: 15px; }
+.confirm-actions { display: flex; gap: 8px; }
