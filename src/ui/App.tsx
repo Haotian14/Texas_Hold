@@ -66,7 +66,19 @@ export function App() {
     return () => clearTimeout(id);
   }, [state.phase, state.handIndex, state.stepIndex]);
 
-  const hero = state.game.seats[HERO_SEAT];
+  // hero 座位的筹码显示来源要按 phase 二选一，两个来源在不同阶段各只有
+  // 一个是新鲜的：
+  // - 手牌进行中（aiToAct / awaitingHero）：state.stacks 是「本手开局时」
+  //   的快照，advance() 只在结算分支才回写它（handSession.ts:194-204），
+  //   非结算分支原样透传 `...s`（:176-184），所以手牌进行中它不随动作
+  //   更新，只有 state.game.seats 才是实时值。
+  // - 手牌结束后（handOver）：state.game 在补码（rebuyHero）时不会被
+  //   触碰，只有 state.stacks 会更新（handSession.ts:286-291），所以
+  //   结算后要改看 state.stacks，否则补码后屏幕仍显示补码前的筹码。
+  const hero =
+    state.phase === 'handOver'
+      ? { ...state.game.seats[HERO_SEAT], stack: state.stacks[HERO_SEAT] }
+      : state.game.seats[HERO_SEAT];
   const netBB = useMemo(
     () => heroNet(state.ledger, state.stacks[HERO_SEAT]),
     [state.ledger, state.stacks],
@@ -86,6 +98,7 @@ export function App() {
     <div className="app">
       <TopBar
         handsPlayed={state.ledger.handsPlayed}
+        inProgress={state.phase !== 'handOver'}
         netBB={netBB}
         totalBuyIn={state.ledger.totalBuyIn}
         deepStack={isDeepStackHand(state)}
