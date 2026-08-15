@@ -18,6 +18,34 @@ export function chips(bb: number): string {
   return v.toLocaleString('en-US');
 }
 
+/**
+ * 实额筹码面额，从大到小。20 是最小下注单位（半个大盲）。
+ * chipDenominations 的贪心拆分依赖这个降序。
+ */
+export const CHIP_DENOMINATIONS: readonly number[] = [1000, 500, 100, 20];
+
+/** 一堆筹码最多画几枚。超出的不画——筹码堆是示意，旁边的数字才是权威 */
+export const MAX_CHIPS_DRAWN = 5;
+
+/**
+ * BB 金额 → 从大到小的面额数组（实额），供界面画筹码堆。
+ *
+ * 贪心拆分。循环在两种情况下结束，两种都会留下不再表示的余额：
+ * 画满 MAX_CHIPS_DRAWN 枚，或剩余额小于最小面额（20）放不下任何一枚。
+ * 这是有意的——调用方必须同时用 chips() 显示精确金额。
+ */
+export function chipDenominations(bb: number): number[] {
+  let remaining = Math.abs(Math.round(bb * CHIPS_PER_BB));
+  const out: number[] = [];
+  while (out.length < MAX_CHIPS_DRAWN) {
+    const d = CHIP_DENOMINATIONS.find(v => v <= remaining);
+    if (d === undefined) break;
+    out.push(d);
+    remaining -= d;
+  }
+  return out;
+}
+
 const RANK_TEXT: Record<number, string> = {
   14: 'A',
   13: 'K',
