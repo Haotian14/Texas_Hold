@@ -226,6 +226,11 @@ body {
 .card-lg { width: 42px; height: 59px; }
 .card-lg .card-rank { font-size: 26px; }
 .card-lg .card-suit { font-size: 14px; }
+/* 「10」是唯一两个字符的点数。c3 的点数占满牌面，两字符按原字号会挤出牌外；
+   缩一档并收紧字距，让它的视觉重量与单字符点数相当。 */
+.card-sm .card-rank-wide { font-size: 10px; letter-spacing: -0.06em; }
+.card-md .card-rank-wide { font-size: 13px; letter-spacing: -0.06em; }
+.card-lg .card-rank-wide { font-size: 19px; letter-spacing: -0.06em; }
 /* 牌背没有子元素，上面的 .card-rank/.card-suit 规则对它无副作用 */
 .card-back {
   background: repeating-linear-gradient(45deg, #24506f, #24506f 3px, #1b3d55 3px, #1b3d55 6px);

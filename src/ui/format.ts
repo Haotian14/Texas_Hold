@@ -46,15 +46,23 @@ export function chipDenominations(bb: number): number[] {
   return out;
 }
 
+/**
+ * 牌面显示用 '10'（用户决定，见 2026-08-15 复盘）。
+ *
+ * 注意这与 src/core/handClass.ts 的 RANK_CHARS = '23456789TJQKA' 刻意不同——
+ * 那是引擎的手牌类别记法（范围表、AI 开池范围、翻前频率表、复盘引擎输出的
+ * 'T9s' / 'ATo' 等两字符记法都建立在它上面），不是显示层。牌桌上看到 '10'、
+ * 复盘文字里看到 'T9s' 是两套系统的一致设计，不要「统一」成同一个字符。
+ */
 const RANK_TEXT: Record<number, string> = {
   14: 'A',
   13: 'K',
   12: 'Q',
   11: 'J',
-  10: 'T',
+  10: '10',
 };
 
-/** 点数文字，如 'A' / 'T' / '7' */
+/** 点数文字，如 'A' / '10' / '7' */
 export function rankText(c: Card): string {
   return RANK_TEXT[c.rank] ?? String(c.rank);
 }

@@ -95,9 +95,9 @@ describe('牌面文字拆成点数与花色', () => {
   const TD = { rank: 10, suit: 'd' } as const;
   const SEVEN_C = { rank: 7, suit: 'c' } as const;
 
-  it('点数：A / T / 数字', () => {
+  it('点数：A / 10 / 数字', () => {
     expect(rankText(AS)).toBe('A');
-    expect(rankText(TD)).toBe('T');
+    expect(rankText(TD)).toBe('10');
     expect(rankText(SEVEN_C)).toBe('7');
   });
 
@@ -109,6 +109,6 @@ describe('牌面文字拆成点数与花色', () => {
 
   it('cardText 仍是两者相接，没有回归', () => {
     expect(cardText(AS)).toBe('A♠');
-    expect(cardText(TD)).toBe('T♦');
+    expect(cardText(TD)).toBe('10♦');
   });
 });
