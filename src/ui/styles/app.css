@@ -183,10 +183,6 @@ body {
 
 /* ---- 底部动作条：固定定位，位于拇指可达区 ---- */
 .bottom {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
   padding: 8px 10px calc(8px + var(--safe-bottom));
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(8px);

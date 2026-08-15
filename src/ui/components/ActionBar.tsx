@@ -34,10 +34,17 @@ export function ActionBar({
         <RaiseControl
           model={model.raise}
           label={model.raise.type === 'bet' ? '下注' : '加注'}
+          allinAmount={model.allin?.amount ?? null}
           onCancel={() => setPanel('none')}
-          onSubmit={amount => {
+          onSubmit={(amount, isAllin) => {
             setPanel('none');
-            onAction({ type: model.raise!.type, amount });
+            // 全下动作的唯一定义在这里，与下方独立的全下确认面板共用同一个
+            // { type: 'allin' } 分支——不给滑块路径另造第二套「什么是全下」的判断。
+            if (isAllin) {
+              onAction({ type: 'allin' });
+            } else {
+              onAction({ type: model.raise!.type, amount });
+            }
           }}
         />
       </div>
