@@ -181,7 +181,10 @@ body {
 .hero-stack { font-size: 16px; font-variant-numeric: tabular-nums; }
 .hero-bet { color: var(--gold); font-variant-numeric: tabular-nums; }
 
-/* ---- 底部动作条：固定定位，位于拇指可达区 ---- */
+/* ---- 底部动作条：位于拇指可达区 ----
+   不用 position: fixed —— 它已是 .app 这个满高 flex 列的最后一个子元素，
+   天然贴底并自动占位；固定定位反而会压住 hero 手牌。body 的 overflow: hidden
+   已经保证「不随内容滚动」这条设计意图。 */
 .bottom {
   padding: 8px 10px calc(8px + var(--safe-bottom));
   background: rgba(0, 0, 0, 0.45);
