@@ -739,9 +739,9 @@ describe('牌面文字拆成点数与花色', () => {
   const TD = { rank: 10, suit: 'd' } as const;
   const SEVEN_C = { rank: 7, suit: 'c' } as const;
 
-  it('点数：A / T / 数字', () => {
+  it('点数：A / 10 / 数字', () => {
     expect(rankText(AS)).toBe('A');
-    expect(rankText(TD)).toBe('T');
+    expect(rankText(TD)).toBe('10');
     expect(rankText(SEVEN_C)).toBe('7');
   });
 
@@ -753,12 +753,14 @@ describe('牌面文字拆成点数与花色', () => {
 
   it('cardText 仍是两者相接，没有回归', () => {
     expect(cardText(AS)).toBe('A♠');
-    expect(cardText(TD)).toBe('T♦');
+    expect(cardText(TD)).toBe('10♦');
   });
 });
 ```
 
 本文件的 import 列表需同时含 `cardText`、`rankText`、`suitText`。
+
+（2026-08-15 补记：点数 10 的显示从 `T` 改成了 `10`，是用户明确要求的需求变更，详见本 Task 末尾的补记与 `docs/superpowers/specs/2026-08-15-poker-trainer-ui-polish-design.md` §2。上面两条断言的期望值已按最终版本写出。）
 
 - [ ] **Step 2: 运行确认失败**
 
@@ -784,7 +786,7 @@ export function cardText(c: Card): string {
 替换为
 
 ```ts
-/** 点数文字，如 'A' / 'T' / '7' */
+/** 点数文字，如 'A' / '10' / '7' */
 export function rankText(c: Card): string {
   return RANK_TEXT[c.rank] ?? String(c.rank);
 }
@@ -809,9 +811,11 @@ import type { Card as CardModel } from '../../core/cards';
 import { rankText, suitText, suitClass } from '../format';
 
 export function CardView({ card, size = 'md' }: { card: CardModel; size?: 'sm' | 'md' | 'lg' }) {
+  const rank = rankText(card);
   return (
     <span className={`card card-${size} ${suitClass(card)}`}>
-      <span className="card-rank">{rankText(card)}</span>
+      {/* 「10」是唯一两个字符的点数，需要单独缩一档字号，否则会撑破牌面 */}
+      <span className={rank.length > 1 ? 'card-rank card-rank-wide' : 'card-rank'}>{rank}</span>
       <span className="card-suit">{suitText(card)}</span>
     </span>
   );
@@ -822,6 +826,8 @@ export function CardBack({ size = 'sm' }: { size?: 'sm' | 'md' | 'lg' }) {
   return <span className={`card card-${size} card-back`} />;
 }
 ```
+
+（2026-08-15 补记：`rank.length > 1` 分支与 `card-rank-wide` 类名是后补的——用户把点数 10 的显示从 `T` 改成了 `10` 之后，两字符点数需要单独缩字号，见本 Task 末尾补记。上面已是最终版本。）
 
 - [ ] **Step 5: c3 牌面样式**
 
@@ -875,8 +881,15 @@ export function CardBack({ size = 'sm' }: { size?: 'sm' | 'md' | 'lg' }) {
 .card-lg { width: 42px; height: 59px; }
 .card-lg .card-rank { font-size: 26px; }
 .card-lg .card-suit { font-size: 14px; }
+/* 「10」是唯一两个字符的点数。c3 的点数占满牌面，两字符按原字号会挤出牌外；
+   缩一档并收紧字距，让它的视觉重量与单字符点数相当。 */
+.card-sm .card-rank-wide { font-size: 10px; letter-spacing: -0.06em; }
+.card-md .card-rank-wide { font-size: 13px; letter-spacing: -0.06em; }
+.card-lg .card-rank-wide { font-size: 19px; letter-spacing: -0.06em; }
 /* 牌背没有子元素，上面的 .card-rank/.card-suit 规则对它无副作用 */
 ```
+
+（2026-08-15 补记：`.card-rank-wide` 三条规则是后补的，字号取单字符尺寸的约 72%，供 `10` 这个唯一的两字符点数使用。上面已是最终版本。）
 
 - [ ] **Step 6: 验证**
 
