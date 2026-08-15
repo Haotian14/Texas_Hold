@@ -162,7 +162,21 @@ export function soundFor(type: ActionType, amount: number, pot: number): SoundNa
 
 **实施纪律**：每个文件下载前必须停下来向用户报清**文件名、来源 URL、大小**并取得授权。不得批量下载，不得从未经确认的来源下载。若目标站点不可用或找不到合适音效，**停下来报告**，不要擅自换源。
 
-**预案**：若八个音效凑不齐，回退方案是用 Web Audio 合成缺失的那几个（振荡器 + 滤波噪声 + 包络）。`sound.ts` 的接口不变，只换实现。
+### 5.3.1 实施结果：四个录音 + 四个合成
+
+检索后确认 **CC0 来源里只有筹码类可用**，预案（下述）随即启用。用户已就两部分分别授权。
+
+**录音（4 个，已下载）**：`chip-light` / `chip-heavy` / `pot-win` / `allin`，全部来自 [BigSoundBank](https://bigsoundbank.com/)，CC0、无需账号、48 kHz/16 bit，合计 54,720 字节。逐个来源 URL 见 `public/sounds/CREDITS.md`。
+
+**合成（4 个，无文件）**：`deal-card` / `board-flip` / `fold` / `check`。CC0 库里找不到——BigSoundBank 搜 `card` 零结果，搜 `carte` 返回翻地图的纸张声，敲击类只有敲门与敲玻璃；Freesound、Zapsplat 等主流免费库下载均需注册账号。
+
+**这个分法落在对的一边**：筹码撞击是多体金属碰撞，合成器做出来一听就假，而这四个恰好有真实录音；缺的四个都是**短噪声瞬态**（发牌的滑擦、翻牌的脆响、搓牌、敲桌），滤波噪声加包络正是最擅长的。
+
+合成实现用白噪声 + `BiquadFilter` + 指数衰减包络，参数逐个音效标定，见 `sound.ts` 的 `SYNTH_PARAMS`。
+
+**关于 `Math.random()`**：合成噪声用它。本项目禁止 `Math.random()` 的是 `core` / `ai` / `review` / `session` 四层（由 `architecture.test.ts` 守卫强制），理由是**牌局**随机必须来自字符串 seed 才能复现。音频噪声与牌局状态无关，不在该约束内。
+
+**预案**：上述合成方案即为原预案的落地。`sound.ts` 对调用方的接口不变——`playSound(name)` 内部按音效名分派到录音回放或实时合成，调用方不需要知道区别。
 
 ### 5.4 浏览器自动播放策略
 
