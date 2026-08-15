@@ -141,17 +141,16 @@ export type SoundName =
   | 'fold' | 'check' | 'pot-win' | 'allin';
 
 /** 动作 → 音效。amount 与 pot 都是 BB */
-export function soundFor(
-  type: ActionType, amount: number, pot: number,
-): SoundName | null;
+export function soundFor(type: ActionType, amount: number, pot: number): SoundName;
 ```
 
-`ActionType` 必须用 **`import type`** 从 `src/core/gameEngine` 引入——`src/ui/` 禁止从该模块取值，但类型导入不受限，架构守卫认这个区别。（`chipsGreater` 来自 `src/core/chips`，不在禁止清单内，可正常引入，`RaiseControl.tsx` 与 `TopBar.tsx` 已有先例。）
+`ActionType` 来自 `src/core/types`（`Seat.tsx` 已有先例），**不在** `src/ui/` 的禁止取值清单里，正常 `import type` 即可。`chipsGreater` 来自 `src/core/chips`，同样不在禁止清单内。
+
+**用穷尽 switch，不返回 `null`。** 六个动作类型每个都有对应音效，没有「无声」这一档；将来 `ActionType` 若新增成员，穷尽 switch 会让 TypeScript **编译失败**，这比静默返回 `null` 少播一个音效要好——后者要等人在浏览器里发现。「不播声音」的场景（如开局那一刻没有动作）由调用方的守卫处理，不由本函数表达。
 
 - `fold` → `'fold'`，`check` → `'check'`，`allin` → `'allin'`
 - `bet` / `raise` / `call` → 以**相对底池**分界：`amount ≥ pot / 2` 为 `'chip-heavy'`，否则 `'chip-light'`。同样 80 筹码，在 140 底池里是大注、在 4,000 底池里是零头，绝对金额分不出这个差别
-- 比较必须用 `chips.ts` 的 helper（`!chipsGreater(halfPot, amount)` 表示 `amount ≥ halfPot`），禁止裸 `>=`
-- 未知动作类型返回 `null`（调用方不播）
+- 比较必须用 `chips.ts` 的 helper（`chipsGreater(halfPot, amount)` 为真表示 `amount < halfPot`，即轻），禁止裸 `>=`
 - `pot ≤ 0` 在真实牌局中不可达（盲注恒先入池），函数不特判，按同一式子处理
 
 ### 5.3 音频文件
