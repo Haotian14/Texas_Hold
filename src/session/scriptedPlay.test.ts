@@ -37,6 +37,8 @@ interface RunResult {
   multiPotHands: number;
   /** 断言 6（动作条模型对照）实际执行过的 hero 行动次数 */
   heroActionCount: number;
+  /** 断言 6 补充（raise 金额 min/max/presets dry run）实际执行过的次数 */
+  raiseAmountChecks: number;
   final: HandSessionState;
 }
 
@@ -57,6 +59,7 @@ function run(cfg: SessionConfig, hands: number, rebuyTarget: number): RunResult 
     deepStackHands: 0,
     multiPotHands: 0,
     heroActionCount: 0,
+    raiseAmountChecks: 0,
     final: startSession(cfg),
   };
 
@@ -107,6 +110,7 @@ function run(cfg: SessionConfig, hands: number, rebuyTarget: number): RunResult 
             maxResult.game.seats[HERO_SEAT].allIn,
             `第 ${h} 手拉满 raise.max=${max} 后 hero 座位应标记为 allIn`,
           ).toBe(true);
+          out.raiseAmountChecks++;
         }
 
         const action = scriptedHeroAction(s, cfg);
@@ -236,6 +240,10 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
     expect(
       r.heroActionCount,
       '200 手里 hero 一次都没有轮到行动 —— 断言 6 是空转的',
+    ).toBeGreaterThan(0);
+    expect(
+      r.raiseAmountChecks,
+      '200 手里 model.raise 一次都没有为真 —— raise 金额 dry run 是空转的',
     ).toBeGreaterThan(0);
   });
 

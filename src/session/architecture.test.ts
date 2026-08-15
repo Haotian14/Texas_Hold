@@ -52,9 +52,56 @@ function valueImportOffense(src: string, mod: string): string | null {
 
 // 剥离行注释与块注释后再匹配 Math.random 的真实调用，避免像
 // src/core/rng.ts 顶部那种「core 层禁止使用 Math.random()」的说明性注释
-// 被误判成违规调用。块注释按非贪婪跨行匹配去掉，再去掉行注释。
+// 被误判成违规调用。
+//
+// 用字符串字面量感知的逐字符扫描，而不是先前那种朴素正则
+// （`/\/\*[\s\S]*?\*\//g` 加 `/\/\/.*$/gm`）：朴素版不认识字符串边界，
+// 一旦字符串字面量里含 `//` 或 `/*`（比如一个 URL 常量），就会把它当成
+// 注释起点，误吞掉同一行/同一块里紧跟着的真实代码——包括真实的
+// `Math.random()` 调用。这里遇到引号（`'`/`"`/`` ` ``）就原样把整段字符串
+// 字面量（含转义字符）抄进输出、跳过其中的 `//`/`/*`，只有在字符串之外
+// 遇到 `//`/`/*` 才当作注释剥离，从而不会再把字符串里的注释状字符错当
+// 成注释边界，也不会漏掉紧跟其后的真实调用。
 function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const two = src.slice(i, i + 2);
+    const ch = src[i];
+    if (two === '//') {
+      while (i < n && src[i] !== '\n') i++;
+      continue;
+    }
+    if (two === '/*') {
+      i += 2;
+      while (i < n && src.slice(i, i + 2) !== '*/') i++;
+      i += 2;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch;
+      out += ch;
+      i++;
+      while (i < n && src[i] !== quote) {
+        if (src[i] === '\\' && i + 1 < n) {
+          out += src[i] + src[i + 1];
+          i += 2;
+          continue;
+        }
+        out += src[i];
+        i++;
+      }
+      if (i < n) {
+        out += src[i];
+        i++;
+      }
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
 }
 
 // tsconfig 为了 src/ui 全仓加了 DOM lib 之后，document/window/setTimeout/
@@ -77,15 +124,11 @@ describe('三期分层守卫', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('src/session/ 不使用 Math.random', () => {
-    const offenders: string[] = [];
-    const files = sourceFiles('src/session');
-    expect(files.length).toBeGreaterThan(0);
-    for (const file of files) {
-      if (/Math\.random/.test(readFileSync(file, 'utf-8'))) offenders.push(file);
-    }
-    expect(offenders).toEqual([]);
-  });
+  // src/session 不使用 Math.random 的守卫已并入下面「跨层纯度守卫」的
+  // it.each(PURE_LAYER_DIRS)：曾经这里还有一条不剥离注释、直接对整个源码
+  // 做 /Math\.random/ 匹配的旧版本，与 PURE_LAYER_DIRS 那条（剥离注释后
+  // 再匹配，注释里提及不算违规）对同一个目录编码了两条互相矛盾的规则，
+  // 是重复 + 不一致，已删除，以 PURE_LAYER_DIRS 的规则为准。
 
   it('src/ui/ 不从引擎与 AI 取值，只允许类型导入', () => {
     const banned = ['core/gameEngine', 'ai/decide', 'ai/selfPlayAi'];
