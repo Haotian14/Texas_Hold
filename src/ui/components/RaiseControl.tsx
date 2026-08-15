@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { RaiseModel } from '../../session/actionBarModel';
 import { chipsGreater } from '../../core/chips';
+import { SMALL_BLIND } from '../../core/types';
 import { chips } from '../format';
 
 export interface RaiseControlProps {
@@ -40,7 +41,12 @@ export function RaiseControl({ model, label, allinAmount, onSubmit, onCancel }: 
           type="range"
           min={model.min}
           max={model.max}
-          step={0.5}
+          // HTML range 的步进网格是从 min 开始按 step 累加的，不是从 0 开始，
+          // 所以预设档位金额（不一定落在 min + k*step 上）以及 max 本身，
+          // 常常够不到滑块能停的格子——滑块永远只能落在网格点上。这不是这
+          // 里能修的：换成 SMALL_BLIND 只是让步进值有名有姓，网格错位是
+          // <input type="range"> 本身的行为。
+          step={SMALL_BLIND}
           value={clamped}
           onChange={e => setAmount(Number(e.target.value))}
         />

@@ -4,7 +4,7 @@ import type { ActionType, GameState, HandRecord } from '../core/types';
 import { BIG_BLIND, HERO_SEAT, SEAT_COUNT, STARTING_STACK } from '../core/types';
 import { toHandRecord } from '../core/handRecord';
 import { createRng } from '../core/rng';
-import { chipsGreater, round2 } from '../core/chips';
+import { chipsGreater, isZeroChips, round2 } from '../core/chips';
 import type { RangeSet } from '../core/rangeSet';
 import { narrowByAction } from '../core/opponentRange';
 import { assignPersonas, getPersona, GTO_PERSONA } from '../ai/personas';
@@ -254,7 +254,7 @@ export function isDeepStackHand(s: HandSessionState): boolean {
 }
 
 /** Target stack amounts in BB for rebuys; they are targets, not added amounts. */
-export const REBUY_OPTIONS: readonly number[] = [100, 200];
+export const REBUY_OPTIONS = [100, 200] as const;
 
 function needsRebuy(stack: number): boolean {
   return chipsGreater(BIG_BLIND, stack);
@@ -272,7 +272,7 @@ export function rebuyHero(s: HandSessionState, targetStack: number): HandSession
   if (s.phase !== 'handOver') {
     throw new Error(`rebuyHero can only run after handOver; current phase is ${s.phase}`);
   }
-  if (!REBUY_OPTIONS.includes(targetStack)) {
+  if (!REBUY_OPTIONS.some(o => isZeroChips(o - targetStack))) {
     throw new Error(`rebuy target must be one of ${REBUY_OPTIONS.join(' / ')}; got ${targetStack}`);
   }
   if (!heroNeedsRebuy(s)) {

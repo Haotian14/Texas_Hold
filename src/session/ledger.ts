@@ -1,5 +1,5 @@
 import { STARTING_STACK } from '../core/types';
-import { round2 } from '../core/chips';
+import { chipsGreater, round2 } from '../core/chips';
 
 export interface BuyIn {
   /** 这次买入发生在第几手之前；开局那次为 0 */
@@ -31,7 +31,7 @@ export function createLedger(): SessionLedger {
 }
 
 export function addBuyIn(l: SessionLedger, handIndex: number, amount: number): SessionLedger {
-  if (!Number.isFinite(amount) || amount <= 0) {
+  if (!Number.isFinite(amount) || !chipsGreater(amount, 0)) {
     throw new Error(`买入额必须为正，实际为 ${amount}`);
   }
   return {
