@@ -41,7 +41,7 @@
 | `src/ui/sound.ts` | **新增**。`soundFor()` 纯映射 + AudioContext / 播放 / 静音 | 6, 8 |
 | `src/ui/sound.test.ts` | **新增**。`soundFor()` 单测 | 6 |
 | `src/ui/App.tsx` | 音效触发接线 | 8 |
-| `public/sounds/*.mp3` | **新增**。八个音效文件 | 7 |
+| `public/sounds/*.mp3` | **新增**。四个音效文件（另外四个实时合成，无文件，见规格 §5.3.1） | 7 |
 | `public/sounds/CREDITS.md` | **新增**。来源与许可 | 7 |
 | `src/session/architecture.test.ts` | **新增**音频守卫 | 6 |
 | `README.md` | 更新技术栈与已知边界 | 9 |
@@ -66,8 +66,10 @@
 在 `src/ui/format.test.ts` 顶部的 import 改为：
 
 ```ts
-import { CHIPS_PER_BB, chips, chipDenominations, MAX_CHIPS_DRAWN } from './format';
+import { CHIPS_PER_BB, chips, chipDenominations, CHIP_DENOMINATIONS, MAX_CHIPS_DRAWN } from './format';
 ```
+
+（`CHIP_DENOMINATIONS` 被本段最后一条「面额表是从大到小的」用到，别漏。）
 
 在文件末尾追加：
 
@@ -457,6 +459,17 @@ body {
 }
 ```
 
+在 `html, body, #root { height: 100%; margin: 0; }` 规则之后追加一条独立规则：
+
+```css
+/* 桌面上把 .app 在视口里居中。窄屏时 .app 撑满，这条不产生任何效果 */
+#root {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+```
+
 把
 
 ```css
@@ -476,11 +489,17 @@ body {
   flex-direction: column;
   height: 100%;
   padding-top: var(--safe-top);
-  /* 桌面上限宽居中，两侧露出更深的底色；窄屏（手机）时自动满屏 */
-  max-width: 760px;
+  /* 桌面上限宽限高并居中，牌桌才是横椭圆而不是竖椭圆——只限宽的话
+     .table 的 flex:1 会吃掉全部竖向空间，在高视口下把牌桌立起来。
+     窄屏（手机）时两个上限都够不着，行为与限制前完全一致。 */
+  width: 100%;
+  max-width: 1040px;
+  max-height: 760px;
   margin-inline: auto;
 }
 ```
+
+（注意 `width: 100%` 是新加的：`#root` 变成 flex 容器后，`.app` 作为 flex item 不再自动撑满宽度，不加会缩成内容宽。）
 
 - [ ] **Step 3: 牌桌毡面**
 
@@ -720,9 +739,9 @@ describe('牌面文字拆成点数与花色', () => {
   const TD = { rank: 10, suit: 'd' } as const;
   const SEVEN_C = { rank: 7, suit: 'c' } as const;
 
-  it('点数：A / T / 数字', () => {
+  it('点数：A / 10 / 数字', () => {
     expect(rankText(AS)).toBe('A');
-    expect(rankText(TD)).toBe('T');
+    expect(rankText(TD)).toBe('10');
     expect(rankText(SEVEN_C)).toBe('7');
   });
 
@@ -734,12 +753,14 @@ describe('牌面文字拆成点数与花色', () => {
 
   it('cardText 仍是两者相接，没有回归', () => {
     expect(cardText(AS)).toBe('A♠');
-    expect(cardText(TD)).toBe('T♦');
+    expect(cardText(TD)).toBe('10♦');
   });
 });
 ```
 
 本文件的 import 列表需同时含 `cardText`、`rankText`、`suitText`。
+
+（2026-08-15 补记：点数 10 的显示从 `T` 改成了 `10`，是用户明确要求的需求变更，详见本 Task 末尾的补记与 `docs/superpowers/specs/2026-08-15-poker-trainer-ui-polish-design.md` §2。上面两条断言的期望值已按最终版本写出。）
 
 - [ ] **Step 2: 运行确认失败**
 
@@ -765,7 +786,7 @@ export function cardText(c: Card): string {
 替换为
 
 ```ts
-/** 点数文字，如 'A' / 'T' / '7' */
+/** 点数文字，如 'A' / '10' / '7' */
 export function rankText(c: Card): string {
   return RANK_TEXT[c.rank] ?? String(c.rank);
 }
@@ -790,9 +811,11 @@ import type { Card as CardModel } from '../../core/cards';
 import { rankText, suitText, suitClass } from '../format';
 
 export function CardView({ card, size = 'md' }: { card: CardModel; size?: 'sm' | 'md' | 'lg' }) {
+  const rank = rankText(card);
   return (
     <span className={`card card-${size} ${suitClass(card)}`}>
-      <span className="card-rank">{rankText(card)}</span>
+      {/* 「10」是唯一两个字符的点数，需要单独缩一档字号，否则会撑破牌面 */}
+      <span className={rank.length > 1 ? 'card-rank card-rank-wide' : 'card-rank'}>{rank}</span>
       <span className="card-suit">{suitText(card)}</span>
     </span>
   );
@@ -803,6 +826,8 @@ export function CardBack({ size = 'sm' }: { size?: 'sm' | 'md' | 'lg' }) {
   return <span className={`card card-${size} card-back`} />;
 }
 ```
+
+（2026-08-15 补记：`rank.length > 1` 分支与 `card-rank-wide` 类名是后补的——用户把点数 10 的显示从 `T` 改成了 `10` 之后，两字符点数需要单独缩字号，见本 Task 末尾补记。上面已是最终版本。）
 
 - [ ] **Step 5: c3 牌面样式**
 
@@ -856,8 +881,15 @@ export function CardBack({ size = 'sm' }: { size?: 'sm' | 'md' | 'lg' }) {
 .card-lg { width: 42px; height: 59px; }
 .card-lg .card-rank { font-size: 26px; }
 .card-lg .card-suit { font-size: 14px; }
+/* 「10」是唯一两个字符的点数。c3 的点数占满牌面，两字符按原字号会挤出牌外；
+   缩一档并收紧字距，让它的视觉重量与单字符点数相当。 */
+.card-sm .card-rank-wide { font-size: 10px; letter-spacing: -0.06em; }
+.card-md .card-rank-wide { font-size: 13px; letter-spacing: -0.06em; }
+.card-lg .card-rank-wide { font-size: 19px; letter-spacing: -0.06em; }
 /* 牌背没有子元素，上面的 .card-rank/.card-suit 规则对它无副作用 */
 ```
+
+（2026-08-15 补记：`.card-rank-wide` 三条规则是后补的，字号取单字符尺寸的约 72%，供 `10` 这个唯一的两字符点数使用。上面已是最终版本。）
 
 - [ ] **Step 6: 验证**
 
@@ -939,7 +971,7 @@ import { chipsGreater } from '../../core/chips';
 import { chipsGreater, isZeroChips, round2 } from '../../core/chips';
 ```
 
-文件顶部加 `import { useRef } from 'react';`。
+文件顶部加 `import { useEffect, useRef } from 'react';`。
 
 在组件函数体**最前面**（`const cls = [...]` 之前）加入这一整块：
 
@@ -950,7 +982,11 @@ import { chipsGreater, isZeroChips, round2 } from '../../core/chips';
   const lastBetRef = useRef(0);
   const betEmpty = isZeroChips(round2(seat.streetContribution));
   const shownBet = betEmpty ? lastBetRef.current : seat.streetContribution;
-  if (!betEmpty) lastBetRef.current = seat.streetContribution;
+  // ref 在 effect 里写，不在渲染中写——渲染必须是纯的。时序正好合用：
+  // 金额归零的那一次渲染，读到的是上一次 effect 存下的非零值。
+  useEffect(() => {
+    if (!betEmpty) lastBetRef.current = seat.streetContribution;
+  });
 ```
 
 把 Task 2 写下的那段下注框
@@ -977,19 +1013,21 @@ import { chipsGreater, isZeroChips, round2 } from '../../core/chips';
 
 - [ ] **Step 3: hero 下注框同样常驻**
 
-`src/ui/components/HeroHand.tsx`：顶部加 `import { useRef } from 'react';`，import 区改为
+`src/ui/components/HeroHand.tsx`：顶部加 `import { useEffect, useRef } from 'react';`，import 区改为
 
 ```tsx
 import { isZeroChips, round2 } from '../../core/chips';
 ```
 
-组件体内加：
+在组件函数体最前面加入这一整块（与 `Seat.tsx` 同一模式，理由见上）：
 
 ```tsx
   const lastBetRef = useRef(0);
   const betEmpty = isZeroChips(round2(seat.streetContribution));
   const shownBet = betEmpty ? lastBetRef.current : seat.streetContribution;
-  if (!betEmpty) lastBetRef.current = seat.streetContribution;
+  useEffect(() => {
+    if (!betEmpty) lastBetRef.current = seat.streetContribution;
+  });
 ```
 
 把 Task 2 写下的 hero 下注那段替换为：
@@ -1059,9 +1097,13 @@ import { isZeroChips, round2 } from '../../core/chips';
   0%, 100% { box-shadow: none; }
   25%, 75% { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(244, 185, 66, 0.55); }
 }
-.pot.pot-won {
+/* padding 与 border-radius 放在 .pot 上常驻，不放在 .pot-won 里——
+   否则类名出现的那一刻底池会因为盒子变大而跳一下 */
+.pot {
   border-radius: 8px;
   padding: 2px 10px;
+}
+.pot.pot-won {
   animation: pot-win-pulse 600ms ease-in-out;
 }
 
@@ -1521,36 +1563,93 @@ export function unlockAudio(): void {
   void preload();
 }
 
-const ALL_SOUNDS: readonly SoundName[] = [
-  'chip-light',
-  'chip-heavy',
-  'deal-card',
-  'board-flip',
-  'fold',
-  'check',
-  'pot-win',
-  'allin',
-];
+/**
+ * 有真实录音的四个。它们是筹码撞击声——多体金属碰撞，合成器做出来一听就假，
+ * 所以这四个用 CC0 录音（来源见 public/sounds/CREDITS.md）。
+ */
+const SAMPLED_SOUNDS = ['chip-light', 'chip-heavy', 'pot-win', 'allin'] as const;
+type SampledName = (typeof SAMPLED_SOUNDS)[number];
+
+function isSampled(name: SoundName): name is SampledName {
+  return (SAMPLED_SOUNDS as readonly string[]).includes(name);
+}
 
 async function preload(): Promise<void> {
   const c = ctx;
   if (!c) return;
   await Promise.all(
-    ALL_SOUNDS.map(async name => {
+    SAMPLED_SOUNDS.map(async name => {
       try {
         const res = await fetch(`sounds/${name}.mp3`);
         const buf = await c.decodeAudioData(await res.arrayBuffer());
         buffers.set(name, buf);
       } catch {
-        // 单个音效加载失败不该让其他七个跟着不响，也不该刷控制台
+        // 单个音效加载失败不该让其他三个跟着不响，也不该刷控制台
       }
     }),
   );
 }
 
-/** 播放。未解锁、已静音、或该音效尚未加载完成时是无操作 */
+/**
+ * 合成音效的参数。这四个在 CC0 库里找不到合适素材，改用滤波噪声 + 包络实时合成——
+ * 它们都是**短噪声瞬态**（发牌的滑擦、翻牌的脆响、搓牌、敲桌），正是合成最擅长的。
+ *
+ * 参数是按各自质感调出来的，不要随手改：
+ * - freq/Q 决定音色的「亮」与「窄」，deal 偏闷、flip 偏脆
+ * - decay 决定尾巴长短，check 是一记短促的敲击
+ */
+const SYNTH_PARAMS: Record<
+  Exclude<SoundName, SampledName>,
+  { type: BiquadFilterType; freq: number; q: number; peak: number; decay: number }
+> = {
+  'deal-card': { type: 'bandpass', freq: 1800, q: 0.9, peak: 0.22, decay: 0.11 },
+  'board-flip': { type: 'highpass', freq: 3200, q: 0.7, peak: 0.26, decay: 0.07 },
+  fold: { type: 'bandpass', freq: 1200, q: 0.8, peak: 0.18, decay: 0.14 },
+  check: { type: 'lowpass', freq: 700, q: 3.5, peak: 0.34, decay: 0.09 },
+};
+
+/**
+ * 白噪声 + 滤波 + 指数衰减包络。
+ *
+ * 这里用 Math.random() 生成噪声：本项目禁止 Math.random() 的是 core / ai /
+ * review / session 四层（由 architecture.test.ts 的守卫强制），因为**牌局**的
+ * 随机必须来自字符串 seed 才能复现。音频噪声与牌局状态无关，不在该约束内。
+ */
+function playSynth(name: Exclude<SoundName, SampledName>): void {
+  const c = ctx;
+  if (!c) return;
+  const p = SYNTH_PARAMS[name];
+  const len = Math.max(1, Math.floor(c.sampleRate * p.decay));
+  const buf = c.createBuffer(1, len, c.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const filter = c.createBiquadFilter();
+  filter.type = p.type;
+  filter.frequency.value = p.freq;
+  filter.Q.value = p.q;
+  const gain = c.createGain();
+  const t = c.currentTime;
+  gain.gain.setValueAtTime(p.peak, t);
+  // 指数衰减不能收到 0（会抛错），收到一个足够小的值即可
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + p.decay);
+
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(c.destination);
+  src.start();
+  src.stop(t + p.decay);
+}
+
+/** 播放。未解锁或已静音时是无操作；录音尚未加载完成时该次播放跳过 */
 export function playSound(name: SoundName): void {
   if (muted || !ctx) return;
+  if (!isSampled(name)) {
+    playSynth(name);
+    return;
+  }
   const buf = buffers.get(name);
   if (!buf) return;
   const src = ctx.createBufferSource();
@@ -1642,26 +1741,26 @@ import { playSound, soundFor, isMuted, setMuted, unlockAudio } from './sound';
   // 是因为两个相邻动作可能完全相同（例如连续两个 fold），对象比较会漏播。
   // 必须先判 lastAction 存在——新一手开局时 stepIndex 也会变，但那一刻
   // 没有动作，不判会把上一手的残留动作重播一次。
+  // 依赖数组刻意只放 stepIndex，不放 state.lastAction / state.game：
+  // 这个 effect 要的是「步进了一次」这个事件，不是「这些对象变了」。
+  // 本项目没有 eslint，不需要写 disable 注释；这条注释才是给人看的。
   useEffect(() => {
     const a = state.lastAction;
     if (!a) return;
     const pot = state.game.seats.reduce((sum, s) => sum + s.totalContribution, 0);
     playSound(soundFor(a.type, a.amount, pot));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.stepIndex]);
 
-  // 公共牌翻开
+  // 公共牌翻开。依赖只放长度——牌面对象每手都会换新，放进依赖会每手多响一次
   useEffect(() => {
     if (state.game.board.length === 0) return;
     playSound('board-flip');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.game.board.length]);
 
   // 新一手开局发牌。第一手不会响——那时用户还没做过任何手势，
   // 浏览器不允许播放。这是自动播放策略的必然结果，不特殊处理。
   useEffect(() => {
     playSound('deal-card');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.handIndex]);
 
   // hero 赢下底池

@@ -30,7 +30,7 @@
 | 项 | 选定 | 理由 |
 |---|---|---|
 | 整体风格 | **B · 现代深色** | 近黑底、低饱和毡面、一条细边光；琥珀色**只**给底池和「正在行动的人」。这是训练器，眼睛整局都在读数字，经典赌场风格的木纹与高光会持续和数字抢注意力 |
-| 牌面 | **c3 · 极简** | 点数占满，花色缩到右上角 |
+| 牌面 | **c3 · 极简** | 点数占满，花色缩到右上角。点数 10 显示为 `10` 而非 `T`（用户 2026-08-15 决定），两字符点数单独缩一档字号；这与 `src/core/handClass.ts` 的 `RANK_CHARS`（引擎的 `T9s` / `ATo` 记法）刻意不同——牌桌显示层与引擎数据契约是两套系统，不做统一 |
 | 下注筹码 | **k1 · 按面额拆分的筹码堆** | 一眼看出注有多重，不必读数字 |
 | 动效 | **m2 · 适中** | 有牌桌节奏但不弹不晃；全部可用 CSS 实现，不引动画库 |
 | 目标视口 | **桌面优先，限宽居中** | 手机上仍满屏 |
@@ -61,7 +61,7 @@
 | `src/ui/sound.ts` | 音效模块：AudioContext 生命周期、buffer 预加载、`play(name)`、静音开关；含纯函数 `soundFor()` |
 | `src/ui/sound.test.ts` | `soundFor()` 的单测 |
 | `src/ui/components/Chips.tsx` | 渲染面额筹码堆（无逻辑，逻辑在 `format.ts`） |
-| `public/sounds/*.mp3` | 八个音效文件 |
+| `public/sounds/*.mp3` | 四个音效文件（另外四个实时合成，无文件，见 §5.3.1） |
 | `public/sounds/CREDITS.md` | 每个文件的来源 URL 与许可 |
 
 **修改**
@@ -150,6 +150,8 @@ export function soundFor(type: ActionType, amount: number, pot: number): SoundNa
 
 - `fold` → `'fold'`，`check` → `'check'`，`allin` → `'allin'`
 - `bet` / `raise` / `call` → 以**相对底池**分界：`amount ≥ pot / 2` 为 `'chip-heavy'`，否则 `'chip-light'`。同样 80 筹码，在 140 底池里是大注、在 4,000 底池里是零头，绝对金额分不出这个差别
+- **`pot` 指的是「决策时的底池」，即不含本次投入。** 这条必须写死：整支审查发现调用方原本喂的是动作**之后**的底池，代入判据后 `amount ≥ (potBefore + amount)/2` 化简为 `amount ≥ potBefore`——阈值悄悄退化成了「满池下注」，最常见的半池下注被判成轻注。规格原文没说清是哪个底池，函数作者与接线作者各读一种，单独看都不算错，这就是那个缺陷的直接成因
+- **实现提示**：`state.game.seats[].totalContribution` 在 `applyAction` 内部就已累加本次投入，所以调用方必须减去 `Action.amount`（它记的正是本次实际投入额）才能还原动作前的底池。`potBefore = potAfter − amount` 是恒等式，不需要会话层额外暴露字段
 - 比较必须用 `chips.ts` 的 helper（`chipsGreater(halfPot, amount)` 为真表示 `amount < halfPot`，即轻），禁止裸 `>=`
 - `pot ≤ 0` 在真实牌局中不可达（盲注恒先入池），函数不特判，按同一式子处理
 
@@ -157,12 +159,26 @@ export function soundFor(type: ActionType, amount: number, pot: number): SoundNa
 
 - **来源**：[BigSoundBank](https://bigsoundbank.com/)，CC0 公有领域，无需账号、可商用、署名可选。备选 [Pixabay](https://pixabay.com/sound-effects/) 内容许可
 - **位置**：`public/sounds/`——Vite 原样拷贝到 `dist/`，不进 JS bundle
-- **体积**：每个 11–40 KB，八个合计约 200 KB
+- **体积**：实际落地为 4 个文件、合计 54,720 字节（见 §5.3.1；另外四个实时合成，无文件）
 - **许可记录**：`public/sounds/CREDITS.md` 逐个记录文件名、来源 URL、许可、下载日期
 
 **实施纪律**：每个文件下载前必须停下来向用户报清**文件名、来源 URL、大小**并取得授权。不得批量下载，不得从未经确认的来源下载。若目标站点不可用或找不到合适音效，**停下来报告**，不要擅自换源。
 
-**预案**：若八个音效凑不齐，回退方案是用 Web Audio 合成缺失的那几个（振荡器 + 滤波噪声 + 包络）。`sound.ts` 的接口不变，只换实现。
+### 5.3.1 实施结果：四个录音 + 四个合成
+
+检索后确认 **CC0 来源里只有筹码类可用**，预案（下述）随即启用。用户已就两部分分别授权。
+
+**录音（4 个，已下载）**：`chip-light` / `chip-heavy` / `pot-win` / `allin`，全部来自 [BigSoundBank](https://bigsoundbank.com/)，CC0、无需账号、48 kHz/16 bit，合计 54,720 字节。逐个来源 URL 见 `public/sounds/CREDITS.md`。
+
+**合成（4 个，无文件）**：`deal-card` / `board-flip` / `fold` / `check`。CC0 库里找不到——BigSoundBank 搜 `card` 零结果，搜 `carte` 返回翻地图的纸张声，敲击类只有敲门与敲玻璃；Freesound、Zapsplat 等主流免费库下载均需注册账号。
+
+**这个分法落在对的一边**：筹码撞击是多体金属碰撞，合成器做出来一听就假，而这四个恰好有真实录音；缺的四个都是**短噪声瞬态**（发牌的滑擦、翻牌的脆响、搓牌、敲桌），滤波噪声加包络正是最擅长的。
+
+合成实现用白噪声 + `BiquadFilter` + 指数衰减包络，参数逐个音效标定，见 `sound.ts` 的 `SYNTH_PARAMS`。
+
+**关于 `Math.random()`**：合成噪声用它。本项目禁止 `Math.random()` 的是 `core` / `ai` / `review` / `session` 四层（由 `architecture.test.ts` 守卫强制），理由是**牌局**随机必须来自字符串 seed 才能复现。音频噪声与牌局状态无关，不在该约束内。
+
+**预案**：上述合成方案即为原预案的落地。`sound.ts` 对调用方的接口不变——`playSound(name)` 内部按音效名分派到录音回放或实时合成，调用方不需要知道区别。
 
 ### 5.4 浏览器自动播放策略
 
@@ -202,9 +218,10 @@ export function soundFor(type: ActionType, amount: number, pot: number): SoundNa
 
 ## 7. 桌面限宽
 
-- `.app` 加最大宽度并水平居中，取 **760px**（5 个对手弧形排布 + 4 个动作按钮的舒适宽度）；实施时以人工验收为准可在 720–800 间微调
+- `.app` 同时限宽限高——`max-width: 1040px; max-height: 760px`——并配合 `#root { display: flex; align-items: center; justify-content: center; }` 在视口中居中
+- **为什么必须同时限高**：`.table` 是 `flex: 1`，原设计手机优先（视口本身窄而高），会自然吃满剩余竖向空间。若只限 `.app` 的宽度不限高度，在桌面高视口下 `.table` 依旧会把竖向空间吃满，牌桌被拉成竖椭圆而非横向的真实牌桌形状。浏览器实测（1810×1055 视口）验证了这一点：只限宽时 `.app` 为 760 宽（高度不限），`.table` 实测 760×852（宽高比 0.89，竖的）；同时限宽限高后 `.app` 为 1040×760，`.table` 实测 1040×558（宽高比 1.86，横的），且 hero 与动作条零重叠、无横向溢出
 - 两侧露出的背景用比牌桌更深的色
-- 手机上（视口窄于最大宽度）行为与现在完全一致，满屏
+- 手机上（视口两个上限都够不着）行为与现在完全一致，满屏
 
 **必须守住的回归**：`.bottom` 保持**非** `position: fixed`，hero 手牌与动作条**零重叠**。这是 ③-A 最后一轮浏览器验证才修好的缺陷（固定定位的动作条压住 hero 自己的手牌 68px），布局改动最容易把它带回来。
 

@@ -110,6 +110,9 @@ function stripComments(src: string): string {
 const PURE_LAYER_DIRS = ['src/core', 'src/ai', 'src/review', 'src/session'] as const;
 const BROWSER_GLOBAL_LAYER_DIRS = ['src/core', 'src/ai', 'src/review'] as const;
 
+/** 音频只允许存在于 src/ui/。session 及以下四层一律禁止 */
+const AUDIO_BANNED = /\bAudioContext\b|\bwebkitAudioContext\b|new\s+Audio\b|\bHTMLAudioElement\b/;
+
 describe('三期分层守卫', () => {
   it('src/session/ 不导入 React，也不碰浏览器 API', () => {
     const offenders: string[] = [];
@@ -167,6 +170,18 @@ describe('跨层纯度守卫（tsconfig 加了 DOM lib 之后，编译期不再�
       const src = readFileSync(file, 'utf-8');
       if (/\bdocument\.|\bwindow\./.test(src)) offenders.push(`${file}: DOM`);
       if (/\bsetTimeout\b|\bsetInterval\b/.test(src)) offenders.push(`${file}: 计时器`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it.each(PURE_LAYER_DIRS)('%s 不碰音频 API', dir => {
+    const offenders: string[] = [];
+    const files = sourceFiles(dir);
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      if (AUDIO_BANNED.test(stripComments(readFileSync(file, 'utf-8')))) {
+        offenders.push(file);
+      }
     }
     expect(offenders).toEqual([]);
   });

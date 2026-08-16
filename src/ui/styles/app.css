@@ -1,10 +1,22 @@
 :root {
-  --felt: #0b3d2e;
-  --felt-light: #12513c;
-  --text: #f2f5f3;
-  --text-dim: #9bb0a6;
-  --gold: #d8b45a;
-  --danger: #c8503c;
+  /* 页面底色：近黑。牌桌是唯一有颜色的东西，其余一律退让 */
+  --bg: #0d0f12;
+  --panel: #14181d;
+  --line: #232a32;
+
+  /* 毡面：低饱和青绿，中心略亮 */
+  --felt-1: #1b4a40;
+  --felt-2: #0f2b26;
+  --felt-edge: #2b6b5c;
+
+  --text: #e6edea;
+  --text-dim: #7d938c;
+
+  /* 琥珀色只给两处：底池、正在行动的人。多给一处就不再抢眼 */
+  --gold: #f4b942;
+  --danger: #8c3a2c;
+  --positive: #7fd18a;
+
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
 }
@@ -21,8 +33,15 @@ body,
   margin: 0;
 }
 
+/* 桌面上把 .app 在视口里居中。窄屏时 .app 撑满，这条不产生任何效果 */
+#root {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 body {
-  background: var(--felt);
+  background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   overflow: hidden;
@@ -34,17 +53,26 @@ body {
   flex-direction: column;
   height: 100%;
   padding-top: var(--safe-top);
+  /* 桌面上限宽限高并居中，牌桌才是横椭圆而不是竖椭圆——只限宽的话
+     .table 的 flex:1 会吃掉全部竖向空间，在高视口下把牌桌立起来。
+     窄屏（手机）时两个上限都够不着，行为与限制前完全一致。 */
+  width: 100%;
+  max-width: 1040px;
+  max-height: 760px;
+  margin-inline: auto;
 }
 
 .topbar {
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 8px 12px;
+  padding: 9px 12px;
   font-size: 13px;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
 }
-.topbar-item.pos { color: #7fd18a; }
+.topbar-item.pos { color: var(--positive); }
 .topbar-item.neg { color: var(--danger); }
 .topbar-item.dim { color: var(--text-dim); margin-left: auto; }
 .topbar-item.warn {
@@ -61,6 +89,24 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+/* 毡面画在伪元素上而不是 .table 本身：座位是绝对定位的，
+   改动 .table 的盒模型会挪动它们，用伪元素则完全不碰布局 */
+.table::before {
+  content: '';
+  position: absolute;
+  inset: 6px 10px 4px;
+  border-radius: 44% / 30%;
+  background: radial-gradient(120% 95% at 50% 22%, var(--felt-1), var(--felt-2));
+  border: 1px solid var(--felt-edge);
+  box-shadow:
+    inset 0 0 0 6px rgba(255, 255, 255, 0.02),
+    0 0 40px rgba(28, 120, 100, 0.15);
+  z-index: 0;
+}
+.table > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* ---- 弧形座位：5 个对手沿上半部的一段圆弧排布 ---- */
@@ -88,7 +134,10 @@ body {
   transition: opacity 0.2s;
 }
 .seat-folded { opacity: 0.35; }
-.seat-to-act .seat-info { box-shadow: 0 0 0 2px var(--gold); }
+/* 行动中的座位：静态描边，不做呼吸/闪烁——它全程存在，动起来就是持续干扰 */
+.seat-to-act .seat-info {
+  box-shadow: 0 0 0 1.5px var(--gold);
+}
 
 .seat-cards { display: flex; gap: 2px; }
 .seat-info {
@@ -102,10 +151,6 @@ body {
 }
 .seat-pos { color: var(--text-dim); }
 .seat-stack { font-variant-numeric: tabular-nums; }
-.seat-bet {
-  color: var(--gold);
-  font-variant-numeric: tabular-nums;
-}
 .bubble {
   background: var(--text);
   color: #12261f;
@@ -137,23 +182,56 @@ body {
   gap: 10px;
 }
 .pot { display: flex; gap: 6px; align-items: baseline; }
-.pot-label { color: var(--text-dim); font-size: 12px; }
-.pot-amount { font-size: 20px; font-variant-numeric: tabular-nums; }
+.pot-label {
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+.pot-amount {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
 .board { display: flex; gap: 6px; }
 
 /* ---- 四色牌 ---- */
+/* c3 极简牌面：点数占满，花色缩到右上角。
+   角标花色刻意比示意稿大一档——形状本身要可辨，不能只靠颜色区分花色。 */
 .card {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #f7f7f2;
+  background: #f7f8f7;
   border-radius: 4px;
-  font-weight: 700;
+  font-weight: 900;
   font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
 }
-.card-sm { width: 22px; height: 30px; font-size: 12px; }
-.card-md { width: 30px; height: 42px; font-size: 15px; }
-.card-lg { width: 40px; height: 56px; font-size: 19px; }
+.card-rank { line-height: 1; }
+.card-suit {
+  position: absolute;
+  right: 3px;
+  top: 2px;
+  line-height: 1;
+  font-weight: 800;
+}
+.card-sm { width: 24px; height: 33px; }
+.card-sm .card-rank { font-size: 14px; }
+.card-sm .card-suit { font-size: 9px; }
+.card-md { width: 30px; height: 42px; }
+.card-md .card-rank { font-size: 18px; }
+.card-md .card-suit { font-size: 11px; }
+.card-lg { width: 42px; height: 59px; }
+.card-lg .card-rank { font-size: 26px; }
+.card-lg .card-suit { font-size: 14px; }
+/* 「10」是唯一两个字符的点数。c3 的点数占满牌面，两字符按原字号会挤出牌外；
+   缩一档并收紧字距，让它的视觉重量与单字符点数相当。 */
+.card-sm .card-rank-wide { font-size: 10px; letter-spacing: -0.06em; }
+.card-md .card-rank-wide { font-size: 13px; letter-spacing: -0.06em; }
+.card-lg .card-rank-wide { font-size: 19px; letter-spacing: -0.06em; }
+/* 牌背没有子元素，上面的 .card-rank/.card-suit 规则对它无副作用 */
 .card-back {
   background: repeating-linear-gradient(45deg, #24506f, #24506f 3px, #1b3d55 3px, #1b3d55 6px);
 }
@@ -179,7 +257,13 @@ body {
 }
 .hero-pos { color: var(--text-dim); }
 .hero-stack { font-size: 16px; font-variant-numeric: tabular-nums; }
-.hero-bet { color: var(--gold); font-variant-numeric: tabular-nums; }
+.hero-bet {
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
 
 /* ---- 底部动作条：位于拇指可达区 ----
    不用 position: fixed —— 它已是 .app 这个满高 flex 列的最后一个子元素，
@@ -187,8 +271,8 @@ body {
    已经保证「不随内容滚动」这条设计意图。 */
 .bottom {
   padding: 8px 10px calc(8px + var(--safe-bottom));
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(8px);
+  background: var(--panel);
+  border-top: 1px solid var(--line);
 }
 
 .actionbar-idle {
@@ -211,12 +295,12 @@ body {
   font-size: 15px;
   font-weight: 600;
   color: var(--text);
-  background: var(--felt-light);
+  background: var(--line);
   cursor: pointer;
 }
-.btn-primary { background: #1b6b4a; }
+.btn-primary { background: #1d6b4e; }
 .btn-danger { background: var(--danger); }
-.btn-ghost { background: rgba(255, 255, 255, 0.12); }
+.btn-ghost { background: var(--line); }
 .btn:active { filter: brightness(1.2); }
 
 .raise-panel { display: flex; flex-direction: column; gap: 8px; }
@@ -260,3 +344,141 @@ body {
 .rebuy { display: flex; flex-direction: column; gap: 8px; }
 .rebuy-note { color: var(--text-dim); font-size: 12px; text-align: center; }
 .rebuy-actions { display: flex; gap: 8px; }
+
+/* ---- 面额筹码堆 ---- */
+.chip-stack {
+  display: inline-flex;
+  align-items: flex-end;
+  vertical-align: middle;
+}
+.chip {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  margin-left: -4px;
+  position: relative;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.18);
+}
+.chip:first-child { margin-left: 0; }
+/* 边缘的虚线条纹——真实筹码的标志性纹路 */
+.chip::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.45);
+}
+.chip-d20 { background: #3f4c57; }
+.chip-d100 { background: #b5342a; }
+.chip-d500 { background: #2a7a4a; }
+.chip-d1000 { background: #1a1c20; }
+
+.seat-bet {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.seat-bet-amount {
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ================= m2 动效 =================
+   全部用 CSS transition / keyframes，不引动画库，也不在 React 里编排时间线。 */
+
+/* 筹码滑向牌桌中心并淡出。对手在上半部，向下即朝中心；hero 在下方，方向相反。
+   元素常驻挂载（见 Seat.tsx / HeroHand.tsx），卸载就没有过渡可言。 */
+.seat-bet,
+.hero-bet {
+  transition:
+    transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.seat-bet[data-empty='true'] {
+  opacity: 0;
+  transform: translateY(26px) scale(0.7);
+  pointer-events: none;
+}
+.hero-bet[data-empty='true'] {
+  opacity: 0;
+  transform: translateY(-26px) scale(0.7);
+  pointer-events: none;
+}
+
+/* 底池收到筹码时轻轻一涨。由 Pot.tsx 的 key 变化触发重挂载 */
+@keyframes pot-bump {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+.pot-amount {
+  display: inline-block;
+  animation: pot-bump 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 公共牌逐张落下 */
+@keyframes card-drop {
+  from { opacity: 0; transform: translateY(-20px) scale(0.88); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.board .card:nth-child(-n + 3) {
+  animation: card-drop 220ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.board .card:nth-child(2) { animation-delay: 70ms; }
+.board .card:nth-child(3) { animation-delay: 140ms; }
+/* 转牌与河牌是单张落下，不参与错开——它们的兄弟节点不会重挂载，
+   给延迟只会让这一张空等 210/280ms，还和立即响起的 board-flip 音效脱节 */
+.board .card:nth-child(n + 4) {
+  animation: card-drop 220ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+  animation-delay: 0s;
+}
+
+/* 赢池脉冲：结算条出现时，底池闪两下琥珀描边 */
+@keyframes pot-win-pulse {
+  0%, 100% { box-shadow: none; }
+  25%, 75% { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(244, 185, 66, 0.55); }
+}
+/* padding 与 border-radius 放在 .pot 上常驻，不放在 .pot-won 里——
+   否则类名出现的那一刻底池会因为盒子变大而跳一下 */
+.pot {
+  border-radius: 8px;
+  padding: 2px 10px;
+}
+.pot.pot-won {
+  animation: pot-win-pulse 600ms ease-in-out;
+}
+
+/* 系统开启「减少动态效果」时全部退化为纯淡入淡出：无位移、无缩放 */
+@media (prefers-reduced-motion: reduce) {
+  .seat-bet,
+  .hero-bet {
+    transition: opacity 120ms linear;
+  }
+  .seat-bet[data-empty='true'],
+  .hero-bet[data-empty='true'] {
+    transform: none;
+  }
+  .pot-amount { animation: none; }
+  .board .card:nth-child(n) {
+    animation: card-drop 120ms linear backwards;
+  }
+  @keyframes card-drop {
+    from { opacity: 0; transform: none; }
+    to { opacity: 1; transform: none; }
+  }
+  .pot.pot-won { animation: none; }
+}
+
+.topbar-mute {
+  margin-left: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.topbar-mute:hover { color: var(--text); }

@@ -11,9 +11,19 @@ export interface TopBarProps {
   /** hero 累计买入，BB */
   totalBuyIn: number;
   deepStack: boolean;
+  muted: boolean;
+  onToggleMute: () => void;
 }
 
-export function TopBar({ handsPlayed, inProgress, netBB, totalBuyIn, deepStack }: TopBarProps) {
+export function TopBar({
+  handsPlayed,
+  inProgress,
+  netBB,
+  totalBuyIn,
+  deepStack,
+  muted,
+  onToggleMute,
+}: TopBarProps) {
   const isNeg = chipsGreater(0, netBB);
   // handsPlayed 在手牌结算时（advance 的 handOver 分支）就已经自增过了，
   // 所以结算后（含补码等待中）它本身就是当前手的序号，不能再 +1；
@@ -32,6 +42,15 @@ export function TopBar({ handsPlayed, inProgress, netBB, totalBuyIn, deepStack }
           深筹码
         </span>
       )}
+      <button
+        type="button"
+        className="topbar-mute"
+        onClick={onToggleMute}
+        aria-pressed={muted}
+        title={muted ? '取消静音' : '静音'}
+      >
+        {muted ? '🔇' : '🔊'}
+      </button>
     </div>
   );
 }
