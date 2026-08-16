@@ -423,13 +423,17 @@ body {
   from { opacity: 0; transform: translateY(-20px) scale(0.88); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-.board .card {
+.board .card:nth-child(-n + 3) {
   animation: card-drop 220ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
 }
 .board .card:nth-child(2) { animation-delay: 70ms; }
 .board .card:nth-child(3) { animation-delay: 140ms; }
-.board .card:nth-child(4) { animation-delay: 210ms; }
-.board .card:nth-child(5) { animation-delay: 280ms; }
+/* 转牌与河牌是单张落下，不参与错开——它们的兄弟节点不会重挂载，
+   给延迟只会让这一张空等 210/280ms，还和立即响起的 board-flip 音效脱节 */
+.board .card:nth-child(n + 4) {
+  animation: card-drop 220ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+  animation-delay: 0s;
+}
 
 /* 赢池脉冲：结算条出现时，底池闪两下琥珀描边 */
 @keyframes pot-win-pulse {

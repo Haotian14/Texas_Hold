@@ -43,6 +43,10 @@ export function soundFor(type: ActionType, amount: number, pot: number): SoundNa
 const MUTE_KEY = 'poker-trainer.muted';
 
 let ctx: AudioContext | null = null;
+// readMuted 里的 try/catch 不只是隐私模式的兜底：sound.test.ts 跑在
+// environment: 'node' 下，那里没有 localStorage，是这个 try/catch 吞掉了
+// ReferenceError，本模块才能在 node 下被 import（soundFor 才能被测到）。
+// 将来若在模块作用域加 new AudioContext() 之类的副作用，这条路会直接断掉。
 let muted = readMuted();
 const buffers = new Map<SoundName, AudioBuffer>();
 
