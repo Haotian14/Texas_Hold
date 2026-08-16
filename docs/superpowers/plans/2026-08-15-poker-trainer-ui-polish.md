@@ -41,7 +41,7 @@
 | `src/ui/sound.ts` | **新增**。`soundFor()` 纯映射 + AudioContext / 播放 / 静音 | 6, 8 |
 | `src/ui/sound.test.ts` | **新增**。`soundFor()` 单测 | 6 |
 | `src/ui/App.tsx` | 音效触发接线 | 8 |
-| `public/sounds/*.mp3` | **新增**。八个音效文件 | 7 |
+| `public/sounds/*.mp3` | **新增**。四个音效文件（另外四个实时合成，无文件，见规格 §5.3.1） | 7 |
 | `public/sounds/CREDITS.md` | **新增**。来源与许可 | 7 |
 | `src/session/architecture.test.ts` | **新增**音频守卫 | 6 |
 | `README.md` | 更新技术栈与已知边界 | 9 |

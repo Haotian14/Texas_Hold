@@ -61,7 +61,7 @@
 | `src/ui/sound.ts` | 音效模块：AudioContext 生命周期、buffer 预加载、`play(name)`、静音开关；含纯函数 `soundFor()` |
 | `src/ui/sound.test.ts` | `soundFor()` 的单测 |
 | `src/ui/components/Chips.tsx` | 渲染面额筹码堆（无逻辑，逻辑在 `format.ts`） |
-| `public/sounds/*.mp3` | 八个音效文件 |
+| `public/sounds/*.mp3` | 四个音效文件（另外四个实时合成，无文件，见 §5.3.1） |
 | `public/sounds/CREDITS.md` | 每个文件的来源 URL 与许可 |
 
 **修改**
@@ -150,6 +150,8 @@ export function soundFor(type: ActionType, amount: number, pot: number): SoundNa
 
 - `fold` → `'fold'`，`check` → `'check'`，`allin` → `'allin'`
 - `bet` / `raise` / `call` → 以**相对底池**分界：`amount ≥ pot / 2` 为 `'chip-heavy'`，否则 `'chip-light'`。同样 80 筹码，在 140 底池里是大注、在 4,000 底池里是零头，绝对金额分不出这个差别
+- **`pot` 指的是「决策时的底池」，即不含本次投入。** 这条必须写死：整支审查发现调用方原本喂的是动作**之后**的底池，代入判据后 `amount ≥ (potBefore + amount)/2` 化简为 `amount ≥ potBefore`——阈值悄悄退化成了「满池下注」，最常见的半池下注被判成轻注。规格原文没说清是哪个底池，函数作者与接线作者各读一种，单独看都不算错，这就是那个缺陷的直接成因
+- **实现提示**：`state.game.seats[].totalContribution` 在 `applyAction` 内部就已累加本次投入，所以调用方必须减去 `Action.amount`（它记的正是本次实际投入额）才能还原动作前的底池。`potBefore = potAfter − amount` 是恒等式，不需要会话层额外暴露字段
 - 比较必须用 `chips.ts` 的 helper（`chipsGreater(halfPot, amount)` 为真表示 `amount < halfPot`，即轻），禁止裸 `>=`
 - `pot ≤ 0` 在真实牌局中不可达（盲注恒先入池），函数不特判，按同一式子处理
 
@@ -157,7 +159,7 @@ export function soundFor(type: ActionType, amount: number, pot: number): SoundNa
 
 - **来源**：[BigSoundBank](https://bigsoundbank.com/)，CC0 公有领域，无需账号、可商用、署名可选。备选 [Pixabay](https://pixabay.com/sound-effects/) 内容许可
 - **位置**：`public/sounds/`——Vite 原样拷贝到 `dist/`，不进 JS bundle
-- **体积**：每个 11–40 KB，八个合计约 200 KB
+- **体积**：实际落地为 4 个文件、合计 54,720 字节（见 §5.3.1；另外四个实时合成，无文件）
 - **许可记录**：`public/sounds/CREDITS.md` 逐个记录文件名、来源 URL、许可、下载日期
 
 **实施纪律**：每个文件下载前必须停下来向用户报清**文件名、来源 URL、大小**并取得授权。不得批量下载，不得从未经确认的来源下载。若目标站点不可用或找不到合适音效，**停下来报告**，不要擅自换源。
