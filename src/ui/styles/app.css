@@ -461,7 +461,7 @@ body {
     transform: none;
   }
   .pot-amount { animation: none; }
-  .board .card {
+  .board .card:nth-child(n) {
     animation: card-drop 120ms linear backwards;
   }
   @keyframes card-drop {
