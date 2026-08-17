@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { HandAnalysis, DecisionAnalysis } from '../review/types';
-import { handGrade } from './reviewModel';
+import type { HandRecord } from '../core/types';
+import type { EvCandidate } from '../core/evEstimate';
+import { handGrade, timelineOf, barsOf, foldedSeatsOf } from './reviewModel';
 
 /**
  * 造一个 DecisionAnalysis。这里刻意不跑真实的 analyzeHand ——
@@ -95,5 +97,110 @@ describe('handGrade', () => {
     expect(handGrade(analysis([decision({ evLoss: 1 })])).grade).toBe('notable');
     // 单点 3.0 恰好踩在 severe 的下界
     expect(handGrade(analysis([decision({ evLoss: 3 })])).grade).toBe('severe');
+  });
+});
+
+function candidate(over: Partial<EvCandidate> = {}): EvCandidate {
+  return {
+    label: 'fold',
+    actionType: 'fold',
+    investment: 0,
+    ev: 0,
+    isRecommended: false,
+    ...over,
+  };
+}
+
+describe('timelineOf', () => {
+  it('按街分组，只保留有决策点的街，街序固定为翻前→翻牌→转牌→河牌', () => {
+    // 刻意乱序传入，验证输出不是照抄输入顺序
+    const groups = timelineOf(analysis([
+      decision({ actionIndex: 3, street: 'river' }),
+      decision({ actionIndex: 0, street: 'preflop' }),
+      decision({ actionIndex: 2, street: 'flop' }),
+    ]));
+    expect(groups.map(g => g.street)).toEqual(['preflop', 'flop', 'river']);
+    expect(groups.map(g => g.label)).toEqual(['翻前', '翻牌', '河牌']);
+  });
+
+  it('组内按 actionIndex 升序，index 指回 decisions 里的原下标', () => {
+    // decisions 数组里的顺序是 2、0、1，actionIndex 是 7、5、6
+    const groups = timelineOf(analysis([
+      decision({ actionIndex: 7, street: 'flop' }),
+      decision({ actionIndex: 5, street: 'flop' }),
+      decision({ actionIndex: 6, street: 'flop' }),
+    ]));
+    expect(groups).toHaveLength(1);
+    expect(groups[0].rows.map(r => r.decision.actionIndex)).toEqual([5, 6, 7]);
+    // index 必须是「在 a.decisions 里的下标」，不是排序后的名次 ——
+    // 展开状态用它做 key，错了会展开错的那一行
+    expect(groups[0].rows.map(r => r.index)).toEqual([1, 2, 0]);
+  });
+});
+
+describe('barsOf', () => {
+  it('全为非负 EV 时零点在最左，条从零点向右伸', () => {
+    const chart = barsOf(decision({
+      candidates: [
+        candidate({ label: 'fold', ev: 0 }),
+        candidate({ label: 'call', ev: 2, actionType: 'call', investment: 1 }),
+        candidate({ label: 'bet 1/2', ev: 4, actionType: 'bet', investment: 3, isRecommended: true }),
+      ],
+      actualLabel: 'call',
+    }));
+    expect(chart.zeroPct).toBe(0);
+    expect(chart.bars.map(b => b.leftPct)).toEqual([0, 0, 0]);
+    expect(chart.bars.map(b => b.widthPct)).toEqual([0, 50, 100]);
+    expect(chart.bars.map(b => b.isRecommended)).toEqual([false, false, true]);
+    expect(chart.bars.map(b => b.isActual)).toEqual([false, true, false]);
+  });
+
+  it('出现负 EV 时零点内移，负条向左伸且右端落在零点', () => {
+    const chart = barsOf(decision({
+      candidates: [
+        candidate({ label: 'fold', ev: 0 }),
+        candidate({ label: 'call', ev: -2, actionType: 'call', investment: 2 }),
+        candidate({ label: 'bet 1/2', ev: 2, actionType: 'bet', investment: 3, isRecommended: true }),
+      ],
+      actualLabel: 'fold',
+    }));
+    // 轴是 [-2, 2]，零点在正中
+    expect(chart.zeroPct).toBe(50);
+    const call = chart.bars.find(b => b.label === 'call')!;
+    expect(call.leftPct).toBe(0);
+    expect(call.widthPct).toBe(50);
+    // 左端 + 宽度 = 零点，负条的右端必须正好贴住基线
+    expect(call.leftPct + call.widthPct).toBe(chart.zeroPct);
+  });
+
+  it('候选全为零 EV 时不做除零', () => {
+    const chart = barsOf(decision({
+      candidates: [candidate({ label: 'fold', ev: 0 }), candidate({ label: 'check', ev: 0, actionType: 'check' })],
+      actualLabel: 'check',
+    }));
+    expect(chart.zeroPct).toBe(0);
+    for (const b of chart.bars) {
+      expect(Number.isFinite(b.widthPct)).toBe(true);
+      expect(b.widthPct).toBe(0);
+    }
+  });
+
+  it('降级的决策点没有候选，返回空图', () => {
+    const chart = barsOf(decision({ degraded: true, candidates: [], actualLabel: null }));
+    expect(chart.bars).toEqual([]);
+    expect(chart.zeroPct).toBe(0);
+  });
+});
+
+describe('foldedSeatsOf', () => {
+  it('列出弃过牌的座位，去重且不含未弃牌的人', () => {
+    const rec = {
+      actions: [
+        { seat: 1, street: 'preflop', type: 'fold', amount: 0, toCall: 1, potBefore: 1.5 },
+        { seat: 2, street: 'preflop', type: 'call', amount: 1, toCall: 1, potBefore: 1.5 },
+        { seat: 4, street: 'flop', type: 'fold', amount: 0, toCall: 2, potBefore: 4 },
+      ],
+    } as unknown as HandRecord;
+    expect(foldedSeatsOf(rec).sort((x, y) => x - y)).toEqual([1, 4]);
   });
 });
