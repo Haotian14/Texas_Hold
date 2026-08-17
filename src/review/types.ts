@@ -25,6 +25,32 @@ export interface DecisionAnalysis {
    * 这里补齐 recommended 与 actualEv 两个此前被漏掉的字段）。
    */
   recommended: EvCandidate | null;
+  /**
+   * 该决策点的全部候选动作与各自 EV，供 UI 画条形图。
+   * degraded 时为空数组 —— 每个候选的 EV 都建立在被替换过的对手范围上，
+   * 与 actualEv / recommended 是同一类不可信数字。
+   */
+  candidates: EvCandidate[];
+  /** hero 对当前对手范围的胜率。degraded 时为 null */
+  heroEquity: number | null;
+  /**
+   * 跟注所需最低胜率。无需跟注（toCall = 0）时为 null。
+   *
+   * 与上面两个字段不同，**degraded 时它依然有效**：它是
+   * toCall / (pot + toCall) 的纯底池几何（见 core/evEstimate.ts 里
+   * requiredEquity 的算式），只取决于 Situation 里的金额，与对手范围
+   * 是否被替换过完全无关。降级的决策点上「跟这注需要多少胜率」仍是
+   * 一句诚实的话，只是「你有多少胜率」不能说。
+   */
+  requiredEquity: number | null;
+  /**
+   * 用户实际动作匹配到的候选的 label，匹配不上或 degraded 时为 null。
+   *
+   * 条形图要高亮「你选的那一条」，而 UI 手上只有 actual: Action。
+   * 让 UI 靠 actionType + investment 自己比对，等于把 judge.ts 的
+   * matchCandidate 在界面层重写一遍，两份匹配规则迟早漂移。
+   */
+  actualLabel: string | null;
   /** max(0, EV(推荐) − EV(实际))。degraded 时恒为 0 */
   evLoss: number;
   severity: Severity;
