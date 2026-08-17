@@ -11,7 +11,7 @@
 **规格：** `docs/superpowers/specs/2026-08-18-poker-trainer-03b-review-card-design.md`
 **基线：** `review-card` 分支 @ `404b33e`（自 master `51e515f`），**45 文件 / 631 通过 / 3 跳过**，typecheck + build 绿
 
-**预期测试数逐任务：** 631 → T1 633 → T2 637 → T3 643 → T4–T7 不变。终态 **46 文件 / 643 通过 / 3 跳过**。
+**预期测试数逐任务：** 631 → T1 633 → T2 637 → T3 644 → T4–T7 不变。终态 **46 文件 / 644 通过 / 3 跳过**。
 任何一步跑出的数字与这里对不上，**停下来报告实际数字**，不要通过删测试或放宽断言把数字凑回来。
 
 ---
@@ -813,12 +813,12 @@ export function foldedSeatsOf(record: HandRecord): number[] {
 - [ ] **Step 4: 跑它，确认通过**
 
 Run: `npx.cmd vitest run src/ui/reviewModel.test.ts`
-Expected: PASS，**10 passed**（Task 2 的 4 条 + 本任务 6 条）。
+Expected: PASS，**11 passed**（Task 2 的 4 条 + 本任务 7 条：timelineOf 2 + barsOf 4 + foldedSeatsOf 1）。
 
 - [ ] **Step 5: 全量测试 + typecheck**
 
 Run: `npm.cmd test`
-Expected: **46 文件 / 643 通过 / 3 跳过**，exit 0。
+Expected: **46 文件 / 644 通过 / 3 跳过**，exit 0。
 
 Run: `npm.cmd run typecheck`
 Expected: 无输出，exit 0。
@@ -1093,7 +1093,7 @@ Expected: 无输出，exit 0。
 - [ ] **Step 6: 全量测试**
 
 Run: `npm.cmd test`
-Expected: **46 文件 / 643 通过 / 3 跳过**，exit 0 —— 与 Task 3 完全一致。
+Expected: **46 文件 / 644 通过 / 3 跳过**，exit 0 —— 与 Task 3 完全一致。
 
 本任务不新增测试。**若数字变了，停下来报告** —— 新增两个 `.tsx` 文件不应该影响任何既有测试，唯一会被触动的是 `src/session/architecture.test.ts` 里扫描 `src/ui` 的那两条守卫（它们会把新文件纳入扫描），数字变化意味着新文件违反了分层约束。
 
@@ -1533,7 +1533,7 @@ Expected: 无输出，exit 0。
 - [ ] **Step 7: 全量测试**
 
 Run: `npm.cmd test`
-Expected: **46 文件 / 643 通过 / 3 跳过**，exit 0，与 Task 4 一致。
+Expected: **46 文件 / 644 通过 / 3 跳过**，exit 0，与 Task 4 一致。
 
 - [ ] **Step 8: 提交**
 
@@ -1834,7 +1834,7 @@ Expected: 无输出，exit 0。
 - [ ] **Step 8: 全量测试**
 
 Run: `npm.cmd test`
-Expected: **46 文件 / 643 通过 / 3 跳过**，exit 0。
+Expected: **46 文件 / 644 通过 / 3 跳过**，exit 0。
 
 特别留意 `src/session/architecture.test.ts` 的「src/ui/ 不从引擎与 AI 取值」那条 —— `App.tsx` 新增的 `import { analyzeHand } from '../review/analyzeHand'` 是值导入，但 `review/analyzeHand` **不在** banned 列表（`core/gameEngine`、`ai/decide`、`ai/selfPlayAi`）里，应当照常通过。**若这条红了，停下来报告，不要修改守卫。**
 
@@ -1883,7 +1883,7 @@ EOF
 Run: `npm.cmd test`
 记下实际输出的文件数 / 通过数 / 跳过数与耗时。
 
-**只写你自己跑出来的数字。** 若与本计划预测的 46 / 643 / 3 不符，以实跑为准并在任务报告里说明差异 —— 不要照抄计划里的预测数。
+**只写你自己跑出来的数字。** 若与本计划预测的 46 / 644 / 3 不符，以实跑为准并在任务报告里说明差异 —— 不要照抄计划里的预测数。
 
 - [ ] **Step 2: 改状态表**
 
