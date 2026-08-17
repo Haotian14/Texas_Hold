@@ -14,7 +14,7 @@
 
 ### 本期做
 
-1. `SummaryBar` 增加「复盘」按钮，按钮带本手最高 severity 的色点
+1. 结算区增加「复盘」按钮，按钮带本手最高 severity 的色点。它是独立组件、渲染在 `.bottom` 里 SummaryBar 之上，而**不是**塞进 `SummaryBar` —— 因为 hero 破产那一手底部显示的是 `RebuyPrompt` 而非 `SummaryBar`，而那恰恰是最该复盘的一手。做成独立组件，两种结算形态下按钮都在，同时 ③-A 已验收过的 `SummaryBar` 布局一行不动
 2. 复盘卡片（覆盖牌桌的 sheet）：顶部本手净盈亏 + 整体评级
 3. 街道时间线：按 preflop / flop / turn / river 分组，每个 hero 决策点一行，带 severity 色标与动作摘要
 4. 点开某决策点展开：底池、待跟注、hero 胜率、所需胜率、各候选动作 EV 条形图、推荐动作、mistakeTag、解释文案
@@ -55,6 +55,15 @@ candidates: EvCandidate[];
 /** hero 对当前对手范围的胜率。degraded 时为 null */
 heroEquity: number | null;
 /**
+ * 用户实际动作匹配到的候选的 label，匹配不上或 degraded 时为 null。
+ *
+ * 条形图要把「你选的那一条」高亮出来，而 UI 手上只有 actual: Action，
+ * 靠 actionType + investment 去比对等于把 judge.ts 的 matchCandidate
+ * 在界面层重写一遍——两份匹配规则迟早漂移。这里由 analyzeHand 把它
+ * 已经匹配到的那个候选的 label 原样传出来。
+ */
+actualLabel: string | null;
+/**
  * 跟注所需最低胜率。无需跟注（toCall = 0）时为 null。
  *
  * 与上面两个字段不同，**degraded 时它依然有效**：它是
@@ -75,6 +84,7 @@ requiredEquity: number | null;
 |---|---|---|
 | `candidates` | `[]` | 每个候选的 EV 都建立在被替换过的对手范围上 |
 | `heroEquity` | `null` | 直接由对手范围算出 |
+| `actualLabel` | `null` | 与 `actualEv` 同批：候选列表本身已被清空，指向其中一条的标签也就没有意义 |
 | `requiredEquity` | **保持有效** | 纯底池几何，不碰对手范围 |
 
 这条切分必须有测试守着 —— 它正是「UI 不做检查就直接渲染数字」这类缺陷的唯一防线。
@@ -106,8 +116,11 @@ export function handGrade(a: HandAnalysis): Grade;
 /** 时间线：按街分组，组内保持 actionIndex 升序 */
 export function timelineOf(a: HandAnalysis): StreetGroup[];
 
-/** 某决策点的 EV 条形图数据 */
-export function barsOf(d: DecisionAnalysis): Bar[];
+/** 某决策点的 EV 条形图数据（含零点基线位置） */
+export function barsOf(d: DecisionAnalysis): BarChart;
+
+/** 本手弃过牌的座位号，供对手底牌灰显 */
+export function foldedSeatsOf(record: HandRecord): number[];
 ```
 
 **评级定义**（上游 §10.3 只写了「整体评级」，没定义算法，本设计定死）：
