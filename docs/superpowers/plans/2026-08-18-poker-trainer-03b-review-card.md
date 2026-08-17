@@ -243,7 +243,7 @@ Expected: FAIL，报 `expected undefined to deeply equal []`。
 - [ ] **Step 7: 跑两个测试文件，确认变绿**
 
 Run: `npx.cmd vitest run src/review/analyzeHand.test.ts src/review/analyzeHand.degraded.test.ts`
-Expected: PASS，两个文件合计 **10 passed**（原 8 条 + 新增 2 条）。
+Expected: PASS，两个文件合计 **11 passed**（原 9 条 = 7 + 2，加新增 2 条）。
 
 - [ ] **Step 8: 变异验证 —— 证明降级守卫不是摆设**
 
