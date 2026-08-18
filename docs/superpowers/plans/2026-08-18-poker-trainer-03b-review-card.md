@@ -2131,7 +2131,7 @@ EOF
 
 ## 全部完成后
 
-1. 整支代码审查（diff 范围 `404b33e..HEAD`）
+1. 整支代码审查（diff 范围 `51e515f..HEAD`，即 `git merge-base master HEAD`..HEAD —— 本仓库本地默认分支是 `master`，不是 `main`；`404b33e`（规格提交）本身就在本支上，用它当基线会把规格与计划两个提交漏在审查之外）
 2. 控制方浏览器验收，走规格 §8 的 12 条人工清单
 3. `superpowers:finishing-a-development-branch`
 
