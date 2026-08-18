@@ -1665,6 +1665,7 @@ EOF
 
 **Files:**
 - Create: `src/ui/components/ReviewTrigger.tsx`
+- Modify: `src/ui/components/ReviewSheet.tsx`（Step 0：`analysis` 放宽为可空，补失败态 body）
 - Modify: `src/ui/App.tsx`
 - Modify: `src/ui/styles/app.css`（末尾追加触发按钮样式）
 
@@ -1684,29 +1685,99 @@ EOF
 
 hero 破产那一手，底部显示的是 `RebuyPrompt` 而不是 `SummaryBar`（见 `App.tsx` 的 `BottomSlot`），而那恰恰是最该复盘的一手。做成独立组件、在两个 handOver 分支里都渲染，同时 ③-A 已验收过的 `SummaryBar` 布局一行不动。
 
+- [ ] **Step 0: `ReviewSheet` 接受「分析失败」**
+
+设计文档 §6 的错误表规定：`analyzeHand` 抛错时不掀牌桌，按钮不带色点但**点得开**，点开显示「本手复盘失败」。Task 5 的 `ReviewSheet` 现在要求 `analysis: HandAnalysis`，失败态无处可去。
+
+失败态归 `ReviewSheet` 管而不是新起一个组件：壳（头部净盈亏 + 关闭、底部「下一手」）在两种情况下完全一样，另起组件就得把这两段原样抄一遍。改的只是 body 里的一个分支。
+
+在 `src/ui/components/ReviewSheet.tsx` 里：
+
+1. props 类型改为 `analysis: HandAnalysis | null`，并在注释里写明 `null` 的含义：
+
+```tsx
+  /** 本手分析。null = analyzeHand 抛错了（见设计文档 §6），不是「没有决策点」 */
+  analysis: HandAnalysis | null;
+```
+
+2. `const grade = handGrade(analysis);` 与 `timelineOf(analysis)` 都不能对 null 调用。把 body 与评级徽章各加一个分支：
+
+```tsx
+  const grade = analysis === null ? null : handGrade(analysis);
+```
+
+徽章处：
+
+```tsx
+          {grade !== null ? (
+            <span className={`rv-grade rv-grade-${grade.grade}`}>{grade.text}</span>
+          ) : null}
+```
+
+body 处：
+
+```tsx
+      <div className="rv-body">
+        {analysis === null ? (
+          <p className="rv-empty">本手复盘失败。牌局不受影响，可以继续。</p>
+        ) : (
+          <>
+            <ReviewTimeline groups={timelineOf(analysis)} />
+            <OpponentCards record={record} />
+          </>
+        )}
+      </div>
+```
+
+`.rv-empty` 已在 Task 5 的 CSS 里，不必新增规则。
+
+3. Run: `npm.cmd run typecheck` —— 无输出，exit 0。改完这一步立刻验，别攒到最后。
+
 - [ ] **Step 1: 写 `ReviewTrigger.tsx`**
 
 ```tsx
 import type { Grade } from '../reviewModel';
 
 /**
+ * 复盘按钮的三态。
+ *
+ * 「还没算好」与「算失败了」必须分开，不能都塌成一个 null——设计文档
+ * §6 的错误表要求 analyzeHand 抛错时按钮**点得开**、点开显示「本手复盘
+ * 失败」。若两者共用一个 null，失败的那一手会留下一个永远禁用、永远不
+ * 解释自己的按钮，用户只会以为程序卡住了。
+ */
+export type ReviewStatus =
+  | { kind: 'pending' }
+  | { kind: 'failed' }
+  | { kind: 'ready'; grade: Grade };
+
+/**
  * 结算区的「复盘」按钮。
  *
- * grade 为 null 表示分析还没算完 —— 按钮可见但禁用，不带色点。
- * 按钮常驻是有意的：若改成「算完才渲染」，结算区会在结算后跳一下。
+ * 只有 pending 才禁用。按钮常驻是有意的：若改成「算完才渲染」，
+ * 结算区会在结算后跳一下。
  *
  * 色点让「这手有没有打错」不点开就能看到；文字标签同时给出，
  * 颜色不是唯一编码。
  */
-export function ReviewTrigger({ grade, onOpen }: { grade: Grade | null; onOpen: () => void }) {
+export function ReviewTrigger({
+  status,
+  onOpen,
+}: {
+  status: ReviewStatus;
+  onOpen: () => void;
+}) {
   return (
     <button
       className="rv-trigger"
       onClick={onOpen}
-      disabled={grade === null}
+      disabled={status.kind === 'pending'}
       aria-label="打开本手复盘"
     >
-      <span className={`rv-dot rv-dot-${grade ?? 'unknown'}`} aria-hidden="true" />
+      <span
+        className={`rv-dot rv-dot-${status.kind === 'ready' ? status.grade : 'unknown'}`}
+        aria-hidden="true"
+      />
       复盘
     </button>
   );
@@ -1785,7 +1856,19 @@ import { ReviewTrigger } from './components/ReviewTrigger';
   // 只认属于当前这一手的分析
   const currentReview = review !== null && review.recordId === recordId ? review : null;
   const currentAnalysis = currentReview?.analysis ?? null;
-  const grade = currentAnalysis === null ? null : handGrade(currentAnalysis).grade;
+  // 三态，不是 grade|null：见 ReviewTrigger 里 ReviewStatus 的注释。
+  // currentReview 为 null = 还没算好；算好了但 analysis 为 null = 算失败了。
+  const reviewStatus: ReviewStatus =
+    currentReview === null
+      ? { kind: 'pending' }
+      : currentReview.analysis === null
+        ? { kind: 'failed' }
+        : { kind: 'ready', grade: handGrade(currentReview.analysis).grade };
+
+  // 本手 hero 净盈亏。**与上面第 112 行那个 netBB 不是一回事** —— 那个是
+  // 整局累计（heroNet(ledger, stack)），这个是这一手。同一个作用域里两个
+  // 同名概念很容易被后来的人「顺手简化」成一个，所以这里显式另起名字。
+  const handNetBB = state.record?.results.find(r => r.seat === HERO_SEAT)?.netBB ?? 0;
 
   const onOpenSheet = useCallback(() => setSheetOpen(true), []);
   const onCloseSheet = useCallback(() => setSheetOpen(false), []);
@@ -1821,14 +1904,16 @@ import { ReviewTrigger } from './components/ReviewTrigger';
         onHero={onHero}
         onNext={onNext}
         onRebuy={onRebuy}
-        grade={grade}
+        reviewStatus={reviewStatus}
         onOpenReview={onOpenSheet}
       />
-      {sheetOpen && currentAnalysis !== null && state.record !== null ? (
+      {/* pending 时按钮是禁用的，走不到这里；failed 时 currentAnalysis 为
+          null，卡片壳照开，body 显示「本手复盘失败」——见 Step 0。 */}
+      {sheetOpen && currentReview !== null && state.record !== null ? (
         <ReviewSheet
           analysis={currentAnalysis}
           record={state.record}
-          netBB={state.record.results.find(r => r.seat === HERO_SEAT)?.netBB ?? 0}
+          netBB={handNetBB}
           onNext={onNextFromSheet}
           onClose={onCloseSheet}
         />
@@ -1848,20 +1933,20 @@ function BottomSlot({
   onHero,
   onNext,
   onRebuy,
-  grade,
+  reviewStatus,
   onOpenReview,
 }: {
   state: HandSessionState;
   onHero: (input: ActionInput) => void;
   onNext: () => void;
   onRebuy: (targetStack: number) => void;
-  grade: Grade | null;
+  reviewStatus: ReviewStatus;
   onOpenReview: () => void;
 }) {
   if (state.phase === 'handOver') {
     // 复盘按钮在两个结算形态下都要在 —— hero 破产那一手底部显示的是
     // RebuyPrompt，而那恰恰是最该复盘的一手。
-    const trigger = <ReviewTrigger grade={grade} onOpen={onOpenReview} />;
+    const trigger = <ReviewTrigger status={reviewStatus} onOpen={onOpenReview} />;
 
     if (heroNeedsRebuy(state)) {
       return (
@@ -1895,11 +1980,13 @@ function BottomSlot({
 }
 ```
 
-`Grade` 类型要在 import 区加上：
+`ReviewStatus` 类型要在 import 区加上（`Grade` 本身在 `App.tsx` 里不再直接用到，别顺手也 import，会触发 noUnusedLocals）：
 
 ```tsx
-import type { Grade } from './reviewModel';
+import { ReviewTrigger, type ReviewStatus } from './components/ReviewTrigger';
 ```
+
+这一行取代 Step 2 import 区里原来那句单独的 `import { ReviewTrigger } from './components/ReviewTrigger';`，不要两句都留。
 
 - [ ] **Step 6: 加 CSS**
 
@@ -1946,7 +2033,7 @@ Expected: 成功，产物写入 `dist/`。
 - [ ] **Step 10: 提交**
 
 ```bash
-git add src/ui/App.tsx src/ui/components/ReviewTrigger.tsx src/ui/styles/app.css
+git add src/ui/App.tsx src/ui/components/ReviewTrigger.tsx src/ui/components/ReviewSheet.tsx src/ui/styles/app.css
 git status --short
 git commit -F - <<'EOF'
 feat(ui): 手牌结束后可打开复盘卡片
@@ -1964,6 +2051,9 @@ analyzeHand 每手 25–200ms，够快，不需要 Worker。
 底部是 RebuyPrompt，而那恰恰最该复盘。
 
 analyzeHand 抛错不掀牌桌，记成「这一手分析失败」，牌局继续。
+「还没算好」与「算失败了」是两态不是一个 null：失败时按钮点得开，
+点开显示「本手复盘失败」（设计文档 §6）。塌成一个 null 的话，失败
+那一手会留下一个永远禁用、永远不解释自己的按钮。
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
