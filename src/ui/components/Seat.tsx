@@ -12,6 +12,14 @@ export interface SeatProps {
   isToAct: boolean;
   /** 该座位的 persona id（见 handSession 的 personaIds），用于显示性格名 */
   personaId: string | undefined;
+  /**
+   * 该座位在牌桌上的槽位序号（0–4）。只用来挑头像底色。
+   *
+   * 设计稿给五个座位各配了一种渐变，是为了让"这是同一个人"在一屏里一眼可辨。
+   * 用槽位而不是 seat 号：槽位与屏幕上的位置一一对应，按钮位轮转时头像的
+   * 颜色跟着位置走，不会每手都换一遍。
+   */
+  slot: number;
   /** 本座位最近一个动作；不是本座位或本手尚无动作时为 null */
   bubble: { type: ActionType; amount: number } | null;
   /** 摊牌后亮底牌 */
@@ -30,7 +38,7 @@ export interface SeatProps {
  * 原因），又没有任何信息——每个没弃牌的人当然都有两张牌。摊牌时照旧亮真牌，
  * 那一刻的牌是真信息。
  */
-export function Seat({ seat, isButton, isToAct, personaId, bubble, revealed }: SeatProps) {
+export function Seat({ seat, isButton, isToAct, personaId, slot, bubble, revealed }: SeatProps) {
   // 下注框常驻挂载，金额归零时靠 CSS 过渡滑向牌桌中心并淡出——
   // 卸载元素就没有过渡可言。淡出期间要显示最后一次的非零金额，
   // 否则数字会在滑动过程中突变成 0。
@@ -63,12 +71,21 @@ export function Seat({ seat, isButton, isToAct, personaId, bubble, revealed }: S
         </div>
       )}
       <div className="seat-info">
-        <span className="seat-badge">
+        <span className="seat-badge" data-av={slot % 5}>
           {seatBadge(seat.position)}
           {isButton && <span className="button-chip">D</span>}
         </span>
         <span className="seat-meta">
-          <span className="seat-name">{personaLabel(personaId)}</span>
+          <span className="seat-name-row">
+            <span className="seat-name">{personaLabel(personaId)}</span>
+            {/* 状态点：蓝＝正在行动，灰＝已弃牌，绿＝还在牌里。
+                它是设计稿座位卡上唯一的状态指示，但**不是唯一编码**——
+                正在行动同时有整张卡的蓝环，已弃牌同时有整块淡出与「弃牌」徽章。 */}
+            <span
+              className={`seat-status ${seat.folded ? 'is-folded' : isToAct ? 'is-toact' : 'is-live'}`}
+              aria-hidden="true"
+            />
+          </span>
           <span className="seat-stack">{chips(seat.stack)}</span>
         </span>
       </div>

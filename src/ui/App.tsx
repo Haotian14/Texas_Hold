@@ -23,10 +23,17 @@ import { ActionBar } from './components/ActionBar';
 import { SummaryBar } from './components/SummaryBar';
 import { RebuyPrompt } from './components/RebuyPrompt';
 import { analyzeHand } from '../review/analyzeHand';
-import type { HandAnalysis } from '../review/types';
+import { viewOf } from '../review/view';
+import type { HandView } from '../review/view';
+import { saveHand, loadStats, storageStatus, setDisputed } from '../storage/repo';
+import { requestPersistence } from '../storage/db';
+import type { Stats } from '../storage/stats';
 import { handGrade } from './reviewModel';
 import { ReviewSheet } from './components/ReviewSheet';
 import { ReviewTrigger, type ReviewStatus } from './components/ReviewTrigger';
+import { Nav, type PageId } from './components/Nav';
+import { HistoryPage } from './pages/HistoryPage';
+import type { StoredHand } from '../storage/schema';
 
 const CFG: SessionConfig = {
   // 每次刷新换一局。③-C 会把 seed 一并持久化，届时刷新可续上。
@@ -67,11 +74,52 @@ export function App() {
 
   // 复盘分析与它属于哪一手绑在一起。只要 recordId 与屏幕上这一手对不上，
   // 就当作「还没算好」—— 这是「连打十手不串手」那条验收的唯一防线。
-  // analysis 为 null 表示这一手分析失败（见下面的 catch）。
-  const [review, setReview] = useState<{ recordId: string; analysis: HandAnalysis | null } | null>(
-    null,
-  );
+  // view 为 null 表示这一手分析失败（见下面的 catch）。
+  // 存的是 HandView 而不是 HandAnalysis：后者带着对手范围（ReadonlyMap，序列化
+  // 会静默变空）与一个共享对象引用，落不了库。让界面从一开始就只碰视图类型，
+  // 「刚算完的」与「从库里取回来的」才是同一条渲染路径。见 review/view.ts。
+  const [review, setReview] = useState<{ recordId: string; view: HandView | null } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [page, setPage] = useState<PageId>('table');
+  // 从历史页点开的那一手。它与「刚打完这一手」的复盘走同一个 ReviewSheet——
+  // 两者都吃 HandView（见 review/view.ts），这正是当初让视图类型同时充当
+  // 落库 DTO 的收益：历史里的手不需要任何"复原"步骤就能渲染。
+  const [historyHand, setHistoryHand] = useState<StoredHand | null>(null);
+  /**
+   * 历史列表里被改过的那一手，贴回列表用。
+   *
+   * 与 historyHand 分开存：那个在关卡片时会置 null，而这个必须留着——
+   * 否则用户标完「我不认同」一关卡片，列表上那一行又变回没标记的样子，
+   * 看起来像没保存。只保留最后改的一手：一次会话里连改几手是少数情况，
+   * 而每改一手就整列重取会把「加载更多」翻出来的页全丢掉。
+   */
+  const [patchedHand, setPatchedHand] = useState<StoredHand | null>(null);
+  /**
+   * 「这一手我不认同」——只针对刚打完、还开在牌桌上的那一手。
+   *
+   * 存本地状态而不是每次去库里读：这一手刚写进去，值必然是 false，为一个
+   * 必然已知的值多做一次事务往返没有意义。id 跟着 recordId 走，换手自然失效。
+   */
+  const [disputedNow, setDisputedNow] = useState<{ id: string; value: boolean } | null>(null);
+
+  // 累计统计。开局读一次，之后每手写完由 saveHand 的返回值推进——
+  // 不每次回库重读：那份文档只有本页在写（多标签页的取舍见 repo.ts 的注释）。
+  const [stats, setStats] = useState<Stats | null>(null);
+  // 落库是否可用。隐私模式、配额满、存储被禁用都会让它变 false，
+  // 此时牌局照常，只是历史与统计不再累积——这一点必须让用户看得见，
+  // 否则他会以为自己打的手都被记着了。
+  const [storageOk, setStorageOk] = useState(true);
+
+  useEffect(() => {
+    // 先申请持久化再读统计。默认的 IndexedDB 是 best-effort，浏览器可以在
+    // 磁盘紧张时把整份数据丢掉且不通知任何人——对一个专门存历史的应用，
+    // 那等于用户几百手记录随时可能蒸发。申请不到也不影响启动。
+    void requestPersistence();
+    void loadStats().then(s => {
+      setStats(s);
+      setStorageOk(storageStatus() !== 'unavailable');
+    });
+  }, []);
 
   const onToggleMute = useCallback(() => {
     setMutedState(prev => {
@@ -189,13 +237,25 @@ export function App() {
     let cancelled = false;
     const timer = setTimeout(() => {
       if (cancelled) return;
+      let view: HandView | null = null;
       try {
-        const analysis = analyzeHand(rec);
-        if (!cancelled) setReview({ recordId: rec.id, analysis });
+        view = viewOf(analyzeHand(rec));
       } catch {
         // 复盘算不出来不该掀掉牌桌 —— 记成「这一手分析失败」，牌局继续。
-        if (!cancelled) setReview({ recordId: rec.id, analysis: null });
+        view = null;
       }
+      if (!cancelled) setReview({ recordId: rec.id, view });
+      // 落库。故意**不**受 cancelled 影响：cancelled 只表示"这一手的分析结果
+      // 已经没人要显示了"（用户翻到了下一手），不表示"这一手不该被记下来"。
+      // 写入失败一律吞掉——storageStatus() 表达失败，牌局继续。
+      // 分析失败（view 为 null）的那一手照样存：record 是完整的，规则修好后
+      // 能重跑；因为分析失败就不存，等于把最值得看的那一手永久丢掉。
+      void saveHand(rec, view).then(out => {
+        setStats(out.stats);
+        setStorageOk(out.ok);
+        // 写进去了才谈得上标记；写失败的那一手没有可标的对象
+        if (out.ok) setDisputedNow({ id: rec.id, value: false });
+      });
     }, 0);
     return () => {
       cancelled = true;
@@ -217,16 +277,16 @@ export function App() {
 
   // 只认属于当前这一手的分析
   const currentReview = review !== null && review.recordId === recordId ? review : null;
-  const currentAnalysis = currentReview?.analysis ?? null;
+  const currentView = currentReview?.view ?? null;
   // 三态，不是 grade|null：见 ReviewTrigger 里 ReviewStatus 的注释。
-  // currentReview 为 null = 还没算好；算好了但 analysis 为 null = 算失败了。
+  // currentReview 为 null = 还没算好；算好了但 view 为 null = 算失败了。
   const reviewStatus: ReviewStatus =
     currentReview === null
       ? { kind: 'pending' }
-      : currentReview.analysis === null
+      : currentReview.view === null
         ? { kind: 'failed' }
         : (() => {
-            const g = handGrade(currentReview.analysis);
+            const g = handGrade(currentReview.view);
             return { kind: 'ready', grade: g.grade, text: g.text };
           })();
 
@@ -249,50 +309,115 @@ export function App() {
     if (!needsRebuy) dispatch({ kind: 'nextHand' });
   }, [needsRebuy]);
 
+  const onOpenHistoryHand = useCallback((h: StoredHand) => setHistoryHand(h), []);
+  const onCloseHistoryHand = useCallback(() => setHistoryHand(null), []);
+
+  // 只认属于当前这一手的标记状态，与 currentReview 同一个口径
+  const disputedForCurrent =
+    disputedNow !== null && disputedNow.id === recordId ? disputedNow.value : null;
+
+  const onToggleDisputedNow = useCallback(() => {
+    if (disputedNow === null || disputedNow.id !== recordId) return;
+    const next = !disputedNow.value;
+    // 先改界面再写库：这是个纯标注，写失败的代价只是下次打开时它变回去，
+    // 而让按钮等一次事务往返才响应，手感上像卡住了。失败时回滚并提示。
+    setDisputedNow({ id: disputedNow.id, value: next });
+    void setDisputed(disputedNow.id, next).then(ok => {
+      if (!ok) {
+        setDisputedNow({ id: disputedNow.id, value: !next });
+        setStorageOk(false);
+      }
+    });
+  }, [disputedNow, recordId]);
+
+  const onToggleDisputedHistory = useCallback(() => {
+    if (historyHand === null) return;
+    const next = { ...historyHand, disputed: !historyHand.disputed };
+    setHistoryHand(next);
+    setPatchedHand(next);
+    void setDisputed(next.id, next.disputed).then(ok => {
+      if (ok) return;
+      const rolled = { ...next, disputed: !next.disputed };
+      setHistoryHand(h => (h === null ? h : rolled));
+      setPatchedHand(rolled);
+      setStorageOk(false);
+    });
+  }, [historyHand]);
+
   return (
     <div className="app">
-      <TopBar
-        handsPlayed={state.ledger.handsPlayed}
-        inProgress={state.phase !== 'handOver'}
-        netBB={netBB}
-        totalBuyIn={state.ledger.totalBuyIn}
-        deepStack={isDeepStackHand(state)}
-        muted={muted}
-        onToggleMute={onToggleMute}
-      />
-      <Table
-        game={state.game}
-        personaIds={state.personaIds}
-        lastAction={state.lastAction}
-        revealed={revealed}
-        heroWon={heroWon}
-      />
-      <HeroHand
-        seat={hero}
-        isButton={state.game.buttonSeat === HERO_SEAT}
-        isToAct={state.game.toAct === HERO_SEAT}
-      />
-      <BottomSlot
-        state={state}
-        onHero={onHero}
-        onNext={onNext}
-        onRebuy={onRebuy}
-        reviewStatus={reviewStatus}
-        onOpenReview={onOpenSheet}
-        handNetBB={handNetBB}
-      />
-      {/* pending 时按钮是禁用的，走不到这里；failed 时 currentAnalysis 为
-          null，卡片壳照开，body 显示「本手复盘失败」——见 Step 0。 */}
-      {sheetOpen && currentReview !== null && state.record !== null ? (
-        <ReviewSheet
-          analysis={currentAnalysis}
-          record={state.record}
-          netBB={handNetBB}
-          onNext={onNextFromSheet}
-          nextLabel={needsRebuy ? '关闭' : '下一手'}
-          onClose={onCloseSheet}
-        />
-      ) : null}
+      <Nav page={page} onNav={setPage} />
+      <div className="app-main">
+        {page === 'history' ? (
+          <>
+            <HistoryPage onOpen={onOpenHistoryHand} patched={patchedHand} />
+            {historyHand !== null ? (
+              <ReviewSheet
+                view={historyHand.view}
+                record={historyHand.record}
+                netBB={
+                  historyHand.record.results.find(r => r.seat === historyHand.record.heroSeat)
+                    ?.netBB ?? 0
+                }
+                onNext={onCloseHistoryHand}
+                // 历史里的手没有"下一手"可开——那颗按钮在这里只能是关闭
+                nextLabel="关闭"
+                disputed={historyHand.disputed}
+                onToggleDisputed={onToggleDisputedHistory}
+                onClose={onCloseHistoryHand}
+              />
+            ) : null}
+          </>
+        ) : (
+          <>
+            <TopBar
+              handsPlayed={state.ledger.handsPlayed}
+              inProgress={state.phase !== 'handOver'}
+              netBB={netBB}
+              totalBuyIn={state.ledger.totalBuyIn}
+              deepStack={isDeepStackHand(state)}
+              storageOk={storageOk}
+              muted={muted}
+              onToggleMute={onToggleMute}
+            />
+            <Table
+              game={state.game}
+              personaIds={state.personaIds}
+              lastAction={state.lastAction}
+              revealed={revealed}
+              heroWon={heroWon}
+            />
+            <HeroHand
+              seat={hero}
+              isButton={state.game.buttonSeat === HERO_SEAT}
+              isToAct={state.game.toAct === HERO_SEAT}
+            />
+            <BottomSlot
+              state={state}
+              onHero={onHero}
+              onNext={onNext}
+              onRebuy={onRebuy}
+              reviewStatus={reviewStatus}
+              onOpenReview={onOpenSheet}
+              handNetBB={handNetBB}
+            />
+            {/* pending 时按钮是禁用的，走不到这里；failed 时 currentAnalysis 为
+                null，卡片壳照开，body 显示「本手复盘失败」——见 Step 0。 */}
+            {sheetOpen && currentReview !== null && state.record !== null ? (
+              <ReviewSheet
+                view={currentView}
+                record={state.record}
+                netBB={handNetBB}
+                onNext={onNextFromSheet}
+                nextLabel={needsRebuy ? '关闭' : '下一手'}
+                disputed={disputedForCurrent}
+                onToggleDisputed={onToggleDisputedNow}
+                onClose={onCloseSheet}
+              />
+            ) : null}
+          </>
+        )}
+      </div>
     </div>
   );
 }

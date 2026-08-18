@@ -42,6 +42,7 @@ export function Table({ game, personaIds, lastAction, revealed, heroWon }: Table
               isButton={seat.seat === game.buttonSeat}
               isToAct={game.toAct === seat.seat}
               personaId={personaIds.get(seat.seat)}
+              slot={i}
               bubble={lastAction?.seat === seat.seat ? lastAction : null}
               revealed={revealed}
             />

@@ -1,4 +1,4 @@
-import type { DecisionAnalysis } from '../../review/types';
+import type { DecisionView } from '../../review/view';
 import { chipsGreater } from '../../core/chips';
 import { barsOf, TAG_TEXT } from '../reviewModel';
 import { pctText } from '../format';
@@ -21,13 +21,12 @@ function Stat({ name, value }: { name: string; value: string }) {
  * 把正确性寄托在上游置空上，等于让 review/types.ts 的注释成为唯一的防线。
  * 降级时只允许出现底池、待跟注、所需胜率（纯底池几何，与对手范围无关）。
  */
-export function ReviewDecision({ d }: { d: DecisionAnalysis }) {
-  const s = d.situation;
+export function ReviewDecision({ d }: { d: DecisionView }) {
   return (
     <div className="rv-detail">
       <div className="rv-stats">
-        <Stat name="底池" value={`${s.pot.toFixed(1)} BB`} />
-        <Stat name="待跟注" value={`${s.toCall.toFixed(1)} BB`} />
+        <Stat name="底池" value={`${d.pot.toFixed(1)} BB`} />
+        <Stat name="待跟注" value={`${d.toCall.toFixed(1)} BB`} />
         {d.requiredEquity !== null ? (
           <Stat name="所需胜率" value={pctText(d.requiredEquity)} />
         ) : null}
@@ -41,9 +40,9 @@ export function ReviewDecision({ d }: { d: DecisionAnalysis }) {
       ) : (
         <>
           <EvBars chart={barsOf(d)} />
-          {d.recommended !== null ? (
+          {d.recommendedLabel !== null ? (
             <div className="rv-rec">
-              推荐：{d.recommended.label}
+              推荐：{d.recommendedLabel}
               {/* evLoss 是 BB 金额，用 chipsGreater 而不是裸 >（见 Global Constraints） */}
               {/* 小数位数必须与 explain.ts::formatBB 一致（1 位）：同一个 evLoss
                   在这行和下面那段解释文案里各印一次，之前这里印 2 位，于是

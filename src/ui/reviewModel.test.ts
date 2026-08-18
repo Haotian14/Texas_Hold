@@ -1,36 +1,27 @@
 import { describe, it, expect } from 'vitest';
-import type { HandAnalysis, DecisionAnalysis } from '../review/types';
+import type { HandView, DecisionView } from '../review/view';
 import type { HandRecord } from '../core/types';
 import type { EvCandidate } from '../core/evEstimate';
 import { handGrade, timelineOf, barsOf, foldedSeatsOf, TAG_TEXT } from './reviewModel';
 import { PREFLOP_TAGS, POSTFLOP_TAGS } from '../review/taxonomy';
 
 /**
- * 造一个 DecisionAnalysis。这里刻意不跑真实的 analyzeHand ——
+ * 造一个 DecisionView。这里刻意不跑真实的 analyzeHand ——
  * 本模块是纯数据变形，用合成输入才能精确控制每一档边界；
- * 真实分析路径由 src/review/analyzeHand.test.ts 覆盖。
+ * 真实分析路径由 src/review/analyzeHand.test.ts 覆盖，
+ * HandAnalysis → HandView 的搬运由 src/review/view.test.ts 覆盖。
  */
-// 返回类型标注 + 不加 as：字面量必须真的满足 DecisionAnalysis。
-// 原先结尾的 `as DecisionAnalysis` 会把整个对象字面量的检查一并关掉——
-// 而 ③-C 要改的正是这个接口，届时最需要这里编译失败提醒。
-function decision(over: Partial<DecisionAnalysis> = {}): DecisionAnalysis {
+// 返回类型标注 + 不加 as：字面量必须真的满足 DecisionView。
+// ③-B 复审时去掉了结尾的 `as DecisionView`，正是因为 ③-C 要改这个接口——
+// 改的那一刻这里编译失败，而不是在界面上静默显示 undefined。它兑现了。
+function decision(over: Partial<DecisionView> = {}): DecisionView {
   return {
     actionIndex: 0,
     street: 'preflop',
-    // situation 在本任务的断言里用不到，给一个最小可用的壳
-    situation: {
-      heroSeat: 0,
-      heroPosition: 'BTN',
-      heroCards: [{ rank: 14, suit: 's' }, { rank: 13, suit: 's' }],
-      board: [],
-      street: 'preflop',
-      pot: 1.5,
-      toCall: 1,
-      heroStack: 99,
-      heroStreetContribution: 0,
-      opponents: [],
-      heroIsPreflopAggressor: false,
-    },
+    // 底池与待跟注在 view 里是两个平字段，不再是整块 situation ——
+    // 对手范围不落库（体积 + 无用，见 review/view.ts 顶部）
+    pot: 1.5,
+    toCall: 1,
     actual: {
       seat: 0,
       street: 'preflop',
@@ -40,8 +31,7 @@ function decision(over: Partial<DecisionAnalysis> = {}): DecisionAnalysis {
       toCall: 1,
       stackBefore: 100,
     },
-    actualEv: 0,
-    recommended: null,
+    recommendedLabel: null,
     evLoss: 0,
     severity: 'ok',
     tag: null,
@@ -55,7 +45,7 @@ function decision(over: Partial<DecisionAnalysis> = {}): DecisionAnalysis {
   };
 }
 
-function analysis(decisions: DecisionAnalysis[]): HandAnalysis {
+function analysis(decisions: DecisionView[]): HandView {
   return {
     recordId: 'r1',
     heroSeat: 0,

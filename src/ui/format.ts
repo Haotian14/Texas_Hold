@@ -104,3 +104,20 @@ export const ACTION_TEXT: Record<ActionType, string> = {
 export function pctText(v: number): string {
   return `${Math.round(v * 100)}%`;
 }
+
+/**
+ * 时间戳 → 「MM-DD HH:mm」。
+ *
+ * 不显示年份：历史页上每行都跟一个日期，年份在绝大多数行里是同一个数字，
+ * 属于纯噪音。用 toLocaleString 而不是手拼，是为了让时区跟着系统走——
+ * HandRecord.timestamp 存的是 Date.now()，那是 UTC 毫秒数。
+ */
+export function dateText(ts: number): string {
+  return new Date(ts).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}

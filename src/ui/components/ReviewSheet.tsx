@@ -1,5 +1,5 @@
 import type { HandRecord } from '../../core/types';
-import type { HandAnalysis } from '../../review/types';
+import type { HandView } from '../../review/view';
 import { handGrade, timelineOf } from '../reviewModel';
 import { useEffect, useRef } from 'react';
 import { ReviewTimeline } from './ReviewTimeline';
@@ -15,24 +15,35 @@ import { chips } from '../format';
  * 「你这一步亏了 2.3BB」比「亏了 92」有意义得多，且跨盲注级别可比。
  */
 export function ReviewSheet({
-  analysis,
+  view,
   record,
   netBB,
   onNext,
   nextLabel,
+  disputed,
+  onToggleDisputed,
   onClose,
 }: {
-  /** 本手分析。null = analyzeHand 抛错了（见设计文档 §6），不是「没有决策点」 */
-  analysis: HandAnalysis | null;
+  /** 本手复盘视图。null = analyzeHand 抛错了（见设计文档 §6），不是「没有决策点」 */
+  view: HandView | null;
   record: HandRecord;
   /** 本手 hero 净盈亏，BB */
   netBB: number;
   onNext: () => void;
   /** 底部按钮的文案。破产那一手开不了下一手，只能「关闭」 */
   nextLabel: string;
+  /**
+   * 「我不认同这个判定」的当前状态。null = 这一手还没落库，标记无处可存。
+   *
+   * ③-B 时这个按钮**刻意没做**：它唯一的用途是在历史页把有争议的手筛出来
+   * 改进规则，而历史页那时不存在，做了就是一个点了没有去处的按钮。现在
+   * 历史页有了「只看有异议」的筛选，它才有意义。
+   */
+  disputed: boolean | null;
+  onToggleDisputed: () => void;
   onClose: () => void;
 }) {
-  const grade = analysis === null ? null : handGrade(analysis);
+  const grade = view === null ? null : handGrade(view);
   // 与 SummaryBar.tsx 同款判据：金额比较走 chips.ts，不用裸 <
   const isNeg = chipsGreater(0, netBB);
 
@@ -75,17 +86,29 @@ export function ReviewSheet({
       </header>
 
       <div className="rv-body">
-        {analysis === null ? (
+        {view === null ? (
           <p className="rv-empty">本手复盘失败。牌局不受影响，可以继续。</p>
         ) : (
           <>
-            <ReviewTimeline groups={timelineOf(analysis)} />
+            <ReviewTimeline groups={timelineOf(view)} />
             <OpponentCards record={record} />
           </>
         )}
       </div>
 
       <footer className="rv-foot">
+        {/* 只有落了库的手才谈得上标记。分析失败（view 为 null）的手照样可以
+            标——用户不认同的可能正是"这手算不出来"这件事本身。 */}
+        {disputed !== null && (
+          <button
+            type="button"
+            className={disputed ? 'btn rv-dispute rv-dispute-on' : 'btn rv-dispute'}
+            onClick={onToggleDisputed}
+            aria-pressed={disputed}
+          >
+            {disputed ? '已标记有异议' : '我不认同这个判定'}
+          </button>
+        )}
         <button className="btn btn-primary" onClick={onNext}>
           {nextLabel}
         </button>
