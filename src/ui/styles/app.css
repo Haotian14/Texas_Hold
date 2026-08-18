@@ -89,6 +89,10 @@
   --card-lg-rank: 20px;
   --card-lg-suit: 17px;
   --card-lg-wide: 17px;
+  --card-sm-w: 26px;
+  --card-sm-h: 36px;
+  --card-sm-rank: 12px;
+  --card-sm-suit: 10px;
   --card-md-w: 34px;
   --card-md-h: 47px;
   --card-md-rank: 15px;
@@ -98,6 +102,34 @@
 
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
+}
+
+/* 窄屏（手机）：五个座位要在 ~370px 里横向排开。按桌面尺寸摆，27%/50%/73%
+   三个位置的座位卡会互相压住，弃牌者的动作气泡还会盖到邻座头上。这里把座位
+   整体缩一档并把两端拉得更开——不是等比缩放，只缩座位，牌桌与自己的牌不动。 */
+@media (max-width: 520px) {
+  :root {
+    --card-sm-w: 20px;
+    --card-sm-h: 28px;
+    --card-sm-rank: 10px;
+    --card-sm-suit: 8px;
+  }
+  .seat {
+    width: 72px;
+    font-size: 9.5px;
+    gap: 2px;
+  }
+  .seat-info {
+    padding: 3px 7px;
+    border-radius: 10px;
+  }
+  .seat-cards { gap: 2px; }
+  .bubble {
+    font-size: 8px;
+    padding: 1px 4px;
+  }
+  .slot-0 { left: 9%; }
+  .slot-4 { left: 91%; }
 }
 
 @media (min-width: 1080px) {
@@ -404,9 +436,9 @@ body {
   line-height: 1;
   font-weight: 500;
 }
-.card-sm { width: 26px; height: 36px; border-radius: 5px; }
-.card-sm .card-rank { font-size: 12px; }
-.card-sm .card-suit { font-size: 10px; }
+.card-sm { width: var(--card-sm-w); height: var(--card-sm-h); border-radius: 5px; }
+.card-sm .card-rank { font-size: var(--card-sm-rank); }
+.card-sm .card-suit { font-size: var(--card-sm-suit); }
 .card-md { width: var(--card-md-w); height: var(--card-md-h); border-radius: 6px; }
 .card-md .card-rank { font-size: var(--card-md-rank); }
 .card-md .card-suit { font-size: var(--card-md-suit); }
