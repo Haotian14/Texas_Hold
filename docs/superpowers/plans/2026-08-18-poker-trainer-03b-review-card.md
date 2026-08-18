@@ -878,8 +878,13 @@ export function EvBars({ chart }: { chart: BarChart }) {
   if (chart.bars.length === 0) return null;
   return (
     <div className="ev-bars">
-      {/* 零点基线：负 EV 的条向左伸、右端贴住它 */}
-      <div className="ev-zero" style={{ left: `${chart.zeroPct}%` }} aria-hidden="true" />
+      {/* 零点基线：负 EV 的条向左伸、右端贴住它。
+          外面必须套一层 .ev-zero-layer —— zeroPct 与条的 leftPct 是同一
+          套坐标，而条定位在 .ev-track（grid 的 1fr 列）里，基线直接挂在
+          .ev-bars 上就会按整宽解析，两者对不齐。见 CSS 里的注释。 */}
+      <div className="ev-zero-layer" aria-hidden="true">
+        <div className="ev-zero" style={{ left: `${chart.zeroPct}%` }} />
+      </div>
       {chart.bars.map(b => (
         <div className="ev-row" key={b.label}>
           <span className="ev-label">{b.label}</span>
@@ -921,6 +926,8 @@ import { CardView } from './Card';
 export function OpponentCards({ record }: { record: HandRecord }) {
   const folded = new Set(foldedSeatsOf(record));
   const others = record.seats.filter(s => s.seat !== record.heroSeat);
+  // 与 EvBars 同款：没内容就整块不出，而不是留一个带标题和分隔线的空盒
+  if (others.length === 0) return null;
   return (
     <div className="opp-cards">
       <div className="opp-cards-title">对手底牌（仅复盘可见）</div>
@@ -953,7 +960,14 @@ export function OpponentCards({ record }: { record: HandRecord }) {
   --sev-notable: #d98a3f;
   --sev-severe: #c4553f;
   --sev-unknown: #4a545c;
+
+  /* 普通候选条的填充色。刻意不复用 --sev-unknown：那个令牌整个存在
+     理由是标记「算不出来」，而条形图里绝大多数条都是普通候选，拿它
+     去填会让「unknown」成为屏幕上最常见的颜色，等于把它稀释掉。 */
+  --bar-fill: #4f5b63;
 ```
+
+注：`--sev-ok` 与既有的 `--text-dim` 恰好同值（`#7d938c`），这是有意的——「没问题」用中性色，且它与 `--sev-unknown`（`#4a545c`）区分得开，degraded 契约不受影响。若 Task 5 的评级徽章实测下来读不出来，再单独调。
 
 - [ ] **Step 4: 加组件样式**
 
@@ -962,14 +976,31 @@ export function OpponentCards({ record }: { record: HandRecord }) {
 ```css
 /* ───────── ③-B 复盘卡片：EV 条形图 ───────── */
 
+/* 三列的宽度定义在这里，是因为它有两个消费者：每行的 grid，以及
+   零点基线的定位层。两处必须严格一致，所以只能有一份定义。 */
 .ev-bars {
+  --ev-col-label: 68px;
+  --ev-col-value: 132px;
+  --ev-gap: 8px;
   position: relative;
   margin: 8px 0;
 }
 
-/* 零点基线。父容器 .ev-bars 是 relative，这条竖线按百分比定位在轴上，
-   与 .ev-track 的左右边界对齐——所以 .ev-track 必须占满 .ev-row 里
-   标签与数值之外的全部宽度，见下面 grid 的 1fr。 */
+/* 零点基线的定位层。
+   为什么需要这一层：条（.ev-fill）的 leftPct/widthPct 是相对 .ev-track
+   算的，而 .ev-track 是 grid 的 1fr 列，左边被标签列吃掉一截、右边被
+   数值列吃掉一截。基线若直接挂在 .ev-bars 上，同一个 zeroPct 会按整宽
+   解析，与条差着 68+8 / 132+8 两段——「负条右端贴住基线」这个本元素
+   存在的理由就永远画不出来（zeroPct=0 时基线还会跑到标签底下）。
+   这一层把坐标系收窄成与 .ev-track 完全相同的那个盒子。 */
+.ev-zero-layer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--ev-col-label) + var(--ev-gap));
+  right: calc(var(--ev-col-value) + var(--ev-gap));
+}
+
 .ev-zero {
   position: absolute;
   top: 0;
@@ -980,9 +1011,9 @@ export function OpponentCards({ record }: { record: HandRecord }) {
 
 .ev-row {
   display: grid;
-  grid-template-columns: 68px 1fr 104px;
+  grid-template-columns: var(--ev-col-label) 1fr var(--ev-col-value);
   align-items: center;
-  gap: 8px;
+  gap: var(--ev-gap);
   height: 22px;
 }
 
@@ -1006,7 +1037,7 @@ export function OpponentCards({ record }: { record: HandRecord }) {
   top: 0;
   height: 10px;
   border-radius: 2px;
-  background: var(--sev-unknown);
+  background: var(--bar-fill);
 }
 
 .ev-fill.ev-rec {
