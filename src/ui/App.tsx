@@ -25,6 +25,8 @@ import { RebuyPrompt } from './components/RebuyPrompt';
 import { analyzeHand } from '../review/analyzeHand';
 import { viewOf } from '../review/view';
 import type { HandView } from '../review/view';
+import { saveHand, loadStats, storageStatus } from '../storage/repo';
+import type { Stats } from '../storage/stats';
 import { handGrade } from './reviewModel';
 import { ReviewSheet } from './components/ReviewSheet';
 import { ReviewTrigger, type ReviewStatus } from './components/ReviewTrigger';
@@ -74,6 +76,21 @@ export function App() {
   // 「刚算完的」与「从库里取回来的」才是同一条渲染路径。见 review/view.ts。
   const [review, setReview] = useState<{ recordId: string; view: HandView | null } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // 累计统计。开局读一次，之后每手写完由 saveHand 的返回值推进——
+  // 不每次回库重读：那份文档只有本页在写（多标签页的取舍见 repo.ts 的注释）。
+  const [stats, setStats] = useState<Stats | null>(null);
+  // 落库是否可用。隐私模式、配额满、存储被禁用都会让它变 false，
+  // 此时牌局照常，只是历史与统计不再累积——这一点必须让用户看得见，
+  // 否则他会以为自己打的手都被记着了。
+  const [storageOk, setStorageOk] = useState(true);
+
+  useEffect(() => {
+    void loadStats().then(s => {
+      setStats(s);
+      setStorageOk(storageStatus() !== 'unavailable');
+    });
+  }, []);
 
   const onToggleMute = useCallback(() => {
     setMutedState(prev => {
@@ -191,13 +208,23 @@ export function App() {
     let cancelled = false;
     const timer = setTimeout(() => {
       if (cancelled) return;
+      let view: HandView | null = null;
       try {
-        const view = viewOf(analyzeHand(rec));
-        if (!cancelled) setReview({ recordId: rec.id, view });
+        view = viewOf(analyzeHand(rec));
       } catch {
         // 复盘算不出来不该掀掉牌桌 —— 记成「这一手分析失败」，牌局继续。
-        if (!cancelled) setReview({ recordId: rec.id, view: null });
+        view = null;
       }
+      if (!cancelled) setReview({ recordId: rec.id, view });
+      // 落库。故意**不**受 cancelled 影响：cancelled 只表示"这一手的分析结果
+      // 已经没人要显示了"（用户翻到了下一手），不表示"这一手不该被记下来"。
+      // 写入失败一律吞掉——storageStatus() 表达失败，牌局继续。
+      // 分析失败（view 为 null）的那一手照样存：record 是完整的，规则修好后
+      // 能重跑；因为分析失败就不存，等于把最值得看的那一手永久丢掉。
+      void saveHand(rec, view).then(out => {
+        setStats(out.stats);
+        setStorageOk(out.ok);
+      });
     }, 0);
     return () => {
       cancelled = true;
@@ -259,6 +286,7 @@ export function App() {
         netBB={netBB}
         totalBuyIn={state.ledger.totalBuyIn}
         deepStack={isDeepStackHand(state)}
+        storageOk={storageOk}
         muted={muted}
         onToggleMute={onToggleMute}
       />

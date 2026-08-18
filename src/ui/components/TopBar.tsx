@@ -11,6 +11,14 @@ export interface TopBarProps {
   /** hero 累计买入，BB */
   totalBuyIn: number;
   deepStack: boolean;
+  /**
+   * 落库是否可用。false = 隐私模式 / 配额满 / 存储被禁用。
+   *
+   * 必须让用户看得见：牌局照常能打，但历史与统计不再累积。不说的话，他会
+   * 以为自己打的每一手都被记着了，等到想去翻历史才发现是空的——那时已经
+   * 打了几百手，什么都补不回来。
+   */
+  storageOk: boolean;
   muted: boolean;
   onToggleMute: () => void;
 }
@@ -21,6 +29,7 @@ export function TopBar({
   netBB,
   totalBuyIn,
   deepStack,
+  storageOk,
   muted,
   onToggleMute,
 }: TopBarProps) {
@@ -37,6 +46,11 @@ export function TopBar({
         {chips(netBB)}
       </span>
       <span className="topbar-item dim">买入 {chips(totalBuyIn)}</span>
+      {!storageOk && (
+        <span className="topbar-item warn" title="本机存储不可用（隐私模式或配额已满），本次牌局不会被记录">
+          未记录
+        </span>
+      )}
       {deepStack && (
         <span className="topbar-item warn" title="筹码深度超过 150BB，复盘精度下降">
           深筹码
