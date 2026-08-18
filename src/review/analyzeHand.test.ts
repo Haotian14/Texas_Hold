@@ -5,6 +5,7 @@ import { HERO_SEAT } from '../core/types';
 import type { HandRecord } from '../core/types';
 import { analyzeHand } from './analyzeHand';
 import { REVIEW_SCHEMA_VERSION } from './types';
+import { chipsGreater } from '../core/chips';
 
 // 注意：这个辅助函数照抄任务书原文，唯一的改动是非 hero、非翻前分支里
 // 加了一层"fold 是否合法"的判断（见下方注释）——原文对每个非 hero 玩家在
@@ -84,6 +85,48 @@ describe('analyzeHand', () => {
       else if (d.evLoss < 3) expect(d.severity).toBe('notable');
       else expect(d.severity).toBe('severe');
     }
+  });
+
+  it('导出候选列表、两个胜率与实际动作标签（EV 条形图的数据源）', () => {
+    const a = analyzeHand(makeRecord('an-bars-1'), OPTS);
+    expect(a.decisions.length).toBeGreaterThan(0);
+    let checked = 0;
+    for (const d of a.decisions) {
+      // degraded 的决策点由 analyzeHand.degraded.test.ts 单独覆盖
+      if (d.degraded) continue;
+      checked++;
+
+      // 候选列表非空，且恰有一条被标记为推荐 —— 这条推荐必须就是
+      // recommended 字段本身，不是另算的一个，否则条形图高亮的那根
+      // 和文案里说的「建议 X」会是两回事
+      expect(d.candidates.length).toBeGreaterThan(0);
+      const flagged = d.candidates.filter(c => c.isRecommended);
+      expect(flagged).toHaveLength(1);
+      expect(flagged[0].label).toBe(d.recommended!.label);
+
+      // hero 胜率是概率，必在 [0,1]
+      expect(d.heroEquity).not.toBeNull();
+      expect(d.heroEquity!).toBeGreaterThanOrEqual(0);
+      expect(d.heroEquity!).toBeLessThanOrEqual(1);
+
+      // 所需胜率：面对下注时是 (0,1) 的真数，无需跟注时为 null
+      if (chipsGreater(d.situation.toCall, 0)) {
+        expect(d.requiredEquity).not.toBeNull();
+        expect(d.requiredEquity!).toBeGreaterThan(0);
+        expect(d.requiredEquity!).toBeLessThan(1);
+      } else {
+        expect(d.requiredEquity).toBeNull();
+      }
+
+      // actualLabel 要么为 null（匹配不到候选），要么必须真的是候选之一 ——
+      // 条形图靠它高亮，指向一个不存在的标签等于什么都不高亮
+      if (d.actualLabel !== null) {
+        expect(d.candidates.map(c => c.label)).toContain(d.actualLabel);
+      }
+    }
+    // 守住空转：上面整段若因为全部 degraded 而一条都没检查，这里会红。
+    // 没有这条断言，`if (d.degraded) continue` 会让整个测试变成永远绿的空壳
+    expect(checked).toBeGreaterThan(0);
   });
 });
 

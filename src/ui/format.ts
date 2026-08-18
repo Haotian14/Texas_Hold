@@ -1,4 +1,5 @@
 import type { Card } from '../core/cards';
+import type { ActionType } from '../core/types';
 
 /**
  * 一个大盲等于多少筹码。
@@ -80,4 +81,26 @@ export function cardText(c: Card): string {
 /** 四色牌的 CSS 类名：♠黑 ♥红 ♦蓝 ♣绿 */
 export function suitClass(c: Card): string {
   return `suit-${c.suit}`;
+}
+
+/** 动作类型 → 中文。牌桌座位与复盘时间线共用，改文案只改这一处 */
+export const ACTION_TEXT: Record<ActionType, string> = {
+  fold: '弃牌',
+  check: '过牌',
+  call: '跟注',
+  bet: '下注',
+  raise: '加注',
+  allin: '全下',
+};
+
+/**
+ * 小数概率 → 百分比字符串，取整。0.333 → "33%"
+ *
+ * 与 src/review/explain.ts::formatPct 是同一个实现，刻意各留一份：
+ * explain.ts 属于 src/review/（引擎层，生成解释文案），本文件属于
+ * src/ui/（展示层）。为一个单行函数在两层之间拉一条依赖，换来的是
+ * 引擎层的文案格式从此被 UI 绑住——不划算。两处若要改，一起改。
+ */
+export function pctText(v: number): string {
+  return `${Math.round(v * 100)}%`;
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SMALL_BLIND, BIG_BLIND, STARTING_STACK } from '../core/types';
-import { CHIPS_PER_BB, chips, chipDenominations, MAX_CHIPS_DRAWN, CHIP_DENOMINATIONS, cardText, rankText, suitText } from './format';
+import { CHIPS_PER_BB, chips, chipDenominations, MAX_CHIPS_DRAWN, CHIP_DENOMINATIONS, cardText, rankText, suitText, pctText } from './format';
 
 describe('BB → 实额', () => {
   it('盲注显示为 20 / 40', () => {
@@ -110,5 +110,14 @@ describe('牌面文字拆成点数与花色', () => {
   it('cardText 仍是两者相接，没有回归', () => {
     expect(cardText(AS)).toBe('A♠');
     expect(cardText(TD)).toBe('10♦');
+  });
+});
+
+describe('百分比格式化', () => {
+  it('pctText 取整到百分号，边界向上取', () => {
+    expect(pctText(0.333)).toBe('33%');
+    expect(pctText(0.335)).toBe('34%');
+    expect(pctText(0)).toBe('0%');
+    expect(pctText(1)).toBe('100%');
   });
 });

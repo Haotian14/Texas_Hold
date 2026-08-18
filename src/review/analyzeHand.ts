@@ -80,6 +80,15 @@ export function analyzeHand(record: HandRecord, opts: AnalyzeOptions = {}): Hand
       // 本身（未经这层 null 化），因为它已经在最前面用 input.degraded 短路，
       // 从不会在降级时读到 recommended.label 之外的任何数字。
       recommended: degraded ? null : ev.recommended,
+      // 以下四个字段是 ③-B 复盘卡片的数据出口。全部原样取自本次已经
+      // 算好的 ev / actualCand，不新增任何计算 —— 多调一次 estimateEv
+      // 会改变随机流，破坏「同一记录分析两次结果逐位相同」那条测试。
+      // degraded 的置空规则与 actualEv / recommended 一致，唯一例外是
+      // requiredEquity（纯底池几何，与对手范围无关，见 types.ts 注释）。
+      candidates: degraded ? [] : ev.candidates,
+      heroEquity: degraded ? null : ev.heroEquity,
+      requiredEquity: ev.requiredEquity,
+      actualLabel: degraded ? null : (actualCand ? actualCand.label : null),
       evLoss,
       severity,
       tag,

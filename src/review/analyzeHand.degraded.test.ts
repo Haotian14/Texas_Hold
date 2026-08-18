@@ -4,6 +4,7 @@ import { toHandRecord } from '../core/handRecord';
 import { HERO_SEAT } from '../core/types';
 import type { HandRecord } from '../core/types';
 import { analyzeHand } from './analyzeHand';
+import { chipsGreater } from '../core/chips';
 
 // 这份文件单独存在（不并进 analyzeHand.test.ts）是因为它要 mock
 // core/evEstimate —— vi.mock 作用于整个模块，一旦和主测试文件共用一个
@@ -93,5 +94,29 @@ describe('analyzeHand degraded 短路（合成 EvResult，直接验证守卫本�
       expect(d.actualEv).toBeNull();
       expect(d.recommended).toBeNull();
     }
+  });
+
+  // 新增的 candidates / heroEquity / actualLabel 三个字段是与 actualEv /
+  // recommended 完全同类的风险面：它们都是用被替换过的对手范围算出来的，
+  // 而字段名字面上都像是「可以直接渲染」的东西。requiredEquity 是唯一的
+  // 例外并且是有意的 —— 它是 toCall/(pot+toCall) 的纯底池几何
+  // （见 core/evEstimate.ts:207），与对手范围无关，降级时依然诚实。
+  it('estimateEv 报告 degraded 时，candidates 清空、heroEquity 与 actualLabel 置 null，但 requiredEquity 保持有效', () => {
+    const rec = makeRecord('an-degraded-1');
+    const a = analyzeHand(rec, { iterations: 200, strengthIterations: 15 });
+    expect(a.decisions.length).toBeGreaterThan(0);
+    let sawToCall = 0;
+    for (const d of a.decisions) {
+      expect(d.degraded).toBe(true);
+      expect(d.candidates).toEqual([]);
+      expect(d.heroEquity).toBeNull();
+      expect(d.actualLabel).toBeNull();
+      if (chipsGreater(d.situation.toCall, 0)) {
+        sawToCall++;
+        expect(d.requiredEquity).not.toBeNull();
+      }
+    }
+    // 至少有一个面对下注的决策点，否则 requiredEquity 那条断言没被执行过
+    expect(sawToCall).toBeGreaterThan(0);
   });
 });

@@ -17,6 +17,25 @@
   --danger: #8c3a2c;
   --positive: #7fd18a;
 
+  /* ③-B 复盘：四档严重度 + 一档「算不出来」。
+     ok 刻意是中性色而不是绿色勾——「没问题」不需要庆祝；
+     degraded 用灰，必须与 ok 明确区分，否则「算不出来」会被读成「没打错」。
+     颜色不是唯一编码，每一档同时带文字标签（见 reviewModel 的 GradeInfo.text）。 */
+  --sev-ok: #7d938c;
+  --sev-minor: #d8b445;
+  --sev-notable: #d98a3f;
+  --sev-severe: #c4553f;
+  --sev-unknown: #4a545c;
+
+  /* 普通候选条的填充色。刻意不复用 --sev-unknown：那个令牌整个存在
+     理由是标记「算不出来」，而条形图里绝大多数条都是普通候选，拿它
+     去填会让「unknown」成为屏幕上最常见的颜色，等于把它稀释掉。 */
+  --bar-fill: #4f5b63;
+
+  /* 注：--sev-ok 与既有的 --text-dim 恰好同值（#7d938c），这是有意的——
+     「没问题」用中性色，且它与 --sev-unknown（#4a545c）区分得开，degraded
+     契约不受影响。若 Task 5 的评级徽章实测下来读不出来，再单独调。 */
+
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
 }
@@ -49,6 +68,7 @@ body {
 
 /* ---- 布局骨架 ---- */
 .app {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -482,3 +502,366 @@ body {
   cursor: pointer;
 }
 .topbar-mute:hover { color: var(--text); }
+
+/* ───────── ③-B 复盘卡片：EV 条形图 ───────── */
+
+/* 三列的宽度定义在这里，是因为它有两个消费者：每行的 grid，以及
+   零点基线的定位层。两处必须严格一致，所以只能有一份定义。 */
+.ev-bars {
+  --ev-col-label: 68px;
+  /* 132px 是量出来的，不是拍的：最宽的一格是「数字 + 你选的 + 推荐」两个
+     徽章同时出现（用户正好选中推荐动作时的常态）。实测 -12.34 BB 双徽章
+     内容宽 123.5px，把数字撑到 -123.45 BB（远超 100BB 筹码量能产生的 EV）
+     也只有 129.9px，仍在 132 之内。改小之前先量一遍：.ev-value 是
+     white-space: nowrap + text-align: right，溢出会往左压到 .ev-track 上，
+     而且 scrollWidth 不会报——得用 Range.getClientRects 量内容实宽。 */
+  --ev-col-value: 132px;
+  --ev-gap: 8px;
+  position: relative;
+  margin: 8px 0;
+}
+
+/* 零点基线的定位层。
+   为什么需要这一层：条（.ev-fill）的 leftPct/widthPct 是相对 .ev-track
+   算的，而 .ev-track 是 grid 的 1fr 列，左边被标签列吃掉一截、右边被
+   数值列吃掉一截。基线若直接挂在 .ev-bars 上，同一个 zeroPct 会按整宽
+   解析，与条差着 68+8 / 132+8 两段——「负条右端贴住基线」这个本元素
+   存在的理由就永远画不出来（zeroPct=0 时基线还会跑到标签底下）。
+   这一层把坐标系收窄成与 .ev-track 完全相同的那个盒子。 */
+.ev-zero-layer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--ev-col-label) + var(--ev-gap));
+  right: calc(var(--ev-col-value) + var(--ev-gap));
+}
+
+.ev-zero {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+
+.ev-row {
+  display: grid;
+  grid-template-columns: var(--ev-col-label) 1fr var(--ev-col-value);
+  align-items: center;
+  gap: var(--ev-gap);
+  height: 22px;
+}
+
+.ev-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ev-track {
+  position: relative;
+  height: 10px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ev-fill {
+  position: absolute;
+  top: 0;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--bar-fill);
+}
+
+.ev-fill.ev-rec {
+  background: var(--positive);
+}
+
+/* 用户选的那一条用描边而不是换底色：它可能同时是推荐动作，
+   两种标记必须能叠加显示 */
+.ev-fill.ev-actual {
+  outline: 1px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.ev-value {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ev-mark {
+  margin-left: 4px;
+  padding: 0 3px;
+  border-radius: 2px;
+  font-size: 10px;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+}
+
+.ev-mark-rec {
+  color: var(--positive);
+  border-color: var(--positive);
+}
+
+/* ───────── ③-B 复盘卡片：对手底牌 ───────── */
+
+.opp-cards {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.opp-cards-title {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.opp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.opp-pos {
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 36px;
+}
+
+.opp-hand {
+  display: flex;
+  gap: 3px;
+}
+
+.opp-folded {
+  opacity: 0.45;
+}
+
+.opp-note {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ───────── ③-B 复盘卡片：壳与时间线 ───────── */
+
+/* 覆盖式卡片。用 absolute 而不是 fixed：桌面端 .app 是限宽 1040×760 的
+   居中容器（见 ③-A 的 Task 3），卡片必须贴着它而不是贴着视口。
+   .app 已有 position: relative 时这条才成立——若没有，需要一并补上。 */
+.rv-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* 头部要自己补 --safe-top。
+   绝对定位元素的包含块是 .app 的 **padding box**，所以 top: 0 落在
+   .app 的 padding-top: var(--safe-top) 之外——整张卡会盖进安全区，
+   被遮的恰好是这一行：净盈亏、评级徽章，以及关闭按钮，全屏遮罩唯一
+   的出口。底部的 .rv-foot 补了 --safe-bottom，顶上不补是漏了不是取舍。
+   桌面端 --safe-top 求值为 0px，浏览器验收看不出来。 */
+.rv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(10px + var(--safe-top)) 12px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rv-head-left {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* 净盈亏的红绿。`.neg`/`.pos` 在本项目里从来不是独立类——现有规则是
+   `.topbar-item.neg` 和 `.summary-line .neg`，都带着祖先/同级限定。
+   照抄 SummaryBar 的 className={isNeg ? 'neg' : 'pos'} 而不配一条自己的
+   规则，结果是这里的金额完全没颜色，赢和输长得一模一样，而项目没有
+   组件渲染测试，没有任何一条测试会发现。 */
+.rv-head-left .neg { color: var(--danger); }
+.rv-head-left .pos { color: var(--positive); }
+
+.rv-grade {
+  font-size: 13px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--sev-ok);
+  color: var(--sev-ok);
+}
+
+.rv-grade-clean { border-color: var(--sev-ok); color: var(--sev-ok); }
+.rv-grade-minor { border-color: var(--sev-minor); color: var(--sev-minor); }
+.rv-grade-notable { border-color: var(--sev-notable); color: var(--sev-notable); }
+.rv-grade-severe { border-color: var(--sev-severe); color: var(--sev-severe); }
+.rv-grade-unknown { border-color: var(--sev-unknown); color: var(--sev-unknown); }
+
+.rv-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.rv-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.rv-foot {
+  padding: 10px 12px calc(10px + var(--safe-bottom));
+  border-top: 1px solid var(--line);
+}
+
+.rv-foot .btn {
+  width: 100%;
+}
+
+.rv-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.rv-street-name {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 10px 0 4px;
+  font-weight: 400;
+}
+
+.rv-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.rv-item + .rv-item {
+  margin-top: 4px;
+}
+
+/* 展开时下缘拉直，与紧贴其下的 .rv-detail 接上——.rv-detail 已经
+   border-top: none 且只圆下两角，行若还圆着下两角就会露出一道缝 */
+.rv-row-open {
+  border-radius: 4px 4px 0 0;
+}
+
+/* 基色就是 --sev-ok，没有 .rv-dot-ok / .rv-dot-clean 规则是有意的：
+   两个调用方给的枚举名不同（ReviewTrigger 给 Grade 的 'clean'，
+   ReviewTimeline 给 Severity 的 'ok'），却是同一个「这里没问题」，
+   与其写两条一模一样的规则，不如让它们一起落到基色上。
+   下面四条则必须逐个列出——漏一条就是把某一档失误静默显示成「没问题」。 */
+.rv-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--sev-ok);
+}
+
+.rv-dot-minor { background: var(--sev-minor); }
+.rv-dot-notable { background: var(--sev-notable); }
+.rv-dot-severe { background: var(--sev-severe); }
+.rv-dot-unknown { background: var(--sev-unknown); }
+
+.rv-act {
+  flex: 1;
+}
+
+.rv-sev {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.rv-detail {
+  padding: 8px 10px 10px;
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.rv-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-bottom: 8px;
+}
+
+.rv-stat-name {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-right: 4px;
+}
+
+.rv-stat-value {
+  font-size: 12px;
+}
+
+.rv-rec {
+  font-size: 12px;
+  color: var(--positive);
+  margin-top: 4px;
+}
+
+.rv-tag {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.rv-text {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  margin: 6px 0 0;
+}
+
+.rv-degraded {
+  color: var(--text-dim);
+}
+
+.rv-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 auto 6px;
+  padding: 4px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.rv-trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

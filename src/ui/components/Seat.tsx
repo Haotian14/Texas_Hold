@@ -1,18 +1,9 @@
 import { useEffect, useRef } from 'react';
 import type { ActionType, SeatState } from '../../core/types';
 import { chipsGreater, isZeroChips, round2 } from '../../core/chips';
-import { chips } from '../format';
+import { ACTION_TEXT, chips } from '../format';
 import { CardBack, CardView } from './Card';
 import { Chips } from './Chips';
-
-const ACTION_TEXT: Record<ActionType, string> = {
-  fold: '弃牌',
-  check: '过牌',
-  call: '跟注',
-  bet: '下注',
-  raise: '加注',
-  allin: '全下',
-};
 
 export interface SeatProps {
   seat: SeatState;
