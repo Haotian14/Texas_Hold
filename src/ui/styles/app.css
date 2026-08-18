@@ -144,11 +144,8 @@ body,
   margin: 0;
 }
 
-/* 桌面上把 .app 在视口里居中。窄屏时 .app 撑满，这条不产生任何效果 */
 #root {
   display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 body {
@@ -161,33 +158,19 @@ body {
 }
 
 /* ---- 布局骨架 ---- */
+/* 应用铺满视口。
+   设计稿里那张居中的圆角卡片是**画布上的窗口示意**——设计工具为了展示
+   "在浏览器里长什么样"画的边框，不是应用自己的外壳。照抄它的结果是真机上
+   四周永远空一圈灰底，屏幕越大浪费越多，手机上还会因为圆角把四角切掉。 */
 .app {
   position: relative;
   display: flex;
   flex-direction: column;
+  width: 100%;
   height: 100%;
   /* 安全区的补偿在 .app-main 上，不在这里：复盘卡片绝对定位到 .app-main，
      两处都补会把顶部空白算两遍 */
   background: var(--page);
-  /* 桌面上限宽限高并居中，牌桌才是横椭圆而不是竖椭圆——只限宽的话
-     .table 的 flex:1 会吃掉全部竖向空间，在高视口下把牌桌立起来。
-     窄屏（手机）时两个上限都够不着，行为与限制前完全一致。 */
-  width: 100%;
-  max-width: 1040px;
-  max-height: 760px;
-  margin-inline: auto;
-}
-
-/* 只有真正够宽时才把应用壳做成一张浮起的卡（设计稿 Web 版的样子）。
-   手机上 .app 正好铺满视口，此时给圆角会把四角切掉一块页面底色，
-   看着像渲染残缺——所以这条必须带宽度门槛。 */
-@media (min-width: 1080px) {
-  .app {
-    border-radius: 20px;
-    border: 1px solid var(--line-2);
-    box-shadow: var(--sh-shell);
-    overflow: hidden;
-  }
 }
 
 .topbar {
@@ -1325,6 +1308,47 @@ body {
    窄屏下面的媒体查询把它折回纵向（导航变成顶部一条）。 */
 .app {
   flex-direction: row;
+}
+
+/*
+ * 牌桌区限宽并居中，但**外壳不限**。
+ *
+ * 台面是 border-radius: 999px 的椭圆，宽高比一旦拉开就退化成一条跑道：
+ * 1800px 宽的视口上，不限宽的台面是一条两端半圆的长条，座位被扯到屏幕两侧，
+ * 中间的公共牌离谁都很远。限宽的是这一块，不是整个应用——顶栏、动作条、
+ * 历史页仍然铺满，那几块本来就是越宽越好用。
+ */
+.table,
+.hero,
+.bottom {
+  width: 100%;
+  max-width: 900px;
+  margin-inline: auto;
+}
+
+/*
+ * 台面还要限**高**，不能只限宽。
+ *
+ * .table 是 flex: 1，在 823px 高的视口上它会把纵向空间全吃掉，于是 900×720
+ * 的台面画出来是个正圆——座位被推到圆周上彼此隔得极远，中间一大片空白，
+ * 公共牌离谁都不近。1.6 的宽高比才是牌桌该有的样子。
+ *
+ * 限高之后 flex 列会剩下一段空隙。让 .bottom 用 margin-top: auto 吃掉它，
+ * 动作条因此始终贴底（拇指可达区，spec §10.2），空隙落在手牌与动作条之间。
+ */
+.table {
+  max-height: 580px;
+}
+/*
+ * 限高之后 flex 列会剩一段空隙。两个 margin-top: auto 把它**均分**成上下两段：
+ * 一段在台面之上，一段在手牌与动作条之间。只给 .bottom 加的话，空隙会整块
+ * 堆在手牌下方，牌桌被顶到屏幕上沿，看着像渲染没画完。
+ */
+.table {
+  margin-top: auto;
+}
+.bottom {
+  margin-top: auto;
 }
 
 .app-main {
