@@ -1129,6 +1129,8 @@ EOF
 - Create: `src/ui/components/ReviewDecision.tsx`
 - Create: `src/ui/components/ReviewTimeline.tsx`
 - Create: `src/ui/components/ReviewSheet.tsx`
+- Modify: `src/ui/format.ts`（Step 0：接收从 `Seat.tsx` 搬来的 `ACTION_TEXT`）
+- Modify: `src/ui/components/Seat.tsx`（Step 0：改为从 `format.ts` import）
 - Modify: `src/ui/styles/app.css`（末尾追加）
 
 **Interfaces:**
@@ -1140,6 +1142,50 @@ EOF
 `ReviewDecision` 必须先判 `d.degraded`，且在该分支里**一个 EV 数字、一根条形图、一个推荐动作、一个 tag 都不能渲染**。只允许显示底池、待跟注、所需胜率（纯底池几何）与那句「无法判定」。
 
 写这个分支时不要靠「反正 degraded 时那些字段是 null，渲染出来也是空」—— 那是把正确性寄托在上游的置空上。显式的 `if` 分支才是防线。
+
+- [ ] **Step 0: 把 `ACTION_TEXT` 搬到 `format.ts`**
+
+时间线每行要显示「跟注 4.0 BB」，不能显示 `call`——牌桌上的座位、EvBars 的候选标签全是中文，只有复盘时间线冒出英文枚举值会很突兀。
+
+这张表已经存在，在 `src/ui/components/Seat.tsx` 顶部，但是模块私有的 `const`。**不要在 ReviewTimeline 里再抄一份**——同一张 `Record<ActionType, string>` 复制两份，将来加动作类型时必然只改一处。
+
+搬到 `src/ui/format.ts`：它已经是 UI 的显示格式化模块（`rankText`/`suitText`/`cardText`/`suitClass` 都在那儿），且有 `format.test.ts` 覆盖。
+
+1. 从 `src/ui/components/Seat.tsx` 剪掉这段（连同注释，若有）：
+
+```tsx
+const ACTION_TEXT: Record<ActionType, string> = {
+  fold: '弃牌',
+  check: '过牌',
+  call: '跟注',
+  bet: '下注',
+  raise: '加注',
+  allin: '全下',
+};
+```
+
+2. 原样贴到 `src/ui/format.ts`（放在 `cardText` 附近的显示文案区），加 `export` 与一句注释：
+
+```tsx
+/** 动作类型 → 中文。牌桌座位与复盘时间线共用，改文案只改这一处 */
+export const ACTION_TEXT: Record<ActionType, string> = {
+  fold: '弃牌',
+  check: '过牌',
+  call: '跟注',
+  bet: '下注',
+  raise: '加注',
+  allin: '全下',
+};
+```
+
+`format.ts` 需要 `import type { ActionType } from '../core/types';`——检查它现有的 import 行，`ActionType` 可能还没在里面（`Card` 大概率已经有了），**加到已有的 `import type` 里，不要新起一行重复 import 同一个模块**。
+
+3. `Seat.tsx` 改为从 `format.ts` 取：它已经有 `import { chips } from '../format';` 这一行，把 `ACTION_TEXT` 加进去即可。同时检查 `Seat.tsx` 顶部的 `import type { ActionType, SeatState } from '../../core/types';`——若搬走后 `ActionType` 在 `Seat.tsx` 里已无人使用，把它从这行删掉（留着会触发 noUnusedLocals）；若仍在用，保持不动。
+
+4. 立刻验证这一步单独是绿的，再往下写新组件：
+
+Run: `npm.cmd test`
+Expected: **46 文件 / 644 通过 / 3 跳过**，exit 0。搬家不改行为，数字必须一个不动。
 
 - [ ] **Step 1: 写 `ReviewDecision.tsx`**
 
@@ -1211,21 +1257,32 @@ export function ReviewDecision({ d }: { d: DecisionAnalysis }) {
 ```tsx
 import { useState } from 'react';
 import { chipsGreater } from '../../core/chips';
+import type { Severity } from '../../review/taxonomy';
 import type { StreetGroup } from '../reviewModel';
+import { ACTION_TEXT } from '../format';
 import { ReviewDecision } from './ReviewDecision';
 
+/**
+ * severity → 文字标签。颜色不是唯一编码。
+ *
+ * 用 Record<Severity, …> 而不是 if 链比 string：Severity 将来加一档时
+ * 这里是编译错误，if 链只会静悄悄落到「没问题」——把新的失误档显示成
+ * 没打错，正是本卡片最不能犯的错。
+ */
+const SEV_TEXT: Record<Severity, string> = {
+  ok: '没问题',
+  minor: '小偏差',
+  notable: '明显失误',
+  severe: '重大失误',
+};
+
 /** severity → CSS 类名后缀。degraded 单独一档，不复用 ok */
-function dotClass(degraded: boolean, severity: string): string {
+function dotClass(degraded: boolean, severity: Severity): string {
   return `rv-dot rv-dot-${degraded ? 'unknown' : severity}`;
 }
 
-/** severity → 文字标签。颜色不是唯一编码 */
-function dotText(degraded: boolean, severity: string): string {
-  if (degraded) return '无法判定';
-  if (severity === 'minor') return '小偏差';
-  if (severity === 'notable') return '明显失误';
-  if (severity === 'severe') return '重大失误';
-  return '没问题';
+function dotText(degraded: boolean, severity: Severity): string {
+  return degraded ? '无法判定' : SEV_TEXT[severity];
 }
 
 /**
@@ -1253,7 +1310,7 @@ export function ReviewTimeline({ groups }: { groups: StreetGroup[] }) {
               >
                 <span className={dotClass(d.degraded, d.severity)} aria-hidden="true" />
                 <span className="rv-act">
-                  {d.actual.type}
+                  {ACTION_TEXT[d.actual.type]}
                   {chipsGreater(d.actual.amount, 0) ? ` ${d.actual.amount.toFixed(1)} BB` : ''}
                 </span>
                 <span className="rv-sev">{dotText(d.degraded, d.severity)}</span>
@@ -1361,7 +1418,7 @@ export function ReviewSheet({
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px calc(10px);
+  padding: 10px 12px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -1370,6 +1427,14 @@ export function ReviewSheet({
   align-items: baseline;
   gap: 10px;
 }
+
+/* 净盈亏的红绿。`.neg`/`.pos` 在本项目里从来不是独立类——现有规则是
+   `.topbar-item.neg` 和 `.summary-line .neg`，都带着祖先/同级限定。
+   照抄 SummaryBar 的 className={isNeg ? 'neg' : 'pos'} 而不配一条自己的
+   规则，结果是这里的金额完全没颜色，赢和输长得一模一样，而项目没有
+   组件渲染测试，没有任何一条测试会发现。 */
+.rv-head-left .neg { color: var(--danger); }
+.rv-head-left .pos { color: var(--positive); }
 
 .rv-grade {
   font-size: 13px;
@@ -1538,7 +1603,7 @@ Expected: **46 文件 / 644 通过 / 3 跳过**，exit 0，与 Task 4 一致。
 - [ ] **Step 8: 提交**
 
 ```bash
-git add src/ui/components/ReviewDecision.tsx src/ui/components/ReviewTimeline.tsx src/ui/components/ReviewSheet.tsx src/ui/styles/app.css
+git add src/ui/format.ts src/ui/components/Seat.tsx src/ui/components/ReviewDecision.tsx src/ui/components/ReviewTimeline.tsx src/ui/components/ReviewSheet.tsx src/ui/styles/app.css
 git status --short
 git commit -F - <<'EOF'
 feat(ui): 复盘卡片的时间线与决策详情
@@ -1552,6 +1617,10 @@ degraded 用显式 if 分支隔离，而不是靠「那些字段反正是 null�
 
 卡片用 absolute 贴 .app 而不是 fixed 贴视口——桌面端 .app 是
 限宽 1040×760 的居中容器。
+
+ACTION_TEXT 从 Seat.tsx 搬到 format.ts 供两处共用，不抄第二份。
+净盈亏配了自己的 .neg/.pos 规则：项目里这两个类名从来带祖先限定，
+照抄 SummaryBar 的 className 而不配规则会让金额完全没颜色。
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
