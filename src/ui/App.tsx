@@ -262,6 +262,7 @@ export function App() {
       />
       <Table
         game={state.game}
+        personaIds={state.personaIds}
         lastAction={state.lastAction}
         revealed={revealed}
         heroWon={heroWon}

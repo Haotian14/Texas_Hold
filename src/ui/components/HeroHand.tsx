@@ -46,6 +46,10 @@ export function HeroHand({
           投入 {chips(shownBet)}
         </span>
       </div>
+      {/* 「轮到你了」写成一行字，而不是只靠上面那圈蓝环。设计稿这里有一行
+          「Your turn · 18s」，它存在的理由是：环是纯颜色编码，色觉障碍用户
+          与读屏用户都拿不到。倒计时不做——本项目没有行动时限。 */}
+      {isToAct && <div className="hero-turn">轮到你了</div>}
     </div>
   );
 }

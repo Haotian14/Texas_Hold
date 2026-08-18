@@ -114,22 +114,6 @@
     --card-sm-rank: 10px;
     --card-sm-suit: 8px;
   }
-  .seat {
-    width: 72px;
-    font-size: 9.5px;
-    gap: 2px;
-  }
-  .seat-info {
-    padding: 3px 7px;
-    border-radius: 10px;
-  }
-  .seat-cards { gap: 2px; }
-  .bubble {
-    font-size: 8px;
-    padding: 1px 4px;
-  }
-  .slot-0 { left: 9%; }
-  .slot-4 { left: 91%; }
 }
 
 @media (min-width: 1080px) {
@@ -280,10 +264,15 @@ body {
   z-index: 1;
 }
 
-/* ---- 弧形座位：5 个对手沿上半部的一段圆弧排布 ---- */
+/* ---- 弧形座位：5 个对手沿台面边缘排布 ----
+   改成绝对定位铺满整个 .table，槽位百分比因此是相对**整张台面**的。
+   之前 .opponents 只占上部 40%，槽位的 62% 实际只到台面的 25%——五个人
+   全挤在上四分之一，下面大半张桌子空着。设计稿是把两侧的座位一路排到
+   62% 的，那才是"围坐一圈"。 */
 .opponents {
-  position: relative;
-  height: 40%;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
 }
 .opponent-slot {
   position: absolute;
@@ -293,23 +282,24 @@ body {
    整堆的中心，牌在上——按旧值放，上排三个座位的牌会整个探出台面顶边，看着
    像掉在桌子外面。座位卡本身骑在台边上是对的（设计稿也是这样），探出去的
    只能是卡，不能是牌。 */
-.slot-0 { left: 12%; top: 60%; }
-.slot-1 { left: 27%; top: 32%; }
-.slot-2 { left: 50%; top: 28%; }
-.slot-3 { left: 73%; top: 32%; }
-.slot-4 { left: 88%; top: 60%; }
+.slot-0 { left: 11%; top: 62%; }
+.slot-1 { left: 26%; top: 21%; }
+.slot-2 { left: 50%; top: 11%; }
+.slot-3 { left: 74%; top: 21%; }
+.slot-4 { left: 89%; top: 62%; }
 
+/* 座位是**横向**胶囊：左边一个圆角方块放位置，右边两行放性格名与筹码，
+   动作徽章挂在胶囊下方。这是设计稿的形状；改版前那个"两张牌背竖着堆在小
+   方框上面"的版式是暗色版留下的，与设计稿差得最远的就是它。 */
 .seat {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  width: 92px;
-  font-size: 10.5px;
+  gap: 4px;
   transition: opacity 0.2s;
 }
 .seat-folded { opacity: 0.4; }
-/* 行动中的座位：蓝色描边 + 一圈极淡的外发光，静态，不做呼吸/闪烁——
+/* 行动中的座位：蓝色描边 + 一圈淡外发光，静态，不做呼吸/闪烁——
    它全程存在，动起来就是持续干扰 */
 .seat-to-act .seat-info {
   border-color: rgba(47, 111, 237, 0.42);
@@ -319,66 +309,104 @@ body {
 .seat-cards { display: flex; gap: 3px; }
 .seat-info {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
+  gap: 8px;
   /* 半透明白 + 背景模糊：座位卡压在台面上，底下的渐变要透一点出来，
      这是设计稿里"玩家信息卡浮在桌面上"那层质感的来源 */
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(17, 20, 26, 0.06);
-  border-radius: 12px;
-  padding: 4px 10px;
-  line-height: 1.35;
+  border-radius: 14px;
+  padding: 5px 11px 5px 5px;
   box-shadow: var(--sh-seat);
 }
-.seat-pos {
-  color: var(--text);
+/* 头像方块。设计稿放名字缩写（纯装饰），这里放位置——在扑克里"坐在哪"
+   比"叫什么"重要，同一个性格在 UTG 和在 BTN 是两种威胁。 */
+.seat-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 30px;
+  height: 26px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: linear-gradient(140deg, #8f98a8, #5f6875);
+  color: #fff;
+  font-size: 9.5px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  flex: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 0 0 1px rgba(17, 20, 26, 0.06),
+    0 1px 2px rgba(17, 20, 26, 0.12);
+}
+.seat-to-act .seat-badge {
+  background: linear-gradient(140deg, #4d84f2, #2963e0);
+}
+.seat-meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.seat-name {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 .seat-stack {
+  font-size: 10px;
   color: var(--text-dim);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
-/* 动作气泡＝设计稿的 badge：白底描边小标签，不是深色实心气泡 */
+/* 动作徽章＝设计稿的 badge：白底描边小标签，挂在胶囊下方 */
 .bubble {
   background: var(--app);
   color: var(--text-2);
   border: 1px solid var(--line-2);
   border-radius: 5px;
   padding: 1px 6px;
-  font-size: 9px;
+  font-size: 8.5px;
   font-weight: 600;
   letter-spacing: 0.05em;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+/* 弃牌者的徽章退成无框灰字：它说的是"这个人已经不在了"，不该和还在牌里
+   的人的动作徽章一样显眼 */
+.seat-folded .bubble {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+/* 庄家钮做成方块里的一个小白点，不再是独立的圆片——胶囊里已经没有空间
+   放第二个圆形元素了 */
 .button-chip {
   display: inline-block;
-  margin-left: 4px;
-  width: 14px;
-  height: 14px;
-  line-height: 13px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: var(--text);
-  color: #fff;
-  font-size: 9px;
-  font-weight: 600;
-  text-align: center;
+  background: #fff;
+  align-self: flex-start;
+  margin-top: 3px;
 }
 
 /* ---- 中部：底池与公共牌 ---- */
-/* 底池与公共牌不居中，而是靠上——设计稿把它们放在台面约 39% 高的位置，
-   下半张台面是留给 hero 的。居中的话牌桌上半部空一大块、下半部又和 hero
-   挤在一起，正是改版前那个"大空桌"的来源。 */
+/* 底池与公共牌不居中，而是落在台面约三分之一高的位置——设计稿就是这样，
+   下半张台面留给 hero。座位现在铺满整张台面（见 .opponents），所以这里的
+   padding 是相对整张台面算的。 */
 .table-center {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding-top: 2%;
+  padding-top: 28%;
   gap: 11px;
 }
 /* 底池＝设计稿的胶囊标签。padding 与 border-radius 常驻在这里，
@@ -489,6 +517,23 @@ body {
   font-size: 11px;
   transition: border-color 160ms linear, box-shadow 160ms linear;
 }
+/* 「轮到你了」。蓝环是纯颜色编码，这一行字是它的文字版本——色觉障碍用户
+   与读屏用户只能拿到这一个。 */
+.hero-turn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--blue);
+}
+.hero-turn::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--blue);
+}
 /* 轮到你：与对手座位的 .seat-to-act 用同一组令牌，两处必须长一样，
    否则"该谁了"在牌桌上下半部各是一种说法 */
 .hero-info.hero-to-act {
@@ -496,8 +541,24 @@ body {
   box-shadow: var(--sh-seat-act);
 }
 .hero-pos {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--text);
   font-weight: 600;
+}
+/* hero 的 D 钮不在深色方块里，白点会看不见——这里单独给它深底 */
+.hero-pos .button-chip {
+  width: 13px;
+  height: 13px;
+  margin-top: 0;
+  align-self: auto;
+  background: var(--text);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 13px;
+  text-align: center;
 }
 .hero-stack {
   font-size: 12.5px;
@@ -1219,4 +1280,40 @@ body {
   opacity: 0.5;
   cursor: default;
   box-shadow: none;
+}
+
+/* ───────── 窄屏（手机）的组件覆盖 ─────────
+   必须放在文件**末尾**：媒体查询不增加特异性，与被覆盖的基础规则同为
+   (0,1,0)，胜负只看源码顺序。这一段原先和上面那组 :root 令牌覆盖写在一起
+   （紧跟 :root 之后），于是每一条都被两百行之后的基础规则压掉，整段是死的
+   ——令牌那组能生效只是因为它压的恰好是紧邻其上的 :root。 */
+@media (max-width: 520px) {
+  .seat { gap: 3px; }
+  .seat-info {
+    gap: 5px;
+    padding: 3px 7px 3px 3px;
+    border-radius: 11px;
+  }
+  .seat-badge {
+    min-width: 24px;
+    height: 21px;
+    padding: 0 3px;
+    font-size: 8px;
+    border-radius: 6px;
+  }
+  .seat-name { font-size: 9px; }
+  .seat-stack { font-size: 8.5px; }
+  .seat-cards { gap: 2px; }
+  .bubble {
+    font-size: 8px;
+    padding: 1px 4px;
+  }
+  /* 窄屏上两端的座位要往**里**收，不是往外拉：胶囊在 373px 视口里就有 82px
+     宽（占屏宽 22%），按桌面的 11%/89% 摆，胶囊左右端正好压在屏幕边上被切掉。
+     实测 14%/86% 两侧各留约 11px。 */
+  .slot-0 { left: 14%; }
+  .slot-4 { left: 86%; }
+  /* 手机上台面是竖长的，28% 那个高度正好撞上两侧座位那一行，底池会挤在
+     BB 和 HJ 中间。往下挪到 38%，落进上下两排座位之间的空档。 */
+  .table-center { padding-top: 38%; }
 }
