@@ -5,7 +5,22 @@ import { chips } from '../format';
 import { CardView } from './Card';
 import { Chips } from './Chips';
 
-export function HeroHand({ seat, isButton }: { seat: SeatState; isButton: boolean }) {
+/**
+ * hero 的手牌与信息条。
+ *
+ * isToAct 只驱动一个蓝色高亮环——设计稿里"轮到你"是靠信息卡亮起来说的，
+ * 不是靠底部按钮出现。若把高亮做成常驻，那个环就不再表示任何状态，只是
+ * 一圈装饰；而这一圈恰恰是牌桌上唯一告诉你"该你了"的视觉信号。
+ */
+export function HeroHand({
+  seat,
+  isButton,
+  isToAct,
+}: {
+  seat: SeatState;
+  isButton: boolean;
+  isToAct: boolean;
+}) {
   const lastBetRef = useRef(0);
   const betEmpty = isZeroChips(round2(seat.streetContribution));
   const shownBet = betEmpty ? lastBetRef.current : seat.streetContribution;
@@ -20,7 +35,7 @@ export function HeroHand({ seat, isButton }: { seat: SeatState; isButton: boolea
           <CardView key={`${c.rank}${c.suit}-${i}`} card={c} size="lg" />
         ))}
       </div>
-      <div className="hero-info">
+      <div className={isToAct ? 'hero-info hero-to-act' : 'hero-info'}>
         <span className="hero-pos">
           {seat.position}
           {isButton && <span className="button-chip">D</span>}

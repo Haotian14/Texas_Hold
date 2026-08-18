@@ -1,43 +1,119 @@
+/* =============================================================================
+   设计令牌 —— 全部抄自 docs/design-ref/poker-trainer-ui.dc.html 顶部的变量块。
+   那份文件是设计稿原件，改配色前先去看它，不要在这里凭感觉调。
+
+   这一版把界面从「暗色牌桌」整体翻成设计稿的浅色语言：白纸底、极细分隔线、
+   靠**阴影层次**而不是靠边框和色块来做前后关系。深色版里那套「牌桌是唯一
+   有颜色的东西」的策略在浅色底下不成立——白底上颜色本来就抢眼，所以改为
+   反过来：彩色只留给三件事，蓝＝轮到你/推荐，绿＝好，红＝错。
+   ============================================================================= */
+
 :root {
-  /* 页面底色：近黑。牌桌是唯一有颜色的东西，其余一律退让 */
-  --bg: #0d0f12;
-  --panel: #14181d;
-  --line: #232a32;
+  /* ---- 面 ---- */
+  --app: #ffffff;
+  --page: #f7f8fa;
+  --soft: #f2f4f7;
+  --soft2: #e9ecf1;
 
-  /* 毡面：低饱和青绿，中心略亮 */
-  --felt-1: #1b4a40;
-  --felt-2: #0f2b26;
-  --felt-edge: #2b6b5c;
+  /* ---- 线 ---- */
+  /* 两档都是半透明黑而不是实色灰：叠在白卡片上是浅灰，叠在 --soft 上会自动
+     深一点，不必为每种底色各配一条线色 */
+  --line: rgba(17, 20, 26, 0.07);
+  --line-2: rgba(17, 20, 26, 0.11);
 
-  --text: #e6edea;
-  --text-dim: #7d938c;
+  /* ---- 字 ---- */
+  --text: #111419;
+  --text-2: #4b525e;
+  --text-dim: #8b919c;
+  --text-faint: #b9bec7;
 
-  /* 琥珀色只给两处：底池、正在行动的人。多给一处就不再抢眼 */
-  --gold: #f4b942;
-  --danger: #8c3a2c;
-  --positive: #7fd18a;
+  /* ---- 强调色 ---- */
+  --blue: #2f6fed;
+  --blue-soft: #eaf1fe;
+  --indigo: #4a54d6;
+  --positive: #18945a;
+  --danger: #dc4c47;
+  /* 深筹码这类"注意但不是错"的标记。设计稿里没有这一档，取一个与 --danger
+     同冷暖但明显更低饱和的琥珀，避免和"你打错了"抢同一个红 */
+  --warn: #b7791f;
 
-  /* ③-B 复盘：四档严重度 + 一档「算不出来」。
-     ok 刻意是中性色而不是绿色勾——「没问题」不需要庆祝；
-     degraded 用灰，必须与 ok 明确区分，否则「算不出来」会被读成「没打错」。
-     颜色不是唯一编码，每一档同时带文字标签（见 reviewModel 的 GradeInfo.text）。 */
-  --sev-ok: #7d938c;
-  --sev-minor: #d8b445;
-  --sev-notable: #d98a3f;
-  --sev-severe: #c4553f;
-  --sev-unknown: #4a545c;
+  /* ---- 阴影 ----
+     浅色界面的层次全靠这一组。命名按用途而不是按数值，改的时候才知道
+     动一条会影响谁。 */
+  --sh-1: 0 1px 2px rgba(17, 20, 26, 0.05);
+  --sh-card: 0 1px 2px rgba(17, 20, 26, 0.05), 0 11px 22px -10px rgba(17, 20, 26, 0.22),
+    inset 0 0 0 1px rgba(17, 20, 26, 0.045);
+  --sh-card-hero: 0 1px 2px rgba(17, 20, 26, 0.06), 0 15px 28px -12px rgba(17, 20, 26, 0.26),
+    inset 0 0 0 1px rgba(17, 20, 26, 0.045);
+  --sh-seat: 0 1px 2px rgba(17, 20, 26, 0.05), 0 9px 20px -12px rgba(17, 20, 26, 0.2);
+  /* 设计稿这一条是 0.075 的蓝环，但它那边同时还有一行「Your turn · 18s」的
+     蓝字兜底；本应用没有那行字，环是"该你了"唯一的视觉信号，7.5% 在白底上
+     基本看不见。加到 0.16——仍是"轻轻一圈"，但读得出来。 */
+  --sh-seat-act: 0 0 0 3px rgba(47, 111, 237, 0.16), 0 1px 2px rgba(17, 20, 26, 0.05),
+    0 12px 24px -12px rgba(47, 111, 237, 0.4);
+  --sh-bar: 0 1px 2px rgba(17, 20, 26, 0.04), 0 10px 22px -14px rgba(17, 20, 26, 0.2);
+  --sh-primary: 0 1px 2px rgba(20, 60, 150, 0.22), 0 12px 24px -10px rgba(47, 111, 237, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  --sh-shell: 0 1px 2px rgba(17, 20, 26, 0.04), 0 18px 40px -18px rgba(17, 20, 26, 0.14),
+    0 48px 90px -30px rgba(17, 20, 26, 0.18);
 
-  /* 普通候选条的填充色。刻意不复用 --sev-unknown：那个令牌整个存在
-     理由是标记「算不出来」，而条形图里绝大多数条都是普通候选，拿它
-     去填会让「unknown」成为屏幕上最常见的颜色，等于把它稀释掉。 */
-  --bar-fill: #4f5b63;
+  /* ---- ③-B 复盘：四档严重度 + 一档「算不出来」 ----
+     设计稿的复盘屏只有三态（good ✓ / leak ! / skipped –），本项目需要五档，
+     所以中间两档在 good→leak 之间插值：琥珀→橙→红，色相单调过渡，深浅一致。
+     ok 这一档采用设计稿的绿（它用 ✓ 标 On plan），与暗色版「没问题用中性色」
+     的处理不同——白底上中性灰会被读成"没数据"，正好撞上 unknown 的语义。
+     unknown 仍必须与 ok 明确分开：算不出来不等于没打错。
+     颜色从来不是唯一编码，每一档同时带文字（见 reviewModel 的 GradeInfo.text）。 */
+  --sev-ok: var(--positive);
+  --sev-minor: #d9a23a;
+  --sev-notable: #e0762f;
+  --sev-severe: var(--danger);
+  --sev-unknown: #b0b6c0;
 
-  /* 注：--sev-ok 与既有的 --text-dim 恰好同值（#7d938c），这是有意的——
-     「没问题」用中性色，且它与 --sev-unknown（#4a545c）区分得开，degraded
-     契约不受影响。若 Task 5 的评级徽章实测下来读不出来，再单独调。 */
+  /* 普通候选条的填充色。刻意不复用 --sev-unknown：那个令牌整个存在理由是
+     标记「算不出来」，而条形图里绝大多数条都是普通候选，拿它去填会让
+     unknown 成为屏幕上最常见的颜色，等于把它稀释掉。 */
+  --bar-fill: #bcc3ce;
+
+  /* Inter 是设计稿指定的字体，但只写在字体栈第一位、**不引 Google Fonts**：
+     本项目要能离线跑（③-D 的 PWA），也不引任何外部资源。装了 Inter 的机器
+     自动用上，没装的落回系统字体，字重与字距的设定对两者都成立。 */
+  --font: 'Inter', -apple-system, system-ui, 'Segoe UI', sans-serif;
+
+  /* 牌面尺寸走令牌，因为它有两套：手机按设计稿的 46×64，桌面壳(1040px)上
+     同样的牌只占屏宽 4.4%，在设计稿 Web 版里它是约 60×84。不令牌化就得把
+     .card-lg 那一组规则在媒体查询里整段复制一遍。sm 不参与缩放——它是座位
+     上的小牌，放大反而会把座位卡撑开。 */
+  --card-lg-w: 46px;
+  --card-lg-h: 64px;
+  --card-lg-rank: 20px;
+  --card-lg-suit: 17px;
+  --card-lg-wide: 17px;
+  --card-md-w: 34px;
+  --card-md-h: 47px;
+  --card-md-rank: 15px;
+  --card-md-suit: 13px;
+  --card-md-wide: 12.5px;
+  --pot-size: 17px;
 
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
+}
+
+@media (min-width: 1080px) {
+  :root {
+    --card-lg-w: 60px;
+    --card-lg-h: 84px;
+    --card-lg-rank: 26px;
+    --card-lg-suit: 22px;
+    --card-lg-wide: 22px;
+    --card-md-w: 42px;
+    --card-md-h: 58px;
+    --card-md-rank: 19px;
+    --card-md-suit: 16px;
+    --card-md-wide: 15.5px;
+    --pot-size: 21px;
+  }
 }
 
 * {
@@ -60,9 +136,11 @@ body,
 }
 
 body {
-  background: var(--bg);
+  /* 设计稿的页面底：顶部近白、向下压到冷灰，让居中的应用壳浮起来 */
+  background: radial-gradient(115% 95% at 50% -5%, #ffffff 0%, #f4f6fa 55%, #eaedf3 100%);
   color: var(--text);
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
 
@@ -73,6 +151,7 @@ body {
   flex-direction: column;
   height: 100%;
   padding-top: var(--safe-top);
+  background: var(--page);
   /* 桌面上限宽限高并居中，牌桌才是横椭圆而不是竖椭圆——只限宽的话
      .table 的 flex:1 会吃掉全部竖向空间，在高视口下把牌桌立起来。
      窄屏（手机）时两个上限都够不着，行为与限制前完全一致。 */
@@ -82,25 +161,46 @@ body {
   margin-inline: auto;
 }
 
+/* 只有真正够宽时才把应用壳做成一张浮起的卡（设计稿 Web 版的样子）。
+   手机上 .app 正好铺满视口，此时给圆角会把四角切掉一块页面底色，
+   看着像渲染残缺——所以这条必须带宽度门槛。 */
+@media (min-width: 1080px) {
+  .app {
+    border-radius: 20px;
+    border: 1px solid var(--line-2);
+    box-shadow: var(--sh-shell);
+    overflow: hidden;
+  }
+}
+
 .topbar {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  padding: 9px 12px;
-  font-size: 13px;
-  background: var(--panel);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  background: var(--app);
   border-bottom: 1px solid var(--line);
   font-variant-numeric: tabular-nums;
 }
 .topbar-item.pos { color: var(--positive); }
 .topbar-item.neg { color: var(--danger); }
-.topbar-item.dim { color: var(--text-dim); margin-left: auto; }
+.topbar-item.dim {
+  color: var(--text-dim);
+  font-weight: 500;
+  margin-left: auto;
+}
 .topbar-item.warn {
-  color: var(--gold);
-  border: 1px solid var(--gold);
-  border-radius: 4px;
+  color: var(--warn);
+  background: rgba(183, 121, 31, 0.09);
+  border: 1px solid rgba(183, 121, 31, 0.22);
+  border-radius: 5px;
   padding: 1px 6px;
-  font-size: 11px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
 }
 
 .table {
@@ -111,17 +211,36 @@ body {
   flex-direction: column;
 }
 /* 毡面画在伪元素上而不是 .table 本身：座位是绝对定位的，
-   改动 .table 的盒模型会挪动它们，用伪元素则完全不碰布局 */
+   改动 .table 的盒模型会挪动它们，用伪元素则完全不碰布局。
+   浅色版是两层：::before 是台面本体（白→冷白渐变 + 外阴影 + 一圈内描边），
+   ::after 是嵌在里面缩进 14px 的台呢（径向渐变 + 内阴影）。设计稿靠这两层
+   叠出"桌面有厚度"的感觉，塌成一层就只剩一个灰椭圆。 */
 .table::before {
   content: '';
   position: absolute;
-  inset: 6px 10px 4px;
-  border-radius: 44% / 30%;
-  background: radial-gradient(120% 95% at 50% 22%, var(--felt-1), var(--felt-2));
-  border: 1px solid var(--felt-edge);
+  inset: 8px 12px 6px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff, #f1f4f9);
   box-shadow:
-    inset 0 0 0 6px rgba(255, 255, 255, 0.02),
-    0 0 40px rgba(28, 120, 100, 0.15);
+    0 1px 1px rgba(17, 20, 26, 0.04),
+    0 8px 16px -8px rgba(17, 20, 26, 0.1),
+    0 26px 46px -18px rgba(17, 20, 26, 0.18),
+    inset 0 1px 0 #ffffff,
+    inset 0 0 0 1px rgba(17, 20, 26, 0.05);
+  z-index: 0;
+}
+.table::after {
+  content: '';
+  position: absolute;
+  inset: 22px 26px 20px;
+  border-radius: 999px;
+  /* 比设计稿压深一档。设计稿的台呢是在 --page(#f7f8fa) 上取的，本应用的
+     牌桌区背景同样是 --page，照抄会让台呢和页面底几乎同色——牌桌整个"消失"，
+     只剩一圈白边。这里把三个色标各往下压约 4%，台面才立得住。 */
+  background: radial-gradient(120% 92% at 50% 6%, #f4f7fb 0%, #e7ecf4 58%, #dde4ee 100%);
+  box-shadow:
+    inset 0 8px 18px -6px rgba(17, 20, 26, 0.16),
+    inset 0 0 0 1px rgba(17, 20, 26, 0.05);
   z-index: 0;
 }
 .table > * {
@@ -132,153 +251,231 @@ body {
 /* ---- 弧形座位：5 个对手沿上半部的一段圆弧排布 ---- */
 .opponents {
   position: relative;
-  height: 46%;
+  height: 40%;
 }
 .opponent-slot {
   position: absolute;
   transform: translate(-50%, -50%);
 }
-.slot-0 { left: 12%; top: 62%; }
-.slot-1 { left: 27%; top: 24%; }
-.slot-2 { left: 50%; top: 12%; }
-.slot-3 { left: 73%; top: 24%; }
-.slot-4 { left: 88%; top: 62%; }
+/* 整排比改版前下移约 8%：座位是「两张牌背 + 信息卡」竖向堆起来的，锚点在
+   整堆的中心，牌在上——按旧值放，上排三个座位的牌会整个探出台面顶边，看着
+   像掉在桌子外面。座位卡本身骑在台边上是对的（设计稿也是这样），探出去的
+   只能是卡，不能是牌。 */
+.slot-0 { left: 12%; top: 60%; }
+.slot-1 { left: 27%; top: 32%; }
+.slot-2 { left: 50%; top: 28%; }
+.slot-3 { left: 73%; top: 32%; }
+.slot-4 { left: 88%; top: 60%; }
 
 .seat {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  width: 76px;
-  font-size: 11px;
+  gap: 3px;
+  width: 92px;
+  font-size: 10.5px;
   transition: opacity 0.2s;
 }
-.seat-folded { opacity: 0.35; }
-/* 行动中的座位：静态描边，不做呼吸/闪烁——它全程存在，动起来就是持续干扰 */
+.seat-folded { opacity: 0.4; }
+/* 行动中的座位：蓝色描边 + 一圈极淡的外发光，静态，不做呼吸/闪烁——
+   它全程存在，动起来就是持续干扰 */
 .seat-to-act .seat-info {
-  box-shadow: 0 0 0 1.5px var(--gold);
+  border-color: rgba(47, 111, 237, 0.42);
+  box-shadow: var(--sh-seat-act);
 }
 
-.seat-cards { display: flex; gap: 2px; }
+.seat-cards { display: flex; gap: 3px; }
 .seat-info {
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 6px;
-  padding: 2px 6px;
-  line-height: 1.3;
+  /* 半透明白 + 背景模糊：座位卡压在台面上，底下的渐变要透一点出来，
+     这是设计稿里"玩家信息卡浮在桌面上"那层质感的来源 */
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(17, 20, 26, 0.06);
+  border-radius: 12px;
+  padding: 4px 10px;
+  line-height: 1.35;
+  box-shadow: var(--sh-seat);
 }
-.seat-pos { color: var(--text-dim); }
-.seat-stack { font-variant-numeric: tabular-nums; }
+.seat-pos {
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.seat-stack {
+  color: var(--text-dim);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+/* 动作气泡＝设计稿的 badge：白底描边小标签，不是深色实心气泡 */
 .bubble {
-  background: var(--text);
-  color: #12261f;
-  border-radius: 10px;
-  padding: 1px 8px;
-  font-size: 11px;
+  background: var(--app);
+  color: var(--text-2);
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .button-chip {
   display: inline-block;
   margin-left: 4px;
   width: 14px;
   height: 14px;
-  line-height: 14px;
+  line-height: 13px;
   border-radius: 50%;
   background: var(--text);
-  color: #12261f;
-  font-size: 10px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
   text-align: center;
 }
 
 /* ---- 中部：底池与公共牌 ---- */
+/* 底池与公共牌不居中，而是靠上——设计稿把它们放在台面约 39% 高的位置，
+   下半张台面是留给 hero 的。居中的话牌桌上半部空一大块、下半部又和 hero
+   挤在一起，正是改版前那个"大空桌"的来源。 */
 .table-center {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
+  justify-content: flex-start;
+  padding-top: 2%;
+  gap: 11px;
 }
-.pot { display: flex; gap: 6px; align-items: baseline; }
+/* 底池＝设计稿的胶囊标签。padding 与 border-radius 常驻在这里，
+   不放进 .pot-won，否则类名出现的那一刻底池会因为盒子变大而跳一下 */
+.pot {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 13px;
+}
 .pot-label {
   color: var(--text-dim);
-  font-size: 10px;
-  letter-spacing: 0.14em;
+  font-size: 10.5px;
+  font-weight: 500;
 }
 .pot-amount {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--gold);
+  font-size: var(--pot-size);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-.board { display: flex; gap: 6px; }
+.board { display: flex; gap: 5px; }
 
 /* ---- 四色牌 ---- */
-/* c3 极简牌面：点数占满，花色缩到右上角。
-   角标花色刻意比示意稿大一档——形状本身要可辨，不能只靠颜色区分花色。 */
+/* 设计稿的牌面是"点数在上、花色在下、居中竖排"，白底、圆角、带内描边和
+   投影。这与暗色版"点数占满 + 花色缩在右上角"的排法不同，改的是 CSS 不是
+   组件——Card.tsx 渲染出来本来就是 rank 后跟 suit 两个 span。
+
+   花色仍是四色（♠黑 ♥红 ♦蓝 ♣绿），这是**对设计稿的有意偏离**：设计稿用的
+   是两色（黑/红），而 spec §10.2 把四色牌列为要求，它是训练辅助——多人底池里
+   要快速看清同花可能，两色牌得逐张分辨形状。取的四个色相全部来自设计稿自己的
+   令牌（text / danger / blue / positive），所以不破坏整体调性。 */
 .card {
   position: relative;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #f7f8f7;
-  border-radius: 4px;
-  font-weight: 900;
+  gap: 2px;
+  background: linear-gradient(180deg, #ffffff, #fbfcfe);
+  border-radius: 7px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--sh-card);
 }
-.card-rank { line-height: 1; }
-.card-suit {
-  position: absolute;
-  right: 3px;
-  top: 2px;
+.card-rank {
   line-height: 1;
-  font-weight: 800;
+  letter-spacing: -0.03em;
 }
-.card-sm { width: 24px; height: 33px; }
-.card-sm .card-rank { font-size: 14px; }
-.card-sm .card-suit { font-size: 9px; }
-.card-md { width: 30px; height: 42px; }
-.card-md .card-rank { font-size: 18px; }
-.card-md .card-suit { font-size: 11px; }
-.card-lg { width: 42px; height: 59px; }
-.card-lg .card-rank { font-size: 26px; }
-.card-lg .card-suit { font-size: 14px; }
-/* 「10」是唯一两个字符的点数。c3 的点数占满牌面，两字符按原字号会挤出牌外；
+.card-suit {
+  line-height: 1;
+  font-weight: 500;
+}
+.card-sm { width: 26px; height: 36px; border-radius: 5px; }
+.card-sm .card-rank { font-size: 12px; }
+.card-sm .card-suit { font-size: 10px; }
+.card-md { width: var(--card-md-w); height: var(--card-md-h); border-radius: 6px; }
+.card-md .card-rank { font-size: var(--card-md-rank); }
+.card-md .card-suit { font-size: var(--card-md-suit); }
+.card-lg { width: var(--card-lg-w); height: var(--card-lg-h); }
+.card-lg .card-rank { font-size: var(--card-lg-rank); }
+.card-lg .card-suit { font-size: var(--card-lg-suit); }
+/* 「10」是唯一两个字符的点数，按原字号会挤出牌外；
    缩一档并收紧字距，让它的视觉重量与单字符点数相当。 */
 .card-sm .card-rank-wide { font-size: 10px; letter-spacing: -0.06em; }
-.card-md .card-rank-wide { font-size: 13px; letter-spacing: -0.06em; }
-.card-lg .card-rank-wide { font-size: 19px; letter-spacing: -0.06em; }
+.card-md .card-rank-wide { font-size: var(--card-md-wide); letter-spacing: -0.06em; }
+.card-lg .card-rank-wide { font-size: var(--card-lg-wide); letter-spacing: -0.06em; }
 /* 牌背没有子元素，上面的 .card-rank/.card-suit 规则对它无副作用 */
 .card-back {
-  background: repeating-linear-gradient(45deg, #24506f, #24506f 3px, #1b3d55 3px, #1b3d55 6px);
+  background: repeating-linear-gradient(45deg, #dbe1ea, #dbe1ea 3px, #c7cfdc 3px, #c7cfdc 6px);
+  box-shadow: var(--sh-1), inset 0 0 0 1px rgba(17, 20, 26, 0.05);
 }
-.suit-s { color: #1a1a1a; }
-.suit-h { color: #c8281e; }
-.suit-d { color: #1962b8; }
-.suit-c { color: #17803d; }
+.suit-s { color: #111419; }
+.suit-h { color: #d93a3f; }
+.suit-d { color: #2f6fed; }
+.suit-c { color: #18945a; }
 
 /* ---- hero ---- */
+/* hero 往上压进台面。设计稿里自己的两张牌是**压在台边上**的，不是摆在
+   桌子外面——这是"你坐在这张桌子前"的全部由来。负 margin 而不是绝对定位：
+   它仍要参与 flex 列的高度计算，否则底部动作条会跟着上移。 */
 .hero {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  margin-top: -54px;
   padding: 8px 0;
 }
-.hero-cards { display: flex; gap: 6px; }
+/* 自己的牌比公共牌投影更重一档：它离"镜头"更近 */
+.hero-cards { display: flex; gap: 5px; }
+.hero-cards .card { box-shadow: var(--sh-card-hero); }
 .hero-info {
   display: flex;
-  gap: 12px;
-  align-items: baseline;
-  font-size: 13px;
+  gap: 9px;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(17, 20, 26, 0.06);
+  border-radius: 14px;
+  padding: 5px 13px;
+  box-shadow: var(--sh-seat);
+  font-size: 11px;
+  transition: border-color 160ms linear, box-shadow 160ms linear;
 }
-.hero-pos { color: var(--text-dim); }
-.hero-stack { font-size: 16px; font-variant-numeric: tabular-nums; }
+/* 轮到你：与对手座位的 .seat-to-act 用同一组令牌，两处必须长一样，
+   否则"该谁了"在牌桌上下半部各是一种说法 */
+.hero-info.hero-to-act {
+  border-color: rgba(47, 111, 237, 0.42);
+  box-shadow: var(--sh-seat-act);
+}
+.hero-pos {
+  color: var(--text);
+  font-weight: 600;
+}
+.hero-stack {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
 .hero-bet {
-  color: var(--gold);
+  color: var(--blue);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
@@ -288,84 +485,186 @@ body {
 /* ---- 底部动作条：位于拇指可达区 ----
    不用 position: fixed —— 它已是 .app 这个满高 flex 列的最后一个子元素，
    天然贴底并自动占位；固定定位反而会压住 hero 手牌。body 的 overflow: hidden
-   已经保证「不随内容滚动」这条设计意图。 */
+   已经保证「不随内容滚动」这条设计意图。
+   浅色版去掉了整条深色面板：设计稿里底部不是一块背景板，而是几个浮在页面
+   底色上的元素，层次靠阴影。 */
 .bottom {
-  padding: 8px 10px calc(8px + var(--safe-bottom));
-  background: var(--panel);
-  border-top: 1px solid var(--line);
+  padding: 6px 12px calc(12px + var(--safe-bottom));
+}
+
+.actionbar {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
 }
 
 .actionbar-idle {
   text-align: center;
   color: var(--text-dim);
-  font-size: 13px;
-  padding: 12px 0;
+  font-size: 12.5px;
+  padding: 18px 0;
 }
 
 .actionbar-row {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .btn {
   flex: 1;
   min-height: 52px;
-  border: none;
-  border-radius: 10px;
-  font-size: 15px;
+  border: 1px solid var(--line-2);
+  border-radius: 13px;
+  font-family: var(--font);
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text);
-  background: var(--line);
+  background: var(--app);
+  box-shadow: var(--sh-1);
   cursor: pointer;
-}
-.btn-primary { background: #1d6b4e; }
-.btn-danger { background: var(--danger); }
-.btn-ghost { background: var(--line); }
-.btn:active { filter: brightness(1.2); }
-
-.raise-panel { display: flex; flex-direction: column; gap: 8px; }
-.raise-presets { display: flex; gap: 6px; }
-.preset {
-  flex: 1;
-  min-height: 40px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text);
-  font-size: 13px;
-  cursor: pointer;
-}
-.raise-slider { display: flex; align-items: center; gap: 10px; }
-.raise-slider input { flex: 1; }
-.raise-amount {
-  min-width: 72px;
-  text-align: right;
-  font-size: 16px;
   font-variant-numeric: tabular-nums;
 }
-.raise-actions { display: flex; gap: 8px; }
+/* 主动作是页面上唯一的实心蓝：设计稿里同屏永远只有一个这样的按钮 */
+.btn-primary {
+  flex: 1.5;
+  border: none;
+  color: #fff;
+  background: linear-gradient(180deg, #3d79ef, #2963e0);
+  box-shadow: var(--sh-primary);
+}
+.btn-danger {
+  border-color: rgba(220, 76, 71, 0.3);
+  color: var(--danger);
+  background: rgba(220, 76, 71, 0.06);
+  box-shadow: none;
+}
+/* 弃牌是"什么都不做"，视觉上要最轻——透明底、灰字，不与另外两个抢 */
+.btn-ghost {
+  background: transparent;
+  border-color: var(--line-2);
+  color: var(--text-dim);
+  box-shadow: none;
+}
+.btn:active { transform: translateY(1px); }
+
+/* 预设档 + 滑块合成一张浮起的小卡（设计稿的 raise 条就是这一张） */
+.raise-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 9px 10px;
+  box-shadow: var(--sh-bar);
+}
+.raise-presets { display: flex; gap: 5px; }
+.preset {
+  flex: 1;
+  min-height: 34px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.preset:active {
+  background: var(--blue-soft);
+  border-color: rgba(47, 111, 237, 0.35);
+  color: var(--blue);
+}
+.raise-slider { display: flex; align-items: center; gap: 10px; }
+.raise-slider input {
+  flex: 1;
+  /* 原生滑块在浅色底上默认是灰轨 + 系统蓝钮，两处都不合调；
+     只重画轨与钮，不改行为（步进网格的问题见 RaiseControl.tsx 的注释）。 */
+  -webkit-appearance: none;
+  appearance: none;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+}
+/* 已走过的部分填蓝：用一道硬边渐变而不是两个色标，--fill 处直接切换，
+   不留过渡带。Chrome 与 Firefox 的轨道伪元素名字不同但画法一样。 */
+.raise-slider input::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 99px;
+  background: linear-gradient(
+    to right,
+    var(--blue) 0 var(--fill, 0%),
+    var(--soft2) var(--fill, 0%) 100%
+  );
+}
+.raise-slider input::-moz-range-track {
+  height: 5px;
+  border-radius: 99px;
+  background: linear-gradient(
+    to right,
+    var(--blue) 0 var(--fill, 0%),
+    var(--soft2) var(--fill, 0%) 100%
+  );
+}
+.raise-slider input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5.5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(17, 20, 26, 0.26), 0 0 0 1px rgba(17, 20, 26, 0.06);
+}
+.raise-slider input::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(17, 20, 26, 0.26), 0 0 0 1px rgba(17, 20, 26, 0.06);
+}
+.raise-amount {
+  min-width: 62px;
+  text-align: right;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.raise-actions { display: flex; gap: 6px; }
 
 .confirm { display: flex; flex-direction: column; gap: 8px; }
-.confirm-text { text-align: center; font-size: 15px; }
-.confirm-actions { display: flex; gap: 8px; }
+.confirm-text {
+  text-align: center;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 4px 0;
+}
+.confirm-actions { display: flex; gap: 6px; }
 
 .summary { display: flex; flex-direction: column; gap: 8px; }
 .summary-line {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
-.summary-line .pos { color: #7fd18a; }
+.summary-line .pos { color: var(--positive); }
 .summary-line .neg { color: var(--danger); }
-.summary-note { color: var(--text-dim); font-size: 13px; }
+.summary-note { color: var(--text-dim); font-size: 12px; font-weight: 400; }
 
 .rebuy { display: flex; flex-direction: column; gap: 8px; }
-.rebuy-note { color: var(--text-dim); font-size: 12px; text-align: center; }
-.rebuy-actions { display: flex; gap: 8px; }
+.rebuy-note { color: var(--text-dim); font-size: 11.5px; text-align: center; }
+.rebuy-actions { display: flex; gap: 6px; }
 
-/* ---- 面额筹码堆 ---- */
+/* ---- 面额筹码堆 ----
+   筹码是界面上唯一"实物"，浅色底下反而更该保持饱和——它们要读成塑料圆片，
+   不是 UI 色块。所以这一组不用设计令牌，单独挑色。 */
 .chip-stack {
   display: inline-flex;
   align-items: flex-end;
@@ -378,8 +677,8 @@ body {
   margin-left: -4px;
   position: relative;
   box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.6),
-    inset 0 0 0 1.5px rgba(255, 255, 255, 0.18);
+    0 1px 2px rgba(17, 20, 26, 0.28),
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.35);
 }
 .chip:first-child { margin-left: 0; }
 /* 边缘的虚线条纹——真实筹码的标志性纹路 */
@@ -388,12 +687,12 @@ body {
   position: absolute;
   inset: 3px;
   border-radius: 50%;
-  border: 1px dashed rgba(255, 255, 255, 0.45);
+  border: 1px dashed rgba(255, 255, 255, 0.5);
 }
-.chip-d20 { background: #3f4c57; }
-.chip-d100 { background: #b5342a; }
-.chip-d500 { background: #2a7a4a; }
-.chip-d1000 { background: #1a1c20; }
+.chip-d20 { background: #6b7480; }
+.chip-d100 { background: #c0392f; }
+.chip-d500 { background: #1f8a55; }
+.chip-d1000 { background: #24272e; }
 
 .seat-bet {
   display: flex;
@@ -401,7 +700,8 @@ body {
   gap: 5px;
 }
 .seat-bet-amount {
-  color: var(--gold);
+  color: var(--blue);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -455,16 +755,12 @@ body {
   animation-delay: 0s;
 }
 
-/* 赢池脉冲：结算条出现时，底池闪两下琥珀描边 */
+/* 赢池脉冲：结算条出现时，底池闪两下蓝环 */
 @keyframes pot-win-pulse {
   0%, 100% { box-shadow: none; }
-  25%, 75% { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(244, 185, 66, 0.55); }
-}
-/* padding 与 border-radius 放在 .pot 上常驻，不放在 .pot-won 里——
-   否则类名出现的那一刻底池会因为盒子变大而跳一下 */
-.pot {
-  border-radius: 8px;
-  padding: 2px 10px;
+  25%, 75% {
+    box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.16), 0 10px 24px -10px rgba(47, 111, 237, 0.5);
+  }
 }
 .pot.pot-won {
   animation: pot-win-pulse 600ms ease-in-out;
@@ -518,22 +814,19 @@ body {
   --ev-col-value: 132px;
   --ev-gap: 8px;
   position: relative;
-  margin: 8px 0;
+  margin: 10px 0;
 }
 
-/* 零点基线的定位层。
-   为什么需要这一层：条（.ev-fill）的 leftPct/widthPct 是相对 .ev-track
-   算的，而 .ev-track 是 grid 的 1fr 列，左边被标签列吃掉一截、右边被
-   数值列吃掉一截。基线若直接挂在 .ev-bars 上，同一个 zeroPct 会按整宽
-   解析，与条差着 68+8 / 132+8 两段——「负条右端贴住基线」这个本元素
-   存在的理由就永远画不出来（zeroPct=0 时基线还会跑到标签底下）。
-   这一层把坐标系收窄成与 .ev-track 完全相同的那个盒子。 */
+/* 零点基线的定位层。它必须与条所在的 grid 列**同一套坐标**：
+   条画在 .ev-track（1fr 那一列）里，基线若直接挂在 .ev-bars 上就会按整宽
+   解析，两者对不齐——负条"右端贴基线"这件事就永远画不出来。 */
 .ev-zero-layer {
   position: absolute;
   top: 0;
   bottom: 0;
   left: calc(var(--ev-col-label) + var(--ev-gap));
   right: calc(var(--ev-col-value) + var(--ev-gap));
+  pointer-events: none;
 }
 
 .ev-zero {
@@ -541,20 +834,20 @@ body {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: var(--line);
+  background: var(--line-2);
 }
 
 .ev-row {
   display: grid;
   grid-template-columns: var(--ev-col-label) 1fr var(--ev-col-value);
-  align-items: center;
   gap: var(--ev-gap);
+  align-items: center;
   height: 22px;
 }
 
 .ev-label {
-  font-size: 12px;
-  color: var(--text-dim);
+  font-size: 11px;
+  color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -563,15 +856,15 @@ body {
 .ev-track {
   position: relative;
   height: 10px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 99px;
+  background: var(--soft);
 }
 
 .ev-fill {
   position: absolute;
   top: 0;
   height: 10px;
-  border-radius: 2px;
+  border-radius: 99px;
   background: var(--bar-fill);
 }
 
@@ -582,43 +875,45 @@ body {
 /* 用户选的那一条用描边而不是换底色：它可能同时是推荐动作，
    两种标记必须能叠加显示 */
 .ev-fill.ev-actual {
-  outline: 1px solid var(--gold);
+  outline: 1px solid var(--blue);
   outline-offset: 1px;
 }
 
 .ev-value {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--text-2);
   text-align: right;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .ev-mark {
   margin-left: 4px;
-  padding: 0 3px;
-  border-radius: 2px;
-  font-size: 10px;
-  color: var(--gold);
-  border: 1px solid var(--gold);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--blue);
+  background: var(--blue-soft);
+  border: 1px solid rgba(47, 111, 237, 0.22);
 }
 
 .ev-mark-rec {
   color: var(--positive);
-  border-color: var(--positive);
+  background: rgba(24, 148, 90, 0.1);
+  border-color: rgba(24, 148, 90, 0.22);
 }
 
-/* ───────── ③-B 复盘卡片：对手底牌 ───────── */
-
 .opp-cards {
-  margin-top: 12px;
-  padding-top: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 
 .opp-cards-title {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-dim);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .opp-row {
@@ -629,7 +924,7 @@ body {
 }
 
 .opp-pos {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--text-dim);
   width: 36px;
 }
@@ -644,7 +939,7 @@ body {
 }
 
 .opp-note {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--text-dim);
 }
 
@@ -662,7 +957,7 @@ body {
   z-index: 20;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  background: var(--page);
 }
 
 /* 头部要自己补 --safe-top。
@@ -675,14 +970,19 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: calc(10px + var(--safe-top)) 12px 10px;
+  padding: calc(12px + var(--safe-top)) 16px 12px;
+  background: var(--app);
   border-bottom: 1px solid var(--line);
 }
 
 .rv-head-left {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 净盈亏的红绿。`.neg`/`.pos` 在本项目里从来不是独立类——现有规则是
@@ -693,19 +993,21 @@ body {
 .rv-head-left .neg { color: var(--danger); }
 .rv-head-left .pos { color: var(--positive); }
 
+/* 评级徽章：浅色底上用"淡底 + 同色字"而不是描边，描边在白底上太细太脏 */
 .rv-grade {
-  font-size: 13px;
-  padding: 1px 6px;
-  border-radius: 3px;
-  border: 1px solid var(--sev-ok);
-  color: var(--sev-ok);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--text-dim);
 }
 
-.rv-grade-clean { border-color: var(--sev-ok); color: var(--sev-ok); }
-.rv-grade-minor { border-color: var(--sev-minor); color: var(--sev-minor); }
-.rv-grade-notable { border-color: var(--sev-notable); color: var(--sev-notable); }
-.rv-grade-severe { border-color: var(--sev-severe); color: var(--sev-severe); }
-.rv-grade-unknown { border-color: var(--sev-unknown); color: var(--sev-unknown); }
+.rv-grade-clean { background: rgba(24, 148, 90, 0.1); color: var(--sev-ok); }
+.rv-grade-minor { background: rgba(217, 162, 58, 0.13); color: #a8761f; }
+.rv-grade-notable { background: rgba(224, 118, 47, 0.12); color: #b95b1c; }
+.rv-grade-severe { background: rgba(220, 76, 71, 0.1); color: var(--sev-severe); }
+.rv-grade-unknown { background: var(--soft); color: var(--text-dim); }
 
 .rv-close {
   background: none;
@@ -714,16 +1016,19 @@ body {
   font-size: 16px;
   cursor: pointer;
   padding: 4px 8px;
+  border-radius: 6px;
 }
+.rv-close:hover { background: var(--soft); color: var(--text); }
 
 .rv-body {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 12px;
+  padding: 14px 16px;
 }
 
 .rv-foot {
-  padding: 10px 12px calc(10px + var(--safe-bottom));
+  padding: 12px 16px calc(12px + var(--safe-bottom));
+  background: var(--app);
   border-top: 1px solid var(--line);
 }
 
@@ -733,39 +1038,45 @@ body {
 
 .rv-empty {
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 .rv-street-name {
-  font-size: 12px;
+  font-size: 9.5px;
   color: var(--text-dim);
-  margin: 10px 0 4px;
-  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 14px 0 6px;
+  font-weight: 500;
 }
 
 .rv-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   width: 100%;
-  padding: 7px 8px;
-  background: var(--panel);
+  padding: 10px 12px;
+  background: var(--app);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 11px;
   color: var(--text);
-  font-size: 13px;
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 500;
   cursor: pointer;
   text-align: left;
+  box-shadow: var(--sh-1);
 }
 
 .rv-item + .rv-item {
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
-/* 展开时下缘拉直，与紧贴其下的 .rv-detail 接上——.rv-detail 已经
-   border-top: none 且只圆下两角，行若还圆着下两角就会露出一道缝 */
+/* 展开时上下两块要拼成一张卡：详情块自己 border-top: none 且只圆下两角，
+   行若还圆着下两角就会露出一道缝 */
 .rv-row-open {
-  border-radius: 4px 4px 0 0;
+  border-radius: 11px 11px 0 0;
+  box-shadow: none;
 }
 
 /* 基色就是 --sev-ok，没有 .rv-dot-ok / .rv-dot-clean 规则是有意的：
@@ -788,59 +1099,67 @@ body {
 
 .rv-act {
   flex: 1;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .rv-sev {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--text-dim);
+  font-weight: 500;
 }
 
 .rv-detail {
-  padding: 8px 10px 10px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-top: none;
-  border-radius: 0 0 4px 4px;
-  background: rgba(255, 255, 255, 0.02);
+  border-radius: 0 0 11px 11px;
+  background: var(--app);
 }
 
 .rv-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
-  margin-bottom: 8px;
+  gap: 6px 16px;
+  margin-bottom: 10px;
 }
 
 .rv-stat-name {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--text-dim);
-  margin-right: 4px;
+  margin-right: 5px;
 }
 
 .rv-stat-value {
   font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .rv-rec {
   font-size: 12px;
+  font-weight: 600;
   color: var(--positive);
-  margin-top: 4px;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
 }
 
 .rv-tag {
   display: inline-block;
-  margin-top: 4px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  border: 1px solid var(--line);
-  font-size: 11px;
-  color: var(--text-dim);
+  margin-top: 6px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: rgba(220, 76, 71, 0.1);
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--danger);
 }
 
 .rv-text {
   font-size: 12px;
-  line-height: 1.6;
-  color: var(--text);
-  margin: 6px 0 0;
+  line-height: 1.65;
+  color: var(--text-2);
+  margin: 8px 0 0;
 }
 
 .rv-degraded {
@@ -850,18 +1169,22 @@ body {
 .rv-trigger {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 0 auto 6px;
-  padding: 4px 12px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  gap: 7px;
+  margin: 0 auto 8px;
+  padding: 6px 14px;
+  background: var(--app);
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
   color: var(--text);
-  font-size: 12px;
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-weight: 600;
   cursor: pointer;
+  box-shadow: var(--sh-1);
 }
 
 .rv-trigger:disabled {
   opacity: 0.5;
   cursor: default;
+  box-shadow: none;
 }

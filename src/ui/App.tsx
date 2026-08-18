@@ -266,7 +266,11 @@ export function App() {
         revealed={revealed}
         heroWon={heroWon}
       />
-      <HeroHand seat={hero} isButton={state.game.buttonSeat === HERO_SEAT} />
+      <HeroHand
+        seat={hero}
+        isButton={state.game.buttonSeat === HERO_SEAT}
+        isToAct={state.game.toAct === HERO_SEAT}
+      />
       <BottomSlot
         state={state}
         onHero={onHero}

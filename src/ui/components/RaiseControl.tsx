@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { RaiseModel } from '../../session/actionBarModel';
 import { chipsGreater } from '../../core/chips';
 import { SMALL_BLIND } from '../../core/types';
@@ -36,7 +37,23 @@ export function RaiseControl({ model, label, allinAmount, onSubmit, onCancel }: 
           </button>
         ))}
       </div>
-      <div className="raise-slider">
+      {/* --fill 是滑块已走过的比例，给 CSS 画左半段的蓝色填充用。
+          原生 <input type="range"> 没有"已填充轨道"这个概念（只有 Firefox 的
+          ::-moz-range-progress，Chrome 没有对应物），设计稿里那截蓝条只能靠
+          背景渐变自己画，而渐变需要知道当前值——所以这个数必须从 React 传下去。
+          model.max === model.min 时（只剩一个合法额度）分母为 0，取 0 避免 NaN。 */}
+      <div
+        className="raise-slider"
+        style={
+          {
+            '--fill': `${
+              model.max === model.min
+                ? 0
+                : ((clamped - model.min) / (model.max - model.min)) * 100
+            }%`,
+          } as CSSProperties
+        }
+      >
         <input
           type="range"
           min={model.min}
