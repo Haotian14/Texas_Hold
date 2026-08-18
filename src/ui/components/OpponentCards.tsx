@@ -11,6 +11,8 @@ import { CardView } from './Card';
 export function OpponentCards({ record }: { record: HandRecord }) {
   const folded = new Set(foldedSeatsOf(record));
   const others = record.seats.filter(s => s.seat !== record.heroSeat);
+  // 与 EvBars 同款：没内容就整块不出，而不是留一个带标题和分隔线的空盒
+  if (others.length === 0) return null;
   return (
     <div className="opp-cards">
       <div className="opp-cards-title">对手底牌（仅复盘可见）</div>
