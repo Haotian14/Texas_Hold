@@ -30,6 +30,9 @@ import type { Stats } from '../storage/stats';
 import { handGrade } from './reviewModel';
 import { ReviewSheet } from './components/ReviewSheet';
 import { ReviewTrigger, type ReviewStatus } from './components/ReviewTrigger';
+import { Nav, type PageId } from './components/Nav';
+import { HistoryPage } from './pages/HistoryPage';
+import type { StoredHand } from '../storage/schema';
 
 const CFG: SessionConfig = {
   // 每次刷新换一局。③-C 会把 seed 一并持久化，届时刷新可续上。
@@ -76,6 +79,11 @@ export function App() {
   // 「刚算完的」与「从库里取回来的」才是同一条渲染路径。见 review/view.ts。
   const [review, setReview] = useState<{ recordId: string; view: HandView | null } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [page, setPage] = useState<PageId>('table');
+  // 从历史页点开的那一手。它与「刚打完这一手」的复盘走同一个 ReviewSheet——
+  // 两者都吃 HandView（见 review/view.ts），这正是当初让视图类型同时充当
+  // 落库 DTO 的收益：历史里的手不需要任何"复原"步骤就能渲染。
+  const [historyHand, setHistoryHand] = useState<StoredHand | null>(null);
 
   // 累计统计。开局读一次，之后每手写完由 saveHand 的返回值推进——
   // 不每次回库重读：那份文档只有本页在写（多标签页的取舍见 repo.ts 的注释）。
@@ -278,51 +286,79 @@ export function App() {
     if (!needsRebuy) dispatch({ kind: 'nextHand' });
   }, [needsRebuy]);
 
+  const onOpenHistoryHand = useCallback((h: StoredHand) => setHistoryHand(h), []);
+  const onCloseHistoryHand = useCallback(() => setHistoryHand(null), []);
+
   return (
     <div className="app">
-      <TopBar
-        handsPlayed={state.ledger.handsPlayed}
-        inProgress={state.phase !== 'handOver'}
-        netBB={netBB}
-        totalBuyIn={state.ledger.totalBuyIn}
-        deepStack={isDeepStackHand(state)}
-        storageOk={storageOk}
-        muted={muted}
-        onToggleMute={onToggleMute}
-      />
-      <Table
-        game={state.game}
-        personaIds={state.personaIds}
-        lastAction={state.lastAction}
-        revealed={revealed}
-        heroWon={heroWon}
-      />
-      <HeroHand
-        seat={hero}
-        isButton={state.game.buttonSeat === HERO_SEAT}
-        isToAct={state.game.toAct === HERO_SEAT}
-      />
-      <BottomSlot
-        state={state}
-        onHero={onHero}
-        onNext={onNext}
-        onRebuy={onRebuy}
-        reviewStatus={reviewStatus}
-        onOpenReview={onOpenSheet}
-        handNetBB={handNetBB}
-      />
-      {/* pending 时按钮是禁用的，走不到这里；failed 时 currentAnalysis 为
-          null，卡片壳照开，body 显示「本手复盘失败」——见 Step 0。 */}
-      {sheetOpen && currentReview !== null && state.record !== null ? (
-        <ReviewSheet
-          view={currentView}
-          record={state.record}
-          netBB={handNetBB}
-          onNext={onNextFromSheet}
-          nextLabel={needsRebuy ? '关闭' : '下一手'}
-          onClose={onCloseSheet}
-        />
-      ) : null}
+      <Nav page={page} onNav={setPage} />
+      <div className="app-main">
+        {page === 'history' ? (
+          <>
+            <HistoryPage onOpen={onOpenHistoryHand} />
+            {historyHand !== null ? (
+              <ReviewSheet
+                view={historyHand.view}
+                record={historyHand.record}
+                netBB={
+                  historyHand.record.results.find(r => r.seat === historyHand.record.heroSeat)
+                    ?.netBB ?? 0
+                }
+                onNext={onCloseHistoryHand}
+                // 历史里的手没有"下一手"可开——那颗按钮在这里只能是关闭
+                nextLabel="关闭"
+                onClose={onCloseHistoryHand}
+              />
+            ) : null}
+          </>
+        ) : (
+          <>
+            <TopBar
+              handsPlayed={state.ledger.handsPlayed}
+              inProgress={state.phase !== 'handOver'}
+              netBB={netBB}
+              totalBuyIn={state.ledger.totalBuyIn}
+              deepStack={isDeepStackHand(state)}
+              storageOk={storageOk}
+              muted={muted}
+              onToggleMute={onToggleMute}
+            />
+            <Table
+              game={state.game}
+              personaIds={state.personaIds}
+              lastAction={state.lastAction}
+              revealed={revealed}
+              heroWon={heroWon}
+            />
+            <HeroHand
+              seat={hero}
+              isButton={state.game.buttonSeat === HERO_SEAT}
+              isToAct={state.game.toAct === HERO_SEAT}
+            />
+            <BottomSlot
+              state={state}
+              onHero={onHero}
+              onNext={onNext}
+              onRebuy={onRebuy}
+              reviewStatus={reviewStatus}
+              onOpenReview={onOpenSheet}
+              handNetBB={handNetBB}
+            />
+            {/* pending 时按钮是禁用的，走不到这里；failed 时 currentAnalysis 为
+                null，卡片壳照开，body 显示「本手复盘失败」——见 Step 0。 */}
+            {sheetOpen && currentReview !== null && state.record !== null ? (
+              <ReviewSheet
+                view={currentView}
+                record={state.record}
+                netBB={handNetBB}
+                onNext={onNextFromSheet}
+                nextLabel={needsRebuy ? '关闭' : '下一手'}
+                onClose={onCloseSheet}
+              />
+            ) : null}
+          </>
+        )}
+      </div>
     </div>
   );
 }

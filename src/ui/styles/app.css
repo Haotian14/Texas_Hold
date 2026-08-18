@@ -166,7 +166,8 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding-top: var(--safe-top);
+  /* 安全区的补偿在 .app-main 上，不在这里：复盘卡片绝对定位到 .app-main，
+     两处都补会把顶部空白算两遍 */
   background: var(--page);
   /* 桌面上限宽限高并居中，牌桌才是横椭圆而不是竖椭圆——只限宽的话
      .table 的 flex:1 会吃掉全部竖向空间，在高视口下把牌桌立起来。
@@ -1316,4 +1317,313 @@ body {
   /* 手机上台面是竖长的，28% 那个高度正好撞上两侧座位那一行，底池会挤在
      BB 和 HJ 中间。往下挪到 38%，落进上下两排座位之间的空档。 */
   .table-center { padding-top: 38%; }
+}
+
+/* ───────── ③-C 导航壳与历史页 ───────── */
+
+/* .app 从"纵向一列"变成"横向两块"：左边导航，右边整页内容。
+   窄屏下面的媒体查询把它折回纵向（导航变成顶部一条）。 */
+.app {
+  flex-direction: row;
+}
+
+.app-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  /* 安全区的补偿从 .app 挪到这里：复盘卡片是绝对定位到 .app-main 的，
+     包含块得是它。留在 .app 上的话，宽屏有了侧栏之后卡片会连导航一起盖住。 */
+  padding-top: var(--safe-top);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 190px;
+  flex: none;
+  padding: 20px 12px;
+  background: var(--app);
+  border-right: 1px solid var(--line);
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 8px;
+}
+.nav-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--text);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.nav-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  border: none;
+  cursor: pointer;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: transparent;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+.nav-item-on {
+  background: var(--soft);
+  color: var(--text);
+  font-weight: 600;
+}
+.nav-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: #dfe3ea;
+}
+.nav-item-on .nav-dot {
+  background: var(--blue);
+}
+
+/* ---- 历史页 ---- */
+.hist {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px calc(18px + var(--safe-bottom));
+}
+
+.hist-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hist-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.hist-sort {
+  display: flex;
+  gap: 5px;
+  margin-left: auto;
+}
+
+/* 小胶囊按钮，排序与筛选都用它。
+   **不要叫 .chip** —— 那个类在本项目里已经是"筹码圆片"（width: 13px 的实心
+   小圆，见 .chip-stack 那一组）。第一版就是这么撞的：排序按钮被 13px 的宽度
+   压成一坨，文字全糊在一起，而 CSS 不会为类名撞车报任何错。 */
+.pill {
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 5px 10px;
+  background: var(--app);
+  color: var(--text-2);
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pill-on {
+  background: var(--blue-soft);
+  border-color: rgba(47, 111, 237, 0.35);
+  color: var(--blue);
+}
+
+.hist-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.hist-filters select {
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: var(--app);
+  color: var(--text-2);
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  max-width: 46vw;
+}
+
+.hist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.hist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.hist-row:hover {
+  border-color: var(--line-2);
+}
+
+.hist-pos {
+  width: 34px;
+  flex: none;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.hist-net {
+  width: 62px;
+  flex: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.hist-net.neg { color: var(--danger); }
+.hist-net.pos { color: var(--positive); }
+.hist-loss {
+  width: 92px;
+  flex: none;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.hist-tags {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.hist-tag {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(220, 76, 71, 0.1);
+  color: var(--danger);
+  font-size: 9.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.hist-tag-more {
+  background: var(--soft);
+  color: var(--text-dim);
+}
+.hist-disputed {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--soft);
+  color: var(--text-dim);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.hist-time {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hist-more {
+  align-self: center;
+  min-height: 40px;
+  padding: 0 20px;
+  flex: none;
+}
+
+.hist-empty {
+  margin: 24px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+.hist-retry {
+  margin-left: 8px;
+}
+
+/* 窄屏：侧栏折成顶部一条。一份 DOM 两种版式，靠 flex 方向切换——
+   .app 变回纵向列，.nav 变成横向条，两者的子元素顺序天然还是对的。
+   放在文件末尾的原因见上面那段：媒体查询不增加特异性，只看源码顺序。 */
+@media (max-width: 520px) {
+  .app {
+    flex-direction: column;
+  }
+  .nav {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    width: auto;
+    padding: calc(8px + var(--safe-top)) 12px 8px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  /* 手机上不占一行去写产品名：那一行既不能点也不带信息 */
+  .nav-title {
+    display: none;
+  }
+  .nav-items {
+    flex-direction: row;
+    gap: 4px;
+  }
+  .nav-item {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  .app-main {
+    /* 安全区已经由 .nav 的 padding 补过了，这里再补一次就是两倍 */
+    padding-top: 0;
+  }
+  .hist {
+    padding: 12px 12px calc(14px + var(--safe-bottom));
+  }
+  /* 一行塞不下七列。窄屏把时间与"损失"两列去掉——评级色点与分类标签
+     已经说清"这手值不值得看"，时间在按损失排序时本来也不是主线索。 */
+  .hist-loss,
+  .hist-time {
+    display: none;
+  }
+  .hist-row {
+    gap: 8px;
+    padding: 9px 10px;
+  }
 }
