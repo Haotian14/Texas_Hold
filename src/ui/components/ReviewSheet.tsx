@@ -19,6 +19,7 @@ export function ReviewSheet({
   record,
   netBB,
   onNext,
+  nextLabel,
   onClose,
 }: {
   /** 本手分析。null = analyzeHand 抛错了（见设计文档 §6），不是「没有决策点」 */
@@ -27,6 +28,8 @@ export function ReviewSheet({
   /** 本手 hero 净盈亏，BB */
   netBB: number;
   onNext: () => void;
+  /** 底部按钮的文案。破产那一手开不了下一手，只能「关闭」 */
+  nextLabel: string;
   onClose: () => void;
 }) {
   const grade = analysis === null ? null : handGrade(analysis);
@@ -73,7 +76,7 @@ export function ReviewSheet({
 
       <footer className="rv-foot">
         <button className="btn btn-primary" onClick={onNext}>
-          下一手
+          {nextLabel}
         </button>
       </footer>
     </div>

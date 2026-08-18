@@ -11,7 +11,8 @@ import type { Grade } from '../reviewModel';
 export type ReviewStatus =
   | { kind: 'pending' }
   | { kind: 'failed' }
-  | { kind: 'ready'; grade: Grade };
+  /** text 是评级的中文标签（GradeInfo.text），进 aria-label —— 见下 */
+  | { kind: 'ready'; grade: Grade; text: string };
 
 /**
  * 结算区的「复盘」按钮。
@@ -19,8 +20,10 @@ export type ReviewStatus =
  * 只有 pending 才禁用。按钮常驻是有意的：若改成「算完才渲染」，
  * 结算区会在结算后跳一下。
  *
- * 色点让「这手有没有打错」不点开就能看到；文字标签同时给出，
- * 颜色不是唯一编码。
+ * 色点让「这手有没有打错」不点开就能看到。色点是 aria-hidden 的纯装饰，
+ * 所以评级的文字走 aria-label —— 按钮上可见的文字只有「复盘」两个字，
+ * 若不这么做，评级在这里就是**纯颜色编码**，色觉障碍用户与读屏用户都
+ * 拿不到。（卡片内部的 .rv-grade 徽章有可见文字，那是打开之后的事。）
  */
 export function ReviewTrigger({
   status,
@@ -34,7 +37,7 @@ export function ReviewTrigger({
       className="rv-trigger"
       onClick={onOpen}
       disabled={status.kind === 'pending'}
-      aria-label="打开本手复盘"
+      aria-label={status.kind === 'ready' ? `打开本手复盘：${status.text}` : '打开本手复盘'}
     >
       <span
         className={`rv-dot rv-dot-${status.kind === 'ready' ? status.grade : 'unknown'}`}

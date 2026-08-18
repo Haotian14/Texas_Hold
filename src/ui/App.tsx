@@ -172,8 +172,13 @@ export function App() {
   }, [heroWon]);
 
   // 手牌结束后算复盘。analyzeHand 每手约 25–200ms，够快，不需要 Worker，
-  // 但仍会占住主线程 —— 用 setTimeout 让出当前这一帧，先把 ③-A 的赢池
-  // 脉冲放完再算。
+  // 但仍会占住主线程 —— 用 setTimeout 让出**结算这一帧**再算。
+  //
+  // 注意它让出的只有一帧：③-A 的赢池脉冲是 600ms 的 box-shadow 动画
+  // （pot-win-pulse），box-shadow 不走合成层，每帧都在主线程重绘。所以
+  // 这个 0 延时只保证结算帧本身不掉，脉冲的后半段仍可能被 analyzeHand
+  // 的同步阻塞吃掉一截。若浏览器验收时看到脉冲卡顿，把延时提到 600ms；
+  // 但那会让复盘按钮每手都晚 600ms 才可点，别在没观察到卡顿前就改。
   //
   // 依赖只放 record?.id：record 对象每手都是新引用，放它本身会多跑一遍；
   // 而 id 变了才真的是换了一手。
@@ -220,19 +225,29 @@ export function App() {
       ? { kind: 'pending' }
       : currentReview.analysis === null
         ? { kind: 'failed' }
-        : { kind: 'ready', grade: handGrade(currentReview.analysis).grade };
+        : (() => {
+            const g = handGrade(currentReview.analysis);
+            return { kind: 'ready', grade: g.grade, text: g.text };
+          })();
 
-  // 本手 hero 净盈亏。**与上面第 112 行那个 netBB 不是一回事** —— 那个是
-  // 整局累计（heroNet(ledger, stack)），这个是这一手。同一个作用域里两个
-  // 同名概念很容易被后来的人「顺手简化」成一个，所以这里显式另起名字。
+  // 本手 hero 净盈亏。**与本函数上方那个 netBB 不是一回事** —— 那个是整局
+  // 累计（heroNet(ledger, stack)），这个是这一手。同一个作用域里两个同名
+  // 概念很容易被后来的人「顺手简化」成一个，所以这里显式另起名字。
   const handNetBB = state.record?.results.find(r => r.seat === HERO_SEAT)?.netBB ?? 0;
+
+  // 破产那一手开不了下一手：reducer 拦着（App 的 nextHand 分支），
+  // handSession.nextHand 更是直接抛。卡片底部那颗按钮必须跟着改口径，
+  // 否则它写着「下一手」却什么也不做 —— 而破产恰恰是独立复盘按钮
+  // 被设计出来的那一手。
+  const needsRebuy = heroNeedsRebuy(state);
 
   const onOpenSheet = useCallback(() => setSheetOpen(true), []);
   const onCloseSheet = useCallback(() => setSheetOpen(false), []);
   const onNextFromSheet = useCallback(() => {
     setSheetOpen(false);
-    dispatch({ kind: 'nextHand' });
-  }, []);
+    // 不靠 reducer 的静默无操作兜底，这里显式判断
+    if (!needsRebuy) dispatch({ kind: 'nextHand' });
+  }, [needsRebuy]);
 
   return (
     <div className="app">
@@ -259,6 +274,7 @@ export function App() {
         onRebuy={onRebuy}
         reviewStatus={reviewStatus}
         onOpenReview={onOpenSheet}
+        handNetBB={handNetBB}
       />
       {/* pending 时按钮是禁用的，走不到这里；failed 时 currentAnalysis 为
           null，卡片壳照开，body 显示「本手复盘失败」——见 Step 0。 */}
@@ -268,6 +284,7 @@ export function App() {
           record={state.record}
           netBB={handNetBB}
           onNext={onNextFromSheet}
+          nextLabel={needsRebuy ? '关闭' : '下一手'}
           onClose={onCloseSheet}
         />
       ) : null}
@@ -283,6 +300,7 @@ function BottomSlot({
   onRebuy,
   reviewStatus,
   onOpenReview,
+  handNetBB,
 }: {
   state: HandSessionState;
   onHero: (input: ActionInput) => void;
@@ -290,6 +308,8 @@ function BottomSlot({
   onRebuy: (targetStack: number) => void;
   reviewStatus: ReviewStatus;
   onOpenReview: () => void;
+  /** 本手 hero 净盈亏，BB。由 App 算好传下来，不在这里重算第二遍 */
+  handNetBB: number;
 }) {
   if (state.phase === 'handOver') {
     // 复盘按钮在两个结算形态下都要在 —— hero 破产那一手底部显示的是
@@ -309,12 +329,11 @@ function BottomSlot({
         </div>
       );
     }
-    const netBB = state.record?.results.find(r => r.seat === HERO_SEAT)?.netBB ?? 0;
     const showdown = state.record?.results.some(r => r.showdown) ?? false;
     return (
       <div className="bottom">
         {trigger}
-        <SummaryBar netBB={netBB} showdown={showdown} onNext={onNext} />
+        <SummaryBar netBB={handNetBB} showdown={showdown} onNext={onNext} />
       </div>
     );
   }
