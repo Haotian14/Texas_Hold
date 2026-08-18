@@ -83,9 +83,12 @@ export function ActionBar({
             弃牌
           </button>
         )}
+        {/* 同屏只允许一个实心蓝按钮（设计稿的规矩）。过牌/跟注是"继续"，
+            下注/加注是"施压"——后者才是这一行里需要被最先看到的那个动作。
+            两个都刷成主色，等于两个都不是主色。 */}
         {model.passive && (
           <button
-            className="btn btn-primary"
+            className="btn"
             onClick={() => onAction({ type: model.passive!.type })}
           >
             {model.passive.type === 'check'

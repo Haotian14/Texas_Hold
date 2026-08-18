@@ -8,6 +8,8 @@ import { Seat } from './Seat';
 
 export interface TableProps {
   game: GameState;
+  /** 座位号 -> persona id（handSession 的同名字段），座位上显示性格名要用 */
+  personaIds: ReadonlyMap<number, string>;
   lastAction: { seat: number; type: ActionType; amount: number } | null;
   /** 手牌结束且走到摊牌时为 true */
   revealed: boolean;
@@ -15,7 +17,7 @@ export interface TableProps {
   heroWon: boolean;
 }
 
-export function Table({ game, lastAction, revealed, heroWon }: TableProps) {
+export function Table({ game, personaIds, lastAction, revealed, heroWon }: TableProps) {
   const others = game.seats.filter(s => s.seat !== HERO_SEAT);
   // settleHand 结算时会把所有 totalContribution 清零(那笔钱已派回 stack，
   // 不清零会破坏筹码守恒)，而底池正是从这些字段求和得来的——于是手牌结束
@@ -39,6 +41,7 @@ export function Table({ game, lastAction, revealed, heroWon }: TableProps) {
               seat={seat}
               isButton={seat.seat === game.buttonSeat}
               isToAct={game.toAct === seat.seat}
+              personaId={personaIds.get(seat.seat)}
               bubble={lastAction?.seat === seat.seat ? lastAction : null}
               revealed={revealed}
             />
