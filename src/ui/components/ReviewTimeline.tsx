@@ -47,7 +47,7 @@ export function ReviewTimeline({ groups }: { groups: StreetGroup[] }) {
           {g.rows.map(({ decision: d, index }) => (
             <div className="rv-item" key={index}>
               <button
-                className="rv-row"
+                className={open === index ? 'rv-row rv-row-open' : 'rv-row'}
                 aria-expanded={open === index}
                 onClick={() => setOpen(open === index ? null : index)}
               >

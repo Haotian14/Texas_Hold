@@ -657,14 +657,19 @@ body {
   display: flex;
   flex-direction: column;
   background: var(--bg);
-  border-top: 1px solid var(--line);
 }
 
+/* 头部要自己补 --safe-top。
+   绝对定位元素的包含块是 .app 的 **padding box**，所以 top: 0 落在
+   .app 的 padding-top: var(--safe-top) 之外——整张卡会盖进安全区，
+   被遮的恰好是这一行：净盈亏、评级徽章，以及关闭按钮，全屏遮罩唯一
+   的出口。底部的 .rv-foot 补了 --safe-bottom，顶上不补是漏了不是取舍。
+   桌面端 --safe-top 求值为 0px，浏览器验收看不出来。 */
 .rv-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: calc(10px + var(--safe-top)) 12px 10px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -749,6 +754,12 @@ body {
 
 .rv-item + .rv-item {
   margin-top: 4px;
+}
+
+/* 展开时下缘拉直，与紧贴其下的 .rv-detail 接上——.rv-detail 已经
+   border-top: none 且只圆下两角，行若还圆着下两角就会露出一道缝 */
+.rv-row-open {
+  border-radius: 4px 4px 0 0;
 }
 
 .rv-dot {

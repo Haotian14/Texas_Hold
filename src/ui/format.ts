@@ -92,3 +92,8 @@ export const ACTION_TEXT: Record<ActionType, string> = {
   raise: '加注',
   allin: '全下',
 };
+
+/** 小数概率 → 百分比字符串，取整。0.333 → "33%" */
+export function pctText(v: number): string {
+  return `${Math.round(v * 100)}%`;
+}

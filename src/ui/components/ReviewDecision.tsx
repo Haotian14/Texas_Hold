@@ -1,11 +1,8 @@
 import type { DecisionAnalysis } from '../../review/types';
 import { chipsGreater } from '../../core/chips';
 import { barsOf } from '../reviewModel';
+import { pctText } from '../format';
 import { EvBars } from './EvBars';
-
-function pct(v: number): string {
-  return `${Math.round(v * 100)}%`;
-}
 
 /** 一行「名称 值」 */
 function Stat({ name, value }: { name: string; value: string }) {
@@ -32,10 +29,10 @@ export function ReviewDecision({ d }: { d: DecisionAnalysis }) {
         <Stat name="底池" value={`${s.pot.toFixed(1)} BB`} />
         <Stat name="待跟注" value={`${s.toCall.toFixed(1)} BB`} />
         {d.requiredEquity !== null ? (
-          <Stat name="所需胜率" value={pct(d.requiredEquity)} />
+          <Stat name="所需胜率" value={pctText(d.requiredEquity)} />
         ) : null}
         {!d.degraded && d.heroEquity !== null ? (
-          <Stat name="你的胜率" value={pct(d.heroEquity)} />
+          <Stat name="你的胜率" value={pctText(d.heroEquity)} />
         ) : null}
       </div>
 

@@ -1,6 +1,7 @@
 import type { HandRecord } from '../../core/types';
 import type { HandAnalysis } from '../../review/types';
 import { handGrade, timelineOf } from '../reviewModel';
+import { useEffect } from 'react';
 import { ReviewTimeline } from './ReviewTimeline';
 import { OpponentCards } from './OpponentCards';
 import { chipsGreater } from '../../core/chips';
@@ -31,8 +32,18 @@ export function ReviewSheet({
   // 与 SummaryBar.tsx 同款判据：金额比较走 chips.ts，不用裸 <
   const isNeg = chipsGreater(0, netBB);
 
+  // Esc 关卡片。这是全屏遮罩（z-index 20，本文件最高），底下的动作条与
+  // 顶栏仍在 tab 序里，键盘用户至少要有一条出得来的路。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="rv-sheet" role="dialog" aria-label="本手复盘">
+    <div className="rv-sheet" role="dialog" aria-modal="true" aria-label="本手复盘">
       <header className="rv-head">
         <div className="rv-head-left">
           <span className={isNeg ? 'neg' : 'pos'}>
