@@ -268,14 +268,46 @@ describe('listHands', () => {
     for (const [id, worst] of [['a', 1], ['b', 5], ['c', 3]] as [string, number][]) {
       await repo.saveHand(record(id, 0), { ...view(id), worstEvLoss: worst });
     }
-    const rows = await repo.listHands({ limit: 10 });
-    expect(rows.map(r => r.id)).toEqual(['b', 'c', 'a']);
+    const page = await repo.listHands({ limit: 10 });
+    expect(page.rows.map(r => r.id)).toEqual(['b', 'c', 'a']);
+    expect(page.nextOffset).toBeNull();
   });
 
-  it('读失败时返回空数组并标记 unavailable，不抛错', async () => {
+  it('读失败时返回空页并标记 unavailable，不抛错', async () => {
     fake.failReads = true;
-    expect(await repo.listHands()).toEqual([]);
+    expect(await repo.listHands()).toEqual({ rows: [], nextOffset: null });
     expect(repo.storageStatus()).toBe('unavailable');
+  });
+
+  it('筛得很窄时会继续往下扫，而不是"这一批没有就算没有"', async () => {
+    // 100 手，只有最后 2 手是 SB。SCAN_BATCH 是 100，若实现是"取一页再过滤"，
+    // 第一批就返回 0 条并被当成"没有更多了"。
+    for (let i = 0; i < 98; i++) {
+      await repo.saveHand(record(`h${i}`, 0), { ...view(`h${i}`), worstEvLoss: 100 - i });
+    }
+    for (const id of ['sb1', 'sb2']) {
+      const rec = record(id, 0);
+      rec.seats[0].position = 'SB';
+      await repo.saveHand(rec, { ...view(id), worstEvLoss: 0 });
+    }
+    const page = await repo.listHands({ limit: 10, filter: { position: 'SB' } });
+    expect(page.rows.map(r => r.id).sort()).toEqual(['sb1', 'sb2']);
+  });
+
+  it('续页从 nextOffset 接着扫，不重复也不漏', async () => {
+    for (let i = 0; i < 7; i++) {
+      await repo.saveHand(record(`h${i}`, 0), { ...view(`h${i}`), worstEvLoss: 10 - i });
+    }
+    const p1 = await repo.listHands({ limit: 3 });
+    expect(p1.rows.map(r => r.id)).toEqual(['h0', 'h1', 'h2']);
+    expect(p1.nextOffset).toBe(3);
+
+    const p2 = await repo.listHands({ limit: 3, offset: p1.nextOffset! });
+    expect(p2.rows.map(r => r.id)).toEqual(['h3', 'h4', 'h5']);
+
+    const p3 = await repo.listHands({ limit: 3, offset: p2.nextOffset! });
+    expect(p3.rows.map(r => r.id)).toEqual(['h6']);
+    expect(p3.nextOffset).toBeNull();
   });
 });
 

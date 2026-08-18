@@ -3,6 +3,8 @@ import type { HandView } from '../review/view';
 import { storedHandOf } from './schema';
 import type { StoredHand } from './schema';
 import { emptyStats, applyHand } from './stats';
+import { matchesFilter, isFilterEmpty } from './filter';
+import type { HandFilter } from './filter';
 import type { Stats } from './stats';
 import * as db from './db';
 
@@ -130,23 +132,65 @@ export function setDisputed(id: string, disputed: boolean): Promise<boolean> {
 export interface HistoryQuery {
   /** 排序依据。默认 worstEvLoss（规格 §10.4：默认按最大损失倒序） */
   sortBy?: 'worstEvLoss' | 'timestamp';
+  /** 要凑够几条**命中筛选**的结果 */
   limit?: number;
+  /** 从索引的第几条开始扫（不是"第几条命中"）。续页时传上一页返回的 nextOffset */
   offset?: number;
+  filter?: HandFilter;
 }
 
-/** 历史列表的一页。失败时返回空数组，由 storageStatus() 表达失败 */
-export async function listHands(q: HistoryQuery = {}): Promise<StoredHand[]> {
+export interface HistoryPage {
+  rows: StoredHand[];
+  /** 下一页从这里继续扫。已扫到底时为 null */
+  nextOffset: number | null;
+}
+
+/** 每次向数据库要多少条原始记录。筛选后可能只剩几条，所以要成批地扫 */
+const SCAN_BATCH = 100;
+
+/**
+ * 历史列表的一页。
+ *
+ * 筛选**不在数据库里做**：IndexedDB 一次查询只能用一个索引，而规格 §10.4 要
+ * 的是位置 / 街道 / 分类 / disputed 四项可组合。走索引只能覆盖其中一项，剩下
+ * 的仍要在内存里过一遍，不如统一在内存里过——索引留给排序与分页，那才是它
+ * 真正省事的地方（一万手不必全读进内存）。
+ *
+ * 代价：筛得很窄时要多扫几批才能凑够一页。所以这里循环扫描而不是"取一页再
+ * 过滤"——后者会让"筛选后不足一页"看起来像"没有更多了"，而其实只是这一批
+ * 里恰好没有命中的。
+ *
+ * 失败时返回空页，由 storageStatus() 表达失败。
+ */
+export async function listHands(q: HistoryQuery = {}): Promise<HistoryPage> {
+  const limit = q.limit ?? 50;
+  const filter = q.filter ?? {};
+  const noFilter = isFilterEmpty(filter);
+  let offset = q.offset ?? 0;
+  const rows: StoredHand[] = [];
+
   try {
-    const rows = await db.pageByIndex(q.sortBy ?? 'worstEvLoss', {
-      limit: q.limit ?? 50,
-      offset: q.offset ?? 0,
-      direction: 'prev',
-    });
-    status = 'ready';
-    return rows;
+    while (rows.length < limit) {
+      const batch = await db.pageByIndex(q.sortBy ?? 'worstEvLoss', {
+        limit: noFilter ? limit - rows.length : SCAN_BATCH,
+        offset,
+        direction: 'prev',
+      });
+      status = 'ready';
+      if (batch.length === 0) {
+        // 扫到底了
+        return { rows, nextOffset: null };
+      }
+      offset += batch.length;
+      for (const h of batch) {
+        if (matchesFilter(h, filter)) rows.push(h);
+        if (rows.length >= limit) break;
+      }
+    }
+    return { rows, nextOffset: offset };
   } catch {
     status = 'unavailable';
-    return [];
+    return { rows: [], nextOffset: null };
   }
 }
 
