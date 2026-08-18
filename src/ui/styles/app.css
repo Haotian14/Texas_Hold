@@ -17,6 +17,16 @@
   --danger: #8c3a2c;
   --positive: #7fd18a;
 
+  /* ③-B 复盘：四档严重度 + 一档「算不出来」。
+     ok 刻意是中性色而不是绿色勾——「没问题」不需要庆祝；
+     degraded 用灰，必须与 ok 明确区分，否则「算不出来」会被读成「没打错」。
+     颜色不是唯一编码，每一档同时带文字标签（见 reviewModel 的 GradeInfo.text）。 */
+  --sev-ok: #7d938c;
+  --sev-minor: #d8b445;
+  --sev-notable: #d98a3f;
+  --sev-severe: #c4553f;
+  --sev-unknown: #4a545c;
+
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
 }
@@ -482,3 +492,125 @@ body {
   cursor: pointer;
 }
 .topbar-mute:hover { color: var(--text); }
+
+/* ───────── ③-B 复盘卡片：EV 条形图 ───────── */
+
+.ev-bars {
+  position: relative;
+  margin: 8px 0;
+}
+
+/* 零点基线。父容器 .ev-bars 是 relative，这条竖线按百分比定位在轴上，
+   与 .ev-track 的左右边界对齐——所以 .ev-track 必须占满 .ev-row 里
+   标签与数值之外的全部宽度，见下面 grid 的 1fr。 */
+.ev-zero {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+
+.ev-row {
+  display: grid;
+  grid-template-columns: 68px 1fr 104px;
+  align-items: center;
+  gap: 8px;
+  height: 22px;
+}
+
+.ev-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ev-track {
+  position: relative;
+  height: 10px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ev-fill {
+  position: absolute;
+  top: 0;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--sev-unknown);
+}
+
+.ev-fill.ev-rec {
+  background: var(--positive);
+}
+
+/* 用户选的那一条用描边而不是换底色：它可能同时是推荐动作，
+   两种标记必须能叠加显示 */
+.ev-fill.ev-actual {
+  outline: 1px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.ev-value {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ev-mark {
+  margin-left: 4px;
+  padding: 0 3px;
+  border-radius: 2px;
+  font-size: 10px;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+}
+
+.ev-mark-rec {
+  color: var(--positive);
+  border-color: var(--positive);
+}
+
+/* ───────── ③-B 复盘卡片：对手底牌 ───────── */
+
+.opp-cards {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.opp-cards-title {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.opp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.opp-pos {
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 36px;
+}
+
+.opp-hand {
+  display: flex;
+  gap: 3px;
+}
+
+.opp-folded {
+  opacity: 0.45;
+}
+
+.opp-note {
+  font-size: 11px;
+  color: var(--text-dim);
+}
