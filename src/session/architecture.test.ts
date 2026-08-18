@@ -133,6 +133,38 @@ describe('三期分层守卫', () => {
   // 再匹配，注释里提及不算违规）对同一个目录编码了两条互相矛盾的规则，
   // 是重复 + 不一致，已删除，以 PURE_LAYER_DIRS 的规则为准。
 
+  it('src/session/ 不 import src/storage/ —— 对局逻辑不该知道有没有数据库', () => {
+    // 刷新即丢的行为必须仍然成立：IndexedDB 在隐私模式、被禁用的存储、配额
+    // 耗尽时都可能不可用，而牌局在那些情况下一样要能打。会话层一旦依赖存储，
+    // 「存不进去也能继续」就从一条设计约束退化成一句口号。
+    const offenders: string[] = [];
+    const files = sourceFiles('src/session');
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const src = readFileSync(file, 'utf-8');
+      if (/from\s+['"][^'"]*storage\//.test(src) || /import\s*\(\s*['"][^'"]*storage\//.test(src)) {
+        offenders.push(file);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('indexedDB 只出现在 src/storage/db.ts', () => {
+    // 存储层刻意只有一个文件碰浏览器 API（见 db.ts 顶部）。这条守卫是那句话
+    // 的执行者：一旦有人图方便在别处直接开库，schema / 统计 / 查询那几层
+    // 「纯函数、可测」的前提就没了。
+    const offenders: string[] = [];
+    for (const dir of ['src/core', 'src/ai', 'src/review', 'src/session', 'src/ui', 'src/storage']) {
+      for (const file of sourceFiles(dir)) {
+        if (file.endsWith('src/storage/db.ts')) continue;
+        if (/indexedDB/.test(stripComments(readFileSync(file, 'utf-8')))) {
+          offenders.push(file);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it('src/ui/ 不从引擎与 AI 取值，只允许类型导入', () => {
     const banned = ['core/gameEngine', 'ai/decide', 'ai/selfPlayAi'];
     const offenders: string[] = [];
