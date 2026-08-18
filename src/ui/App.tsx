@@ -22,6 +22,11 @@ import { HeroHand } from './components/HeroHand';
 import { ActionBar } from './components/ActionBar';
 import { SummaryBar } from './components/SummaryBar';
 import { RebuyPrompt } from './components/RebuyPrompt';
+import { analyzeHand } from '../review/analyzeHand';
+import type { HandAnalysis } from '../review/types';
+import { handGrade } from './reviewModel';
+import { ReviewSheet } from './components/ReviewSheet';
+import { ReviewTrigger, type ReviewStatus } from './components/ReviewTrigger';
 
 const CFG: SessionConfig = {
   // 每次刷新换一局。③-C 会把 seed 一并持久化，届时刷新可续上。
@@ -59,6 +64,14 @@ export function App() {
   const [state, dispatch] = useReducer(reducer, CFG, startSession);
 
   const [muted, setMutedState] = useState(isMuted);
+
+  // 复盘分析与它属于哪一手绑在一起。只要 recordId 与屏幕上这一手对不上，
+  // 就当作「还没算好」—— 这是「连打十手不串手」那条验收的唯一防线。
+  // analysis 为 null 表示这一手分析失败（见下面的 catch）。
+  const [review, setReview] = useState<{ recordId: string; analysis: HandAnalysis | null } | null>(
+    null,
+  );
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const onToggleMute = useCallback(() => {
     setMutedState(prev => {
@@ -158,12 +171,68 @@ export function App() {
     if (heroWon) playSound('pot-win');
   }, [heroWon]);
 
+  // 手牌结束后算复盘。analyzeHand 每手约 25–200ms，够快，不需要 Worker，
+  // 但仍会占住主线程 —— 用 setTimeout 让出当前这一帧，先把 ③-A 的赢池
+  // 脉冲放完再算。
+  //
+  // 依赖只放 record?.id：record 对象每手都是新引用，放它本身会多跑一遍；
+  // 而 id 变了才真的是换了一手。
+  const recordId = state.record?.id ?? null;
+  useEffect(() => {
+    const rec = state.record;
+    if (rec === null) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      try {
+        const analysis = analyzeHand(rec);
+        if (!cancelled) setReview({ recordId: rec.id, analysis });
+      } catch {
+        // 复盘算不出来不该掀掉牌桌 —— 记成「这一手分析失败」，牌局继续。
+        if (!cancelled) setReview({ recordId: rec.id, analysis: null });
+      }
+    }, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [recordId]);
+
+  // 新一手开始就关掉卡片
+  useEffect(() => {
+    setSheetOpen(false);
+  }, [state.handIndex]);
+
   const onHero = useCallback((input: ActionInput) => dispatch({ kind: 'hero', input }), []);
   const onNext = useCallback(() => dispatch({ kind: 'nextHand' }), []);
   const onRebuy = useCallback(
     (targetStack: number) => dispatch({ kind: 'rebuy', targetStack }),
     [],
   );
+
+  // 只认属于当前这一手的分析
+  const currentReview = review !== null && review.recordId === recordId ? review : null;
+  const currentAnalysis = currentReview?.analysis ?? null;
+  // 三态，不是 grade|null：见 ReviewTrigger 里 ReviewStatus 的注释。
+  // currentReview 为 null = 还没算好；算好了但 analysis 为 null = 算失败了。
+  const reviewStatus: ReviewStatus =
+    currentReview === null
+      ? { kind: 'pending' }
+      : currentReview.analysis === null
+        ? { kind: 'failed' }
+        : { kind: 'ready', grade: handGrade(currentReview.analysis).grade };
+
+  // 本手 hero 净盈亏。**与上面第 112 行那个 netBB 不是一回事** —— 那个是
+  // 整局累计（heroNet(ledger, stack)），这个是这一手。同一个作用域里两个
+  // 同名概念很容易被后来的人「顺手简化」成一个，所以这里显式另起名字。
+  const handNetBB = state.record?.results.find(r => r.seat === HERO_SEAT)?.netBB ?? 0;
+
+  const onOpenSheet = useCallback(() => setSheetOpen(true), []);
+  const onCloseSheet = useCallback(() => setSheetOpen(false), []);
+  const onNextFromSheet = useCallback(() => {
+    setSheetOpen(false);
+    dispatch({ kind: 'nextHand' });
+  }, []);
 
   return (
     <div className="app">
@@ -183,7 +252,25 @@ export function App() {
         heroWon={heroWon}
       />
       <HeroHand seat={hero} isButton={state.game.buttonSeat === HERO_SEAT} />
-      <BottomSlot state={state} onHero={onHero} onNext={onNext} onRebuy={onRebuy} />
+      <BottomSlot
+        state={state}
+        onHero={onHero}
+        onNext={onNext}
+        onRebuy={onRebuy}
+        reviewStatus={reviewStatus}
+        onOpenReview={onOpenSheet}
+      />
+      {/* pending 时按钮是禁用的，走不到这里；failed 时 currentAnalysis 为
+          null，卡片壳照开，body 显示「本手复盘失败」——见 Step 0。 */}
+      {sheetOpen && currentReview !== null && state.record !== null ? (
+        <ReviewSheet
+          analysis={currentAnalysis}
+          record={state.record}
+          netBB={handNetBB}
+          onNext={onNextFromSheet}
+          onClose={onCloseSheet}
+        />
+      ) : null}
     </div>
   );
 }
@@ -194,16 +281,25 @@ function BottomSlot({
   onHero,
   onNext,
   onRebuy,
+  reviewStatus,
+  onOpenReview,
 }: {
   state: HandSessionState;
   onHero: (input: ActionInput) => void;
   onNext: () => void;
   onRebuy: (targetStack: number) => void;
+  reviewStatus: ReviewStatus;
+  onOpenReview: () => void;
 }) {
   if (state.phase === 'handOver') {
+    // 复盘按钮在两个结算形态下都要在 —— hero 破产那一手底部显示的是
+    // RebuyPrompt，而那恰恰是最该复盘的一手。
+    const trigger = <ReviewTrigger status={reviewStatus} onOpen={onOpenReview} />;
+
     if (heroNeedsRebuy(state)) {
       return (
         <div className="bottom">
+          {trigger}
           <RebuyPrompt
             options={REBUY_OPTIONS}
             buyInCount={state.ledger.buyIns.length}
@@ -217,6 +313,7 @@ function BottomSlot({
     const showdown = state.record?.results.some(r => r.showdown) ?? false;
     return (
       <div className="bottom">
+        {trigger}
         <SummaryBar netBB={netBB} showdown={showdown} onNext={onNext} />
       </div>
     );
