@@ -23,7 +23,8 @@ import { ActionBar } from './components/ActionBar';
 import { SummaryBar } from './components/SummaryBar';
 import { RebuyPrompt } from './components/RebuyPrompt';
 import { analyzeHand } from '../review/analyzeHand';
-import type { HandAnalysis } from '../review/types';
+import { viewOf } from '../review/view';
+import type { HandView } from '../review/view';
 import { handGrade } from './reviewModel';
 import { ReviewSheet } from './components/ReviewSheet';
 import { ReviewTrigger, type ReviewStatus } from './components/ReviewTrigger';
@@ -67,10 +68,11 @@ export function App() {
 
   // 复盘分析与它属于哪一手绑在一起。只要 recordId 与屏幕上这一手对不上，
   // 就当作「还没算好」—— 这是「连打十手不串手」那条验收的唯一防线。
-  // analysis 为 null 表示这一手分析失败（见下面的 catch）。
-  const [review, setReview] = useState<{ recordId: string; analysis: HandAnalysis | null } | null>(
-    null,
-  );
+  // view 为 null 表示这一手分析失败（见下面的 catch）。
+  // 存的是 HandView 而不是 HandAnalysis：后者带着对手范围（ReadonlyMap，序列化
+  // 会静默变空）与一个共享对象引用，落不了库。让界面从一开始就只碰视图类型，
+  // 「刚算完的」与「从库里取回来的」才是同一条渲染路径。见 review/view.ts。
+  const [review, setReview] = useState<{ recordId: string; view: HandView | null } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const onToggleMute = useCallback(() => {
@@ -190,11 +192,11 @@ export function App() {
     const timer = setTimeout(() => {
       if (cancelled) return;
       try {
-        const analysis = analyzeHand(rec);
-        if (!cancelled) setReview({ recordId: rec.id, analysis });
+        const view = viewOf(analyzeHand(rec));
+        if (!cancelled) setReview({ recordId: rec.id, view });
       } catch {
         // 复盘算不出来不该掀掉牌桌 —— 记成「这一手分析失败」，牌局继续。
-        if (!cancelled) setReview({ recordId: rec.id, analysis: null });
+        if (!cancelled) setReview({ recordId: rec.id, view: null });
       }
     }, 0);
     return () => {
@@ -217,16 +219,16 @@ export function App() {
 
   // 只认属于当前这一手的分析
   const currentReview = review !== null && review.recordId === recordId ? review : null;
-  const currentAnalysis = currentReview?.analysis ?? null;
+  const currentView = currentReview?.view ?? null;
   // 三态，不是 grade|null：见 ReviewTrigger 里 ReviewStatus 的注释。
-  // currentReview 为 null = 还没算好；算好了但 analysis 为 null = 算失败了。
+  // currentReview 为 null = 还没算好；算好了但 view 为 null = 算失败了。
   const reviewStatus: ReviewStatus =
     currentReview === null
       ? { kind: 'pending' }
-      : currentReview.analysis === null
+      : currentReview.view === null
         ? { kind: 'failed' }
         : (() => {
-            const g = handGrade(currentReview.analysis);
+            const g = handGrade(currentReview.view);
             return { kind: 'ready', grade: g.grade, text: g.text };
           })();
 
@@ -285,7 +287,7 @@ export function App() {
           null，卡片壳照开，body 显示「本手复盘失败」——见 Step 0。 */}
       {sheetOpen && currentReview !== null && state.record !== null ? (
         <ReviewSheet
-          analysis={currentAnalysis}
+          view={currentView}
           record={state.record}
           netBB={handNetBB}
           onNext={onNextFromSheet}

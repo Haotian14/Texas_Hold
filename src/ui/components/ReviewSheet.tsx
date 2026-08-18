@@ -1,5 +1,5 @@
 import type { HandRecord } from '../../core/types';
-import type { HandAnalysis } from '../../review/types';
+import type { HandView } from '../../review/view';
 import { handGrade, timelineOf } from '../reviewModel';
 import { useEffect, useRef } from 'react';
 import { ReviewTimeline } from './ReviewTimeline';
@@ -15,15 +15,15 @@ import { chips } from '../format';
  * 「你这一步亏了 2.3BB」比「亏了 92」有意义得多，且跨盲注级别可比。
  */
 export function ReviewSheet({
-  analysis,
+  view,
   record,
   netBB,
   onNext,
   nextLabel,
   onClose,
 }: {
-  /** 本手分析。null = analyzeHand 抛错了（见设计文档 §6），不是「没有决策点」 */
-  analysis: HandAnalysis | null;
+  /** 本手复盘视图。null = analyzeHand 抛错了（见设计文档 §6），不是「没有决策点」 */
+  view: HandView | null;
   record: HandRecord;
   /** 本手 hero 净盈亏，BB */
   netBB: number;
@@ -32,7 +32,7 @@ export function ReviewSheet({
   nextLabel: string;
   onClose: () => void;
 }) {
-  const grade = analysis === null ? null : handGrade(analysis);
+  const grade = view === null ? null : handGrade(view);
   // 与 SummaryBar.tsx 同款判据：金额比较走 chips.ts，不用裸 <
   const isNeg = chipsGreater(0, netBB);
 
@@ -75,11 +75,11 @@ export function ReviewSheet({
       </header>
 
       <div className="rv-body">
-        {analysis === null ? (
+        {view === null ? (
           <p className="rv-empty">本手复盘失败。牌局不受影响，可以继续。</p>
         ) : (
           <>
-            <ReviewTimeline groups={timelineOf(analysis)} />
+            <ReviewTimeline groups={timelineOf(view)} />
             <OpponentCards record={record} />
           </>
         )}

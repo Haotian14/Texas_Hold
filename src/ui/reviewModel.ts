@@ -1,4 +1,4 @@
-import type { HandAnalysis, DecisionAnalysis } from '../review/types';
+import type { HandView, DecisionView } from '../review/view';
 import type { Severity, MistakeTag } from '../review/taxonomy';
 import { severityOf } from '../review/taxonomy';
 import { chipsGreater } from '../core/chips';
@@ -36,7 +36,7 @@ const MISTAKE_TEXT: Record<Exclude<Severity, 'ok'>, string> = {
  * unknown 单列一档是必要的：不能让「算不出来」和「没打错」显示成
  * 同一个颜色，那是用沉默冒充结论。
  */
-export function handGrade(a: HandAnalysis): GradeInfo {
+export function handGrade(a: HandView): GradeInfo {
   if (a.decisions.length === 0 || a.decisions.every(d => d.degraded)) {
     return { grade: 'unknown', text: '本手没有可判定的决策点' };
   }
@@ -46,8 +46,8 @@ export function handGrade(a: HandAnalysis): GradeInfo {
 }
 
 export interface TimelineRow {
-  decision: DecisionAnalysis;
-  /** 该决策点在 HandAnalysis.decisions 里的下标，作为展开状态的 key */
+  decision: DecisionView;
+  /** 该决策点在 HandView.decisions 里的下标，作为展开状态的 key */
   index: number;
 }
 
@@ -74,7 +74,7 @@ const STREET_LABEL: Record<Street, string> = {
  * TimelineRow.index 是决策点在 a.decisions 里的原下标，不是排序后的名次 ——
  * 展开状态用它做 key，用名次会在组内重排后展开错的那一行。
  */
-export function timelineOf(a: HandAnalysis): StreetGroup[] {
+export function timelineOf(a: HandView): StreetGroup[] {
   const groups: StreetGroup[] = [];
   for (const street of STREET_ORDER) {
     const rows: TimelineRow[] = [];
@@ -117,7 +117,7 @@ export interface BarChart {
  * degraded 的决策点 candidates 是空数组（见 review/types.ts），
  * 自然得到一张空图，调用方不必额外判断。
  */
-export function barsOf(d: DecisionAnalysis): BarChart {
+export function barsOf(d: DecisionView): BarChart {
   if (d.candidates.length === 0) return { bars: [], zeroPct: 0 };
 
   const evs = d.candidates.map(c => c.ev);
