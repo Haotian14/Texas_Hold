@@ -33,6 +33,27 @@ export function isStorageAvailable(): boolean {
   }
 }
 
+/**
+ * 申请「持久化」存储。
+ *
+ * 默认的 IndexedDB 是 best-effort：`navigator.storage.persisted()` 为 false 时，
+ * 浏览器在磁盘紧张、或按自己的清理策略时可以**直接把整份数据丢掉**，不通知
+ * 任何人。对一个存牌局历史的应用来说，那等于用户几百手的记录随时可能消失。
+ *
+ * 申请是否被批准由浏览器决定（通常看站点参与度，也可能弹权限框）。拿不到
+ * 也不是错误——只是回到 best-effort。所以这里不抛错、不阻塞启动，返回结果
+ * 供调用方决定要不要告诉用户。
+ */
+export async function requestPersistence(): Promise<boolean> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.storage?.persist) return false;
+    if (await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch {
+    return false;
+  }
+}
+
 /** 把一个 IDBRequest 包成 Promise */
 function promisify<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {

@@ -51,8 +51,14 @@ vi.mock('./db', () => ({
     if (fake.failReads) throw new Error('读取失败');
     return fake.hands.get(id);
   },
-  allHands: async () => [...fake.hands.values()],
-  countHands: async () => fake.hands.size,
+  allHands: async () => {
+    if (fake.failReads) throw new Error('读取失败');
+    return [...fake.hands.values()];
+  },
+  countHands: async () => {
+    if (fake.failReads) throw new Error('读取失败');
+    return fake.hands.size;
+  },
   pageByIndex: async (_i: string, o: { limit: number; offset?: number }) => {
     if (fake.failReads) throw new Error('读取失败');
     return [...fake.hands.values()]
@@ -308,6 +314,81 @@ describe('listHands', () => {
     const p3 = await repo.listHands({ limit: 3, offset: p2.nextOffset! });
     expect(p3.rows.map(r => r.id)).toEqual(['h6']);
     expect(p3.nextOffset).toBeNull();
+  });
+});
+
+describe('importHands / recomputeStats', () => {
+  it('导入的手写进库，统计整表重算', async () => {
+    await repo.saveHand(record('old', 5), view('old'));
+    const out = await repo.importHands([
+      { ...fake.hands.get('old')!, id: 'i1', timestamp: 1, record: record('i1', 10) },
+      { ...fake.hands.get('old')!, id: 'i2', timestamp: 2, record: record('i2', -3) },
+    ]);
+    expect(out.ok).toBe(true);
+    expect(out.imported).toBe(2);
+    expect(fake.hands.size).toBe(3);
+    // 5 + 10 - 3 = 12。增量是算不出这个数的——导入是乱序插入，
+    // applyHand 的 lastHandId 只挡连续重复
+    expect(out.stats.hands).toBe(3);
+    expect(out.stats.netBB).toBe(12);
+  });
+
+  it('重复导入同一份文件是幂等的 —— 用户点两次不该变成双倍手数', async () => {
+    const batch = [
+      { ...(await (async () => { await repo.saveHand(record('seed', 1), view('seed')); return fake.hands.get('seed')!; })()), id: 'x', record: record('x', 7) },
+    ];
+    await repo.importHands(batch);
+    const second = await repo.importHands(batch);
+    expect(second.stats.hands).toBe(2);
+    expect(second.stats.netBB).toBe(8);
+  });
+
+  it('重算按 timestamp 排序 —— 滚动窗口是有顺序的', async () => {
+    await repo.saveHand(record('a', 1), view('a'));
+    const base = fake.hands.get('a')!;
+    await repo.importHands([
+      { ...base, id: 'late', timestamp: 300, record: record('late', 30) },
+      { ...base, id: 'early', timestamp: 100, record: record('early', 10) },
+    ]);
+    const s = await repo.loadStats();
+    // a 的 timestamp 是 1700000000000（最大），所以顺序是 early(100) → late(300) → a
+    expect(s.recentNet).toEqual([10, 30, 1]);
+  });
+
+  it('写到一半失败：已写进去的不回滚，统计与实际写入对得上', async () => {
+    await repo.saveHand(record('a', 1), view('a'));
+    const base = fake.hands.get('a')!;
+    fake.failHandId = 'bad';
+    const out = await repo.importHands([
+      { ...base, id: 'good', timestamp: 10, record: record('good', 4) },
+      { ...base, id: 'bad', timestamp: 20, record: record('bad', 99) },
+      { ...base, id: 'never', timestamp: 30, record: record('never', 99) },
+    ]);
+    expect(out.ok).toBe(false);
+    expect(out.imported).toBe(1);
+    expect(fake.hands.has('good')).toBe(true);
+    expect(fake.hands.has('bad')).toBe(false);
+    // 统计只含真正写进去的：1（a）+ 4（good）
+    expect(out.stats.hands).toBe(2);
+    expect(out.stats.netBB).toBe(5);
+  });
+
+  it('recomputeStats 单独调用也能把统计修回来', async () => {
+    await repo.saveHand(record('a', 10), view('a'));
+    // 直接改库，绕过 repo —— 模拟"统计与手牌对不上"的状态
+    fake.stats = { ...fake.stats!, hands: 999, netBB: 999 };
+    const s = await repo.recomputeStats();
+    expect(s.hands).toBe(1);
+    expect(s.netBB).toBe(10);
+  });
+});
+
+describe('allHands', () => {
+  it('取出全部，失败时返回空数组不抛错', async () => {
+    await repo.saveHand(record('a', 1), view('a'));
+    expect((await repo.allHands()).map(h => h.id)).toEqual(['a']);
+    fake.failReads = true;
+    expect(await repo.allHands()).toEqual([]);
   });
 });
 

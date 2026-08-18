@@ -203,6 +203,83 @@ export async function getHand(id: string): Promise<StoredHand | undefined> {
   }
 }
 
+/**
+ * 从库里的全部手牌重算统计。
+ *
+ * 增量的 applyHand 只挡得住"同一手连着来两次"，挡不住乱序插入（见
+ * stats.ts 里 lastHandId 的注释）。而导入恰恰就是乱序插入——一次塞进来
+ * 几百手，时间戳与库里已有的交错。所以导入之后必须整表重算，不能接着增量。
+ *
+ * 排序按 timestamp：滚动窗口 recentNet 是有顺序的，不排的话"最近 200 手"
+ * 会变成"getAll 恰好返回的那 200 手"。
+ */
+export function recomputeStats(): Promise<Stats> {
+  return serialize(recomputeStatsInline);
+}
+
+export interface ImportOutcome {
+  ok: boolean;
+  /** 实际写进库的手数 */
+  imported: number;
+  stats: Stats;
+}
+
+/**
+ * 导入一批手牌。
+ *
+ * 按 id 覆盖写入（put），所以重复导入同一份文件是幂等的——用户手边只有一份
+ * 备份、点了两次导入，不该变成双倍手数。
+ *
+ * 写完统一重算统计，理由见 recomputeStats。
+ */
+export function importHands(hands: readonly StoredHand[]): Promise<ImportOutcome> {
+  return serialize(async () => {
+    let imported = 0;
+    try {
+      for (const h of hands) {
+        await db.putHand(h);
+        imported++;
+      }
+      status = 'ready';
+    } catch {
+      status = 'unavailable';
+      // 已经写进去的那些不回滚：它们本身是完整的，回滚需要一个这一层没有的
+      // 事务边界，而"导进去一半"比"导进去一半又被删掉"对用户更好。
+      // 下面照样重算统计，让库里的数字与实际写进去的手对上。
+    }
+    const stats = await recomputeStatsInline();
+    return { ok: imported === hands.length, imported, stats };
+  });
+}
+
+/** recomputeStats 的内部版本：已经在 serialize 里了，不能再套一层（会死锁） */
+async function recomputeStatsInline(): Promise<Stats> {
+  try {
+    const all = await db.allHands();
+    all.sort((a, b) => a.timestamp - b.timestamp || a.id.localeCompare(b.id));
+    let next = emptyStats();
+    for (const h of all) next = applyHand(next, h);
+    await db.putStats(next);
+    statsCache = next;
+    return next;
+  } catch {
+    status = 'unavailable';
+    return statsCache ?? emptyStats();
+  }
+}
+
+/** 导出用：取出库里全部手牌 */
+export async function allHands(): Promise<StoredHand[]> {
+  try {
+    const rows = await db.allHands();
+    status = 'ready';
+    return rows;
+  } catch {
+    status = 'unavailable';
+    return [];
+  }
+}
+
 /** 「重置数据」。清空两个 store 并把内存缓存一并归零 */
 export function resetAll(): Promise<boolean> {
   return serialize(async () => {

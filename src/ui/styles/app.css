@@ -1707,3 +1707,65 @@ body {
     padding: 9px 10px;
   }
 }
+
+/* ───────── ③-C 收尾：异议标记与导出/导入 ───────── */
+
+/* 复盘卡片底部现在有两颗按钮。「我不认同」比主按钮轻一档：它是可选的旁支
+   动作，不该和「下一手」抢注意力。 */
+.rv-foot {
+  display: flex;
+  gap: 10px;
+}
+.rv-dispute {
+  flex: 1;
+  background: transparent;
+  border-color: var(--line-2);
+  color: var(--text-dim);
+  box-shadow: none;
+}
+/* 已标记：用琥珀而不是红。红在这套配色里专指"你打错了"，而"我不认同判定"
+   说的是引擎可能错了——两件事不该同色。 */
+.rv-dispute-on {
+  background: rgba(183, 121, 31, 0.09);
+  border-color: rgba(183, 121, 31, 0.28);
+  color: var(--warn);
+}
+.rv-foot .btn-primary {
+  flex: 1.5;
+}
+
+.hist-transfer {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+/* <input type=file> 自带的按钮样式没法改，藏起来，用外面的 <label> 当按钮。
+   label 包着 input，点它等价于点 input，不需要任何 JS。 */
+.hist-import {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+.hist-import input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.hist-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--blue-soft);
+  border: 1px solid rgba(47, 111, 237, 0.22);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.hist-notice .pill {
+  margin-left: auto;
+  flex: none;
+}

@@ -4,7 +4,8 @@ import type { MistakeTag } from '../../review/taxonomy';
 import { PREFLOP_TAGS, POSTFLOP_TAGS } from '../../review/taxonomy';
 import type { StoredHand } from '../../storage/schema';
 import type { HandFilter } from '../../storage/filter';
-import { listHands, storageStatus } from '../../storage/repo';
+import { listHands, storageStatus, allHands, importHands } from '../../storage/repo';
+import { buildTransfer, parseTransfer, transferFileName } from '../../storage/transfer';
 import { handGrade, TAG_TEXT } from '../reviewModel';
 import { chips, dateText } from '../format';
 import { chipsGreater } from '../../core/chips';
@@ -67,13 +68,27 @@ function Row({ hand, onOpen }: { hand: StoredHand; onOpen: (h: StoredHand) => vo
  * 的大错比十个 0.3 BB 的小偏差更该先看到，按时间排会把它埋在最近打的一堆
  * 平淡手里。
  */
-export function HistoryPage({ onOpen }: { onOpen: (hand: StoredHand) => void }) {
+export function HistoryPage({
+  onOpen,
+  patched,
+}: {
+  onOpen: (hand: StoredHand) => void;
+  /**
+   * 刚在复盘卡片里被改过的那一手（目前只有 disputed 会变）。
+   *
+   * 用逐行替换而不是整列重取：重取会把用户「加载更多」翻出来的页全部丢掉，
+   * 而改的只是一个布尔标注。列表短，每次渲染 map 一遍的代价可以忽略。
+   */
+  patched: StoredHand | null;
+}) {
   const [sortBy, setSortBy] = useState<SortBy>('worstEvLoss');
   const [filter, setFilter] = useState<HandFilter>({});
   const [rows, setRows] = useState<StoredHand[]>([]);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [empty, setEmpty] = useState<Empty>('loading');
   const [loadingMore, setLoadingMore] = useState(false);
+  /** 导出/导入的一句话回执。成功也要说——静默完成让人不确定到底有没有发生 */
+  const [notice, setNotice] = useState<string | null>(null);
 
   // 排序或筛选一变就整列重取。用一个自增的 token 拦住过期请求：
   // 快速连点筛选时，先发的请求可能后到，把新条件的结果覆盖掉。
@@ -122,6 +137,45 @@ export function HistoryPage({ onOpen }: { onOpen: (hand: StoredHand) => void }) 
       return next;
     });
   }
+
+  async function onExport() {
+    const rows = await allHands();
+    if (rows.length === 0) {
+      setNotice('还没有可导出的手牌。');
+      return;
+    }
+    const now = Date.now();
+    const text = JSON.stringify(buildTransfer(rows, now));
+    // Blob + 临时 <a download>：不经服务器，文件也不进内存两次以上。
+    // URL 用完立刻 revoke，否则每导一次就泄漏一个对象 URL，直到页面关闭。
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = transferFileName(now);
+    a.click();
+    URL.revokeObjectURL(url);
+    setNotice(`已导出 ${rows.length} 手。`);
+  }
+
+  async function onImportFile(file: File) {
+    const parsed = parseTransfer(await file.text());
+    if (!parsed.ok) {
+      setNotice(`导入失败：${parsed.error}`);
+      return;
+    }
+    const out = await importHands(parsed.hands);
+    const parts = [`已导入 ${out.imported} 手`];
+    // 跳过的条数必须说出来。静默丢数据比直接拒绝更糟——用户会以为全导进来了
+    if (parsed.skipped > 0) parts.push(`跳过 ${parsed.skipped} 条无法识别的记录`);
+    if (!out.ok) parts.push('部分写入失败，存储可能已满');
+    setNotice(parts.join('，') + '。');
+    reload();
+  }
+
+  // 把被改过的那一手贴回列表。放在渲染里算而不是写进 rows，是为了让
+  // rows 始终等于"库里读出来的那一页"，只有这一处知道有覆盖这回事。
+  const shown =
+    patched === null ? rows : rows.map(r => (r.id === patched.id ? patched : r));
 
   return (
     <div className="hist">
@@ -202,12 +256,43 @@ export function HistoryPage({ onOpen }: { onOpen: (hand: StoredHand) => void }) 
             清除筛选
           </button>
         )}
+
+        {/* 导出/导入放在历史页，因为数据就在这里。规格 §10.6 把它们归在设置页，
+            那一页是 ③-D —— 到时候整体搬过去，接口不用改。 */}
+        <span className="hist-transfer">
+          <button type="button" className="pill" onClick={() => void onExport()}>
+            导出
+          </button>
+          <label className="pill hist-import">
+            导入
+            <input
+              type="file"
+              accept="application/json,.json"
+              onChange={e => {
+                const f = e.target.files?.[0];
+                // 立刻清空 value：不清的话，用户导入同一个文件第二次不会触发
+                // change 事件（值没变），看起来像点了没反应
+                e.target.value = '';
+                if (f) void onImportFile(f);
+              }}
+            />
+          </label>
+        </span>
       </div>
 
-      {rows.length > 0 ? (
+      {notice !== null && (
+        <p className="hist-notice" role="status">
+          {notice}
+          <button type="button" className="pill" onClick={() => setNotice(null)}>
+            知道了
+          </button>
+        </p>
+      )}
+
+      {shown.length > 0 ? (
         <>
           <div className="hist-list">
-            {rows.map(h => (
+            {shown.map(h => (
               <Row key={h.id} hand={h} onOpen={onOpen} />
             ))}
           </div>
