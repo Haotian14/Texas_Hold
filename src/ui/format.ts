@@ -93,7 +93,14 @@ export const ACTION_TEXT: Record<ActionType, string> = {
   allin: '全下',
 };
 
-/** 小数概率 → 百分比字符串，取整。0.333 → "33%" */
+/**
+ * 小数概率 → 百分比字符串，取整。0.333 → "33%"
+ *
+ * 与 src/review/explain.ts::formatPct 是同一个实现，刻意各留一份：
+ * explain.ts 属于 src/review/（引擎层，生成解释文案），本文件属于
+ * src/ui/（展示层）。为一个单行函数在两层之间拉一条依赖，换来的是
+ * 引擎层的文案格式从此被 UI 绑住——不划算。两处若要改，一起改。
+ */
 export function pctText(v: number): string {
   return `${Math.round(v * 100)}%`;
 }

@@ -509,6 +509,12 @@ body {
    零点基线的定位层。两处必须严格一致，所以只能有一份定义。 */
 .ev-bars {
   --ev-col-label: 68px;
+  /* 132px 是量出来的，不是拍的：最宽的一格是「数字 + 你选的 + 推荐」两个
+     徽章同时出现（用户正好选中推荐动作时的常态）。实测 -12.34 BB 双徽章
+     内容宽 123.5px，把数字撑到 -123.45 BB（远超 100BB 筹码量能产生的 EV）
+     也只有 129.9px，仍在 132 之内。改小之前先量一遍：.ev-value 是
+     white-space: nowrap + text-align: right，溢出会往左压到 .ev-track 上，
+     而且 scrollWidth 不会报——得用 Range.getClientRects 量内容实宽。 */
   --ev-col-value: 132px;
   --ev-gap: 8px;
   position: relative;
@@ -762,6 +768,11 @@ body {
   border-radius: 4px 4px 0 0;
 }
 
+/* 基色就是 --sev-ok，没有 .rv-dot-ok / .rv-dot-clean 规则是有意的：
+   两个调用方给的枚举名不同（ReviewTrigger 给 Grade 的 'clean'，
+   ReviewTimeline 给 Severity 的 'ok'），却是同一个「这里没问题」，
+   与其写两条一模一样的规则，不如让它们一起落到基色上。
+   下面四条则必须逐个列出——漏一条就是把某一档失误静默显示成「没问题」。 */
 .rv-dot {
   width: 8px;
   height: 8px;

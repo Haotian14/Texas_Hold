@@ -1,6 +1,6 @@
 import type { DecisionAnalysis } from '../../review/types';
 import { chipsGreater } from '../../core/chips';
-import { barsOf } from '../reviewModel';
+import { barsOf, TAG_TEXT } from '../reviewModel';
 import { pctText } from '../format';
 import { EvBars } from './EvBars';
 
@@ -45,10 +45,13 @@ export function ReviewDecision({ d }: { d: DecisionAnalysis }) {
             <div className="rv-rec">
               推荐：{d.recommended.label}
               {/* evLoss 是 BB 金额，用 chipsGreater 而不是裸 >（见 Global Constraints） */}
-              {chipsGreater(d.evLoss, 0) ? `　损失 ${d.evLoss.toFixed(2)} BB` : ''}
+              {/* 小数位数必须与 explain.ts::formatBB 一致（1 位）：同一个 evLoss
+                  在这行和下面那段解释文案里各印一次，之前这里印 2 位，于是
+                  「损失 1.25 BB」与「…亏了 1.3 BB」并排出现，读起来像两个数。 */}
+              {chipsGreater(d.evLoss, 0) ? `　损失 ${d.evLoss.toFixed(1)} BB` : ''}
             </div>
           ) : null}
-          {d.tag !== null ? <div className="rv-tag">{d.tag}</div> : null}
+          {d.tag !== null ? <div className="rv-tag">{TAG_TEXT[d.tag]}</div> : null}
           <p className="rv-text">{d.explanation}</p>
         </>
       )}

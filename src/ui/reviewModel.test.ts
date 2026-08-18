@@ -2,13 +2,17 @@ import { describe, it, expect } from 'vitest';
 import type { HandAnalysis, DecisionAnalysis } from '../review/types';
 import type { HandRecord } from '../core/types';
 import type { EvCandidate } from '../core/evEstimate';
-import { handGrade, timelineOf, barsOf, foldedSeatsOf } from './reviewModel';
+import { handGrade, timelineOf, barsOf, foldedSeatsOf, TAG_TEXT } from './reviewModel';
+import { PREFLOP_TAGS, POSTFLOP_TAGS } from '../review/taxonomy';
 
 /**
  * 造一个 DecisionAnalysis。这里刻意不跑真实的 analyzeHand ——
  * 本模块是纯数据变形，用合成输入才能精确控制每一档边界；
  * 真实分析路径由 src/review/analyzeHand.test.ts 覆盖。
  */
+// 返回类型标注 + 不加 as：字面量必须真的满足 DecisionAnalysis。
+// 原先结尾的 `as DecisionAnalysis` 会把整个对象字面量的检查一并关掉——
+// 而 ③-C 要改的正是这个接口，届时最需要这里编译失败提醒。
 function decision(over: Partial<DecisionAnalysis> = {}): DecisionAnalysis {
   return {
     actionIndex: 0,
@@ -48,7 +52,7 @@ function decision(over: Partial<DecisionAnalysis> = {}): DecisionAnalysis {
     requiredEquity: 0.4,
     actualLabel: null,
     ...over,
-  } as DecisionAnalysis;
+  };
 }
 
 function analysis(decisions: DecisionAnalysis[]): HandAnalysis {
@@ -202,5 +206,26 @@ describe('foldedSeatsOf', () => {
       ],
     } as unknown as HandRecord;
     expect(foldedSeatsOf(rec).sort((x, y) => x - y)).toEqual([1, 4]);
+  });
+});
+
+describe('TAG_TEXT', () => {
+  const ALL_TAGS = [...PREFLOP_TAGS, ...POSTFLOP_TAGS];
+
+  it('每个 MistakeTag 都有中文标签，没有一个漏成枚举名', () => {
+    for (const tag of ALL_TAGS) {
+      const text = TAG_TEXT[tag];
+      expect(text, tag).toBeTruthy();
+      // 关键断言：不能等于 tag 本身，也不能含下划线——那正是修掉的那个 bug
+      // （卡片里直接印 preflop_cold_call_too_wide）复发的样子。
+      expect(text, tag).not.toBe(tag);
+      expect(text, tag).not.toMatch(/_/);
+    }
+    expect(ALL_TAGS.length).toBeGreaterThan(0);
+  });
+
+  it('标签互不重复 —— 两个 tag 显示成同一句话，用户分不出自己犯的是哪个错', () => {
+    const texts = ALL_TAGS.map(t => TAG_TEXT[t]);
+    expect(new Set(texts).size).toBe(texts.length);
   });
 });

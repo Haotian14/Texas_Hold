@@ -1,7 +1,7 @@
 import type { HandRecord } from '../../core/types';
 import type { HandAnalysis } from '../../review/types';
 import { handGrade, timelineOf } from '../reviewModel';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ReviewTimeline } from './ReviewTimeline';
 import { OpponentCards } from './OpponentCards';
 import { chipsGreater } from '../../core/chips';
@@ -46,6 +46,17 @@ export function ReviewSheet({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // 开卡片时把焦点搬进来。aria-modal="true" 是在向读屏器声明「外面的东西
+  // 现在不算数」，可焦点若还留在底下的触发按钮上，读屏用户的虚拟光标就停在
+  // 一片被声明为不存在的内容里——等于告诉他有个对话框，却不告诉他在哪。
+  // 落在关闭按钮上而不是容器上：它是这张全屏遮罩唯一的出口，第一个 Tab 位
+  // 就该是它。（不做焦点回填：触发按钮所在的结算区往往随下一手一起卸载，
+  // 还给一个已经不存在的元素没有意义。）
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
+
   return (
     <div className="rv-sheet" role="dialog" aria-modal="true" aria-label="本手复盘">
       <header className="rv-head">
@@ -58,7 +69,7 @@ export function ReviewSheet({
             <span className={`rv-grade rv-grade-${grade.grade}`}>{grade.text}</span>
           ) : null}
         </div>
-        <button className="rv-close" onClick={onClose} aria-label="关闭复盘">
+        <button ref={closeRef} className="rv-close" onClick={onClose} aria-label="关闭复盘">
           ✕
         </button>
       </header>

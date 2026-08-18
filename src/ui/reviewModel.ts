@@ -1,6 +1,7 @@
 import type { HandAnalysis, DecisionAnalysis } from '../review/types';
-import type { Severity } from '../review/taxonomy';
+import type { Severity, MistakeTag } from '../review/taxonomy';
 import { severityOf } from '../review/taxonomy';
+import { chipsGreater } from '../core/chips';
 import type { Street, HandRecord } from '../core/types';
 
 export type Grade = 'unknown' | 'clean' | 'minor' | 'notable' | 'severe';
@@ -142,7 +143,11 @@ export function barsOf(d: DecisionAnalysis): BarChart {
   return {
     zeroPct,
     bars: d.candidates.map(c => {
-      const negative = c.ev < 0;
+      // c.ev 是 BB 金额，走 chips.ts 而不是裸 <（见 Global Constraints）。
+      // 效果上还多一层保护：EV 为 -1e-13 这类浮点尾数的候选会被归到正侧，
+      // 于是 leftPct 取 zeroPct、宽度约等于 0，不会在基线左边留一根看不见
+      // 却把 outline 画歪的条。
+      const negative = chipsGreater(0, c.ev);
       return {
         label: c.label,
         ev: c.ev,
@@ -164,3 +169,33 @@ export function barsOf(d: DecisionAnalysis): BarChart {
 export function foldedSeatsOf(record: HandRecord): number[] {
   return [...new Set(record.actions.filter(a => a.type === 'fold').map(a => a.seat))];
 }
+
+/**
+ * MistakeTag 的中文标签（文案抄自设计文档 §8.7 的分类表）。
+ *
+ * tag 是给引擎自己看的枚举名（`preflop_cold_call_too_wide`），不是给用户
+ * 看的话。此前 ReviewDecision 直接把它渲染进一张全中文的卡片里，中间夹一串
+ * 下划线英文——和本分支早先把 Seat.tsx 的 ACTION_TEXT 提到 format.ts 所修
+ * 的是同一个毛病，只是漏在了这一处。
+ *
+ * 用 Record<MistakeTag, string> 而不是普通对象：taxonomy.ts 的
+ * PREFLOP_TAGS / POSTFLOP_TAGS 加成员时这里会编译失败，而不是在界面上
+ * 静默显示 undefined。同 MISTAKE_TEXT / STREET_LABEL。
+ */
+export const TAG_TEXT: Record<MistakeTag, string> = {
+  preflop_cold_call_too_wide: '冷跟太宽',
+  preflop_missed_3bet: '该 3bet 没 3bet',
+  preflop_over_aggressive: '翻前过度激进',
+  preflop_sb_limp: '小盲跛入',
+  preflop_open_too_wide: '开池范围太宽',
+  preflop_fold_too_tight: '弃得太紧',
+  missed_cbet: '该 c-bet 没 c-bet',
+  missed_value_bet: '错过价值下注',
+  chasing_bad_odds: '赔率不足追听牌',
+  call_too_light_vs_raise: '面对加注跟太松',
+  should_have_folded: '该弃牌没弃',
+  bet_size_too_small: '下注尺度过小',
+  bet_size_too_large: '下注尺度过大',
+  ineffective_bluff: '无效诈唬',
+  over_bluffing: '诈唬过多',
+};
