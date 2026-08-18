@@ -1,4 +1,5 @@
 import type { Card } from '../core/cards';
+import type { ActionType } from '../core/types';
 
 /**
  * 一个大盲等于多少筹码。
@@ -81,3 +82,13 @@ export function cardText(c: Card): string {
 export function suitClass(c: Card): string {
   return `suit-${c.suit}`;
 }
+
+/** 动作类型 → 中文。牌桌座位与复盘时间线共用，改文案只改这一处 */
+export const ACTION_TEXT: Record<ActionType, string> = {
+  fold: '弃牌',
+  check: '过牌',
+  call: '跟注',
+  bet: '下注',
+  raise: '加注',
+  allin: '全下',
+};
