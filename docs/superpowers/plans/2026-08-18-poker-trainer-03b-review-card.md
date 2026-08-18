@@ -11,7 +11,7 @@
 **规格：** `docs/superpowers/specs/2026-08-18-poker-trainer-03b-review-card-design.md`
 **基线：** `review-card` 分支 @ `404b33e`（自 master `51e515f`），**45 文件 / 631 通过 / 3 跳过**，typecheck + build 绿
 
-**预期测试数逐任务：** 631 → T1 633 → T2 637 → T3 644 → T4–T7 不变。终态 **46 文件 / 644 通过 / 3 跳过**。
+**预期测试数逐任务：** 631 → T1 633 → T2 637 → T3 644 → T4 不变 → T5 645（复审后补的 `pctText` 一条）→ T6–T7 不变。终态 **46 文件 / 645 通过 / 3 跳过**。
 任何一步跑出的数字与这里对不上，**停下来报告实际数字**，不要通过删测试或放宽断言把数字凑回来。
 
 ---
@@ -1160,13 +1160,14 @@ EOF
 - Create: `src/ui/components/ReviewDecision.tsx`
 - Create: `src/ui/components/ReviewTimeline.tsx`
 - Create: `src/ui/components/ReviewSheet.tsx`
-- Modify: `src/ui/format.ts`（Step 0：接收从 `Seat.tsx` 搬来的 `ACTION_TEXT`）
+- Modify: `src/ui/format.ts`（Step 0：接收从 `Seat.tsx` 搬来的 `ACTION_TEXT`，以及新的 `pctText`）
+- Modify: `src/ui/format.test.ts`（Step 0：`pctText` 的一条测试）
 - Modify: `src/ui/components/Seat.tsx`（Step 0：改为从 `format.ts` import）
 - Modify: `src/ui/styles/app.css`（末尾追加）
 
 **Interfaces:**
 - Consumes: Task 2 的 `handGrade` / `GradeInfo`；Task 3 的 `timelineOf` / `StreetGroup` / `barsOf`；Task 4 的 `EvBars` / `OpponentCards`。
-- Produces: `export function ReviewSheet({ analysis, record, onNext, onClose }: {...})`。Task 6 的 `App.tsx` 使用。
+- Produces: `export function ReviewSheet({ analysis, record, netBB, onNext, onClose }: {...})`。Task 6 的 `App.tsx` 使用。**`netBB` 的单位是 BB**——卡片内部会自己调 `chips()` 换算，传实额进来会被二次换算，且没有任何测试会发现。
 
 ## degraded 分支是本任务的核心
 
@@ -1213,10 +1214,38 @@ export const ACTION_TEXT: Record<ActionType, string> = {
 
 3. `Seat.tsx` 改为从 `format.ts` 取：它已经有 `import { chips } from '../format';` 这一行，把 `ACTION_TEXT` 加进去即可。同时检查 `Seat.tsx` 顶部的 `import type { ActionType, SeatState } from '../../core/types';`——若搬走后 `ActionType` 在 `Seat.tsx` 里已无人使用，把它从这行删掉（留着会触发 noUnusedLocals）；若仍在用，保持不动。
 
-4. 立刻验证这一步单独是绿的，再往下写新组件：
+4. 顺手把百分比格式化也放进 `format.ts`。`ReviewDecision` 要显示「所需胜率 33%」，而 `src/review/explain.ts:40-42` 已有一份一模一样的 `formatPct`（模块私有）。**不要在 `.tsx` 里再定义第三份** —— 这一步的整个论点就是显示用的映射不能有两份拷贝，转头在组件里私定一个格式化函数是自相矛盾，而且组件没有测试覆盖。
+
+`src/ui/format.ts` 追加（命名跟着既有的 `rankText`/`suitText`/`cardText` 走）：
+
+```ts
+/** 小数概率 → 百分比字符串，取整。0.333 → "33%" */
+export function pctText(v: number): string {
+  return `${Math.round(v * 100)}%`;
+}
+```
+
+`src/review/explain.ts` 里那份**不要动** —— 它在 review 层，`src/ui` 反过来被 review 依赖是不对的方向，两层各留一份三行函数好过制造一条 review→ui 的依赖。
+
+5. 给它补一条测试。`src/ui/format.test.ts` 里追加：
+
+```ts
+  it('pctText 取整到百分号，边界向上取', () => {
+    expect(pctText(0.333)).toBe('33%');
+    expect(pctText(0.335)).toBe('34%');
+    expect(pctText(0)).toBe('0%');
+    expect(pctText(1)).toBe('100%');
+  });
+```
+
+把 `pctText` 加进该文件顶部既有的 `import { … } from './format';` 里，不要新起一行。
+
+6. 立刻验证这一步单独是绿的，再往下写新组件：
 
 Run: `npm.cmd test`
-Expected: **46 文件 / 644 通过 / 3 跳过**，exit 0。搬家不改行为，数字必须一个不动。
+Expected: **46 文件 / 645 通过 / 3 跳过**，exit 0。
+
+搬 `ACTION_TEXT` 不改行为，数字本该一个不动；`645` 里多出来的那一条正是上面新加的 `pctText` 测试。**若实跑不是 645，停下来报实际数字**，不要改测试去凑。
 
 - [ ] **Step 1: 写 `ReviewDecision.tsx`**
 
@@ -1224,11 +1253,8 @@ Expected: **46 文件 / 644 通过 / 3 跳过**，exit 0。搬家不改行为，
 import type { DecisionAnalysis } from '../../review/types';
 import { chipsGreater } from '../../core/chips';
 import { barsOf } from '../reviewModel';
+import { pctText } from '../format';
 import { EvBars } from './EvBars';
-
-function pct(v: number): string {
-  return `${Math.round(v * 100)}%`;
-}
 
 /** 一行「名称 值」 */
 function Stat({ name, value }: { name: string; value: string }) {
@@ -1255,10 +1281,10 @@ export function ReviewDecision({ d }: { d: DecisionAnalysis }) {
         <Stat name="底池" value={`${s.pot.toFixed(1)} BB`} />
         <Stat name="待跟注" value={`${s.toCall.toFixed(1)} BB`} />
         {d.requiredEquity !== null ? (
-          <Stat name="所需胜率" value={pct(d.requiredEquity)} />
+          <Stat name="所需胜率" value={pctText(d.requiredEquity)} />
         ) : null}
         {!d.degraded && d.heroEquity !== null ? (
-          <Stat name="你的胜率" value={pct(d.heroEquity)} />
+          <Stat name="你的胜率" value={pctText(d.heroEquity)} />
         ) : null}
       </div>
 
@@ -1335,7 +1361,7 @@ export function ReviewTimeline({ groups }: { groups: StreetGroup[] }) {
           {g.rows.map(({ decision: d, index }) => (
             <div className="rv-item" key={index}>
               <button
-                className="rv-row"
+                className={open === index ? 'rv-row rv-row-open' : 'rv-row'}
                 aria-expanded={open === index}
                 onClick={() => setOpen(open === index ? null : index)}
               >
@@ -1362,6 +1388,7 @@ export function ReviewTimeline({ groups }: { groups: StreetGroup[] }) {
 import type { HandRecord } from '../../core/types';
 import type { HandAnalysis } from '../../review/types';
 import { handGrade, timelineOf } from '../reviewModel';
+import { useEffect } from 'react';
 import { ReviewTimeline } from './ReviewTimeline';
 import { OpponentCards } from './OpponentCards';
 import { chipsGreater } from '../../core/chips';
@@ -1392,8 +1419,18 @@ export function ReviewSheet({
   // 与 SummaryBar.tsx 同款判据：金额比较走 chips.ts，不用裸 <
   const isNeg = chipsGreater(0, netBB);
 
+  // Esc 关卡片。这是全屏遮罩（z-index 20，本文件最高），底下的动作条与
+  // 顶栏仍在 tab 序里，键盘用户至少要有一条出得来的路。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="rv-sheet" role="dialog" aria-label="本手复盘">
+    <div className="rv-sheet" role="dialog" aria-modal="true" aria-label="本手复盘">
       <header className="rv-head">
         <div className="rv-head-left">
           <span className={isNeg ? 'neg' : 'pos'}>
@@ -1442,14 +1479,19 @@ export function ReviewSheet({
   display: flex;
   flex-direction: column;
   background: var(--bg);
-  border-top: 1px solid var(--line);
 }
 
+/* 头部要自己补 --safe-top。
+   绝对定位元素的包含块是 .app 的 **padding box**，所以 top: 0 落在
+   .app 的 padding-top: var(--safe-top) 之外——整张卡会盖进安全区，
+   被遮的恰好是这一行：净盈亏、评级徽章，以及关闭按钮，全屏遮罩唯一
+   的出口。底部的 .rv-foot 补了 --safe-bottom，顶上不补是漏了不是取舍。
+   桌面端 --safe-top 求值为 0px，浏览器验收看不出来。 */
 .rv-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: calc(10px + var(--safe-top)) 12px 10px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -1534,6 +1576,12 @@ export function ReviewSheet({
 
 .rv-item + .rv-item {
   margin-top: 4px;
+}
+
+/* 展开时下缘拉直，与紧贴其下的 .rv-detail 接上——.rv-detail 已经
+   border-top: none 且只圆下两角，行若还圆着下两角就会露出一道缝 */
+.rv-row-open {
+  border-radius: 4px 4px 0 0;
 }
 
 .rv-dot {
@@ -1629,7 +1677,7 @@ Expected: 无输出，exit 0。
 - [ ] **Step 7: 全量测试**
 
 Run: `npm.cmd test`
-Expected: **46 文件 / 644 通过 / 3 跳过**，exit 0，与 Task 4 一致。
+Expected: **46 文件 / 645 通过 / 3 跳过**，exit 0，与 Task 4 一致。
 
 - [ ] **Step 8: 提交**
 
@@ -2021,7 +2069,7 @@ Expected: 无输出，exit 0。
 - [ ] **Step 8: 全量测试**
 
 Run: `npm.cmd test`
-Expected: **46 文件 / 644 通过 / 3 跳过**，exit 0。
+Expected: **46 文件 / 645 通过 / 3 跳过**，exit 0。
 
 特别留意 `src/session/architecture.test.ts` 的「src/ui/ 不从引擎与 AI 取值」那条 —— `App.tsx` 新增的 `import { analyzeHand } from '../review/analyzeHand'` 是值导入，但 `review/analyzeHand` **不在** banned 列表（`core/gameEngine`、`ai/decide`、`ai/selfPlayAi`）里，应当照常通过。**若这条红了，停下来报告，不要修改守卫。**
 
@@ -2073,7 +2121,7 @@ EOF
 Run: `npm.cmd test`
 记下实际输出的文件数 / 通过数 / 跳过数与耗时。
 
-**只写你自己跑出来的数字。** 若与本计划预测的 46 / 644 / 3 不符，以实跑为准并在任务报告里说明差异 —— 不要照抄计划里的预测数。
+**只写你自己跑出来的数字。** 若与本计划预测的 46 / 645 / 3 不符，以实跑为准并在任务报告里说明差异 —— 不要照抄计划里的预测数。
 
 - [ ] **Step 2: 改状态表**
 
