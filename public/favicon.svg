@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- 设计稿左上角那个标记：深色圆角方块 + 白桃心。
+       用 SVG 而不是 png：一个字形加一个圆角矩形，矢量下任何尺寸都清晰，
+       文件不到 400 字节，也不必为 16/32/180 各导一张位图。 -->
+  <rect width="32" height="32" rx="9" fill="#111419"/>
+  <text x="16" y="16" fill="#ffffff" font-size="19"
+        font-family="-apple-system, system-ui, 'Segoe UI Symbol', sans-serif"
+        text-anchor="middle" dominant-baseline="central">♠</text>
+</svg>

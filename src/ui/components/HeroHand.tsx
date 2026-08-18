@@ -35,12 +35,21 @@ export function HeroHand({
           <CardView key={`${c.rank}${c.suit}-${i}`} card={c} size="lg" />
         ))}
       </div>
+      {/* 版式与对手座位完全一致（头像方块 + 两行），只是头像底色与「你」的
+          标记不同。设计稿把 hero 的卡做成同一个组件的一个变体，而不是另造一个
+          ——牌桌上六个人用两套版式，眼睛每次都要重新找筹码在哪一行。 */}
       <div className={isToAct ? 'hero-info hero-to-act' : 'hero-info'}>
-        <span className="hero-pos">
+        <span className="seat-badge hero-badge">
           {seat.position}
           {isButton && <span className="button-chip">D</span>}
         </span>
-        <span className="hero-stack">{chips(seat.stack)}</span>
+        <span className="seat-meta">
+          <span className="seat-name-row">
+            <span className="seat-name">你</span>
+            <span className="hero-you">YOU</span>
+          </span>
+          <span className="hero-stack">{chips(seat.stack)}</span>
+        </span>
         <span className="hero-bet" data-empty={betEmpty ? 'true' : 'false'}>
           <Chips bb={shownBet} />
           投入 {chips(shownBet)}

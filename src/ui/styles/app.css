@@ -41,10 +41,12 @@
      浅色界面的层次全靠这一组。命名按用途而不是按数值，改的时候才知道
      动一条会影响谁。 */
   --sh-1: 0 1px 2px rgba(17, 20, 26, 0.05);
-  --sh-card: 0 1px 2px rgba(17, 20, 26, 0.05), 0 11px 22px -10px rgba(17, 20, 26, 0.22),
-    inset 0 0 0 1px rgba(17, 20, 26, 0.045);
-  --sh-card-hero: 0 1px 2px rgba(17, 20, 26, 0.06), 0 15px 28px -12px rgba(17, 20, 26, 0.26),
-    inset 0 0 0 1px rgba(17, 20, 26, 0.045);
+  /* 牌面：外投影 + 内描边 + **顶部一道白色内高光**。最后那一道是设计稿里
+     牌"有厚度"的来源，去掉之后牌是一块平的白方块。 */
+  --sh-card: 0 1px 2px rgba(17, 20, 26, 0.05), 0 16px 30px -12px rgba(17, 20, 26, 0.24),
+    inset 0 0 0 1px rgba(17, 20, 26, 0.045), inset 0 1px 0 #ffffff;
+  --sh-card-hero: 0 1px 2px rgba(17, 20, 26, 0.06), 0 20px 36px -14px rgba(17, 20, 26, 0.28),
+    inset 0 0 0 1px rgba(17, 20, 26, 0.045), inset 0 1px 0 #ffffff;
   --sh-seat: 0 1px 2px rgba(17, 20, 26, 0.05), 0 9px 20px -12px rgba(17, 20, 26, 0.2);
   /* 设计稿这一条是 0.075 的蓝环，但它那边同时还有一行「Your turn · 18s」的
      蓝字兜底；本应用没有那行字，环是"该你了"唯一的视觉信号，7.5% 在白底上
@@ -80,56 +82,11 @@
      自动用上，没装的落回系统字体，字重与字距的设定对两者都成立。 */
   --font: 'Inter', -apple-system, system-ui, 'Segoe UI', sans-serif;
 
-  /* 牌面尺寸走令牌，因为它有两套：手机按设计稿的 46×64，桌面壳(1040px)上
-     同样的牌只占屏宽 4.4%，在设计稿 Web 版里它是约 60×84。不令牌化就得把
-     .card-lg 那一组规则在媒体查询里整段复制一遍。sm 不参与缩放——它是座位
-     上的小牌，放大反而会把座位卡撑开。 */
-  --card-lg-w: 46px;
-  --card-lg-h: 64px;
-  --card-lg-rank: 20px;
-  --card-lg-suit: 17px;
-  --card-lg-wide: 17px;
-  --card-sm-w: 26px;
-  --card-sm-h: 36px;
-  --card-sm-rank: 12px;
-  --card-sm-suit: 10px;
-  --card-md-w: 34px;
-  --card-md-h: 47px;
-  --card-md-rank: 15px;
-  --card-md-suit: 13px;
-  --card-md-wide: 12.5px;
-  --pot-size: 17px;
+  /* 牌面尺寸不再走像素令牌 + 断点表：全部改成按牌桌宽度的比例，
+     见下面 .app-main > * 上的 --u。 */
 
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
-}
-
-/* 窄屏（手机）：五个座位要在 ~370px 里横向排开。按桌面尺寸摆，27%/50%/73%
-   三个位置的座位卡会互相压住，弃牌者的动作气泡还会盖到邻座头上。这里把座位
-   整体缩一档并把两端拉得更开——不是等比缩放，只缩座位，牌桌与自己的牌不动。 */
-@media (max-width: 520px) {
-  :root {
-    --card-sm-w: 20px;
-    --card-sm-h: 28px;
-    --card-sm-rank: 10px;
-    --card-sm-suit: 8px;
-  }
-}
-
-@media (min-width: 1080px) {
-  :root {
-    --card-lg-w: 60px;
-    --card-lg-h: 84px;
-    --card-lg-rank: 26px;
-    --card-lg-suit: 22px;
-    --card-lg-wide: 22px;
-    --card-md-w: 42px;
-    --card-md-h: 58px;
-    --card-md-rank: 19px;
-    --card-md-suit: 16px;
-    --card-md-wide: 15.5px;
-    --pot-size: 21px;
-  }
 }
 
 * {
@@ -262,24 +219,22 @@ body {
   position: absolute;
   transform: translate(-50%, -50%);
 }
-/* 整排比改版前下移约 8%：座位是「两张牌背 + 信息卡」竖向堆起来的，锚点在
-   整堆的中心，牌在上——按旧值放，上排三个座位的牌会整个探出台面顶边，看着
-   像掉在桌子外面。座位卡本身骑在台边上是对的（设计稿也是这样），探出去的
-   只能是卡，不能是牌。 */
-.slot-0 { left: 11%; top: 62%; }
-.slot-1 { left: 26%; top: 21%; }
-.slot-2 { left: 50%; top: 11%; }
-.slot-3 { left: 74%; top: 21%; }
-.slot-4 { left: 89%; top: 62%; }
+/* 槽位坐标逐个抄自设计稿的 SEATS_DEF.webPos。
+   它不是一段均匀的圆弧——两侧各**竖排两个**（左右都在 11% / 89%），顶部只有
+   一个。改版前我摆的是扇形（26% / 50% / 74% 三个横排在上方），五个人挤在台面
+   上沿、两侧空着，与设计稿差得最明显的就是这里。 */
+.slot-0 { left: 11%; top: 60%; }
+.slot-1 { left: 11%; top: 25%; }
+.slot-2 { left: 50%; top: 7%; }
+.slot-3 { left: 89%; top: 25%; }
+.slot-4 { left: 89%; top: 60%; }
 
-/* 座位是**横向**胶囊：左边一个圆角方块放位置，右边两行放性格名与筹码，
-   动作徽章挂在胶囊下方。这是设计稿的形状；改版前那个"两张牌背竖着堆在小
-   方框上面"的版式是暗色版留下的，与设计稿差得最远的就是它。 */
+/* 座位卡。所有尺寸 = 设计稿 px / 9 * 1u（见上面「比例尺」那段）。 */
 .seat {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: calc(0.56 * var(--u));
   transition: opacity 0.2s;
 }
 .seat-folded { opacity: 0.4; }
@@ -290,94 +245,136 @@ body {
   box-shadow: var(--sh-seat-act);
 }
 
-.seat-cards { display: flex; gap: 3px; }
+.seat-cards {
+  display: flex;
+  gap: calc(0.33 * var(--u));
+}
 .seat-info {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-  /* 半透明白 + 背景模糊：座位卡压在台面上，底下的渐变要透一点出来，
-     这是设计稿里"玩家信息卡浮在桌面上"那层质感的来源 */
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(12px);
+  gap: calc(1.33 * var(--u));
+  /* 半透明白 + 背景模糊并轻微提饱和：座位卡压在台面上，底下的渐变要透一点
+     出来。saturate(1.08) 是设计稿加的，去掉之后卡片会发灰。 */
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px) saturate(1.08);
   border: 1px solid rgba(17, 20, 26, 0.06);
-  border-radius: 14px;
-  padding: 5px 11px 5px 5px;
+  border-radius: calc(1.78 * var(--u));
+  padding: calc(0.78 * var(--u)) calc(1.89 * var(--u)) calc(0.78 * var(--u))
+    calc(0.78 * var(--u));
   box-shadow: var(--sh-seat);
 }
+
 /* 头像方块。设计稿放名字缩写（纯装饰），这里放位置——在扑克里"坐在哪"
-   比"叫什么"重要，同一个性格在 UTG 和在 BTN 是两种威胁。 */
+   比"叫什么"重要，同一个性格在 UTG 和在 BTN 是两种威胁。
+
+   三层阴影缺一不可：顶部内高光做出弧面，内描边收住边缘，外投影让它离开
+   卡片表面。只留底色的话是一块死板的色卡，这正是改版前的样子。 */
 .seat-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  min-width: 30px;
-  height: 26px;
-  padding: 0 5px;
-  border-radius: 8px;
-  background: linear-gradient(140deg, #8f98a8, #5f6875);
+  gap: calc(0.22 * var(--u));
+  min-width: calc(4.44 * var(--u));
+  height: calc(4.44 * var(--u));
+  padding: 0 calc(0.55 * var(--u));
+  border-radius: calc(1.44 * var(--u));
   color: #fff;
-  font-size: 9.5px;
+  font-size: calc(1.33 * var(--u));
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.03em;
   flex: none;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
     inset 0 0 0 1px rgba(17, 20, 26, 0.06),
     0 1px 2px rgba(17, 20, 26, 0.12);
+  /* 兜底色：data-av 缺失时也不会是个透明方块 */
+  background: linear-gradient(140deg, #9aa6b8, #71809a);
 }
+
+/* 五个座位各一种渐变，逐条抄自设计稿的 SEATS_DEF.gradient。
+   按**槽位**分配而不是按座位号：颜色跟着屏幕上的位置走，按钮位每手轮转时
+   头像不会跟着换色——那会让人误以为换了人。 */
+.seat-badge[data-av='0'] { background: linear-gradient(140deg, #9aa6b8, #71809a); }
+.seat-badge[data-av='1'] { background: linear-gradient(140deg, #8fb3ab, #63897f); }
+.seat-badge[data-av='2'] { background: linear-gradient(140deg, #c2b08c, #9c8763); }
+.seat-badge[data-av='3'] { background: linear-gradient(140deg, #bfa0a6, #96757c); }
+.seat-badge[data-av='4'] { background: linear-gradient(140deg, #a7a4c6, #7d7aa4); }
+/* hero 用中性灰，与五个对手都不同 —— 自己不该被误认成某个 AI */
+.hero-badge { background: linear-gradient(140deg, #909aaa, #5a6371); }
+
 .seat-to-act .seat-badge {
   background: linear-gradient(140deg, #4d84f2, #2963e0);
 }
+
 .seat-meta {
   display: flex;
   flex-direction: column;
-  line-height: 1.3;
+  gap: calc(0.11 * var(--u));
+  line-height: 1.25;
+}
+.seat-name-row {
+  display: flex;
+  align-items: center;
+  gap: calc(0.67 * var(--u));
 }
 .seat-name {
-  font-size: 10.5px;
+  font-size: calc(1.5 * var(--u));
   font-weight: 600;
   color: var(--text);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   white-space: nowrap;
 }
+/* 状态点。不是唯一编码：正在行动同时有整张卡的蓝环，已弃牌同时有整块淡出
+   与「弃牌」徽章。 */
+.seat-status {
+  width: calc(0.67 * var(--u));
+  height: calc(0.67 * var(--u));
+  flex: none;
+  border-radius: 50%;
+}
+.seat-status.is-live { background: #39ab6c; }
+.seat-status.is-toact { background: var(--blue); }
+.seat-status.is-folded { background: #d6dae1; }
 .seat-stack {
-  font-size: 10px;
-  color: var(--text-dim);
-  font-weight: 500;
+  font-size: calc(1.39 * var(--u));
+  color: var(--text-2);
+  font-weight: 600;
+  letter-spacing: -0.012em;
   font-variant-numeric: tabular-nums;
 }
+
 /* 动作徽章＝设计稿的 badge：白底描边小标签，挂在胶囊下方 */
 .bubble {
   background: var(--app);
   color: var(--text-2);
   border: 1px solid var(--line-2);
-  border-radius: 5px;
-  padding: 1px 6px;
-  font-size: 8.5px;
+  border-radius: calc(0.78 * var(--u));
+  padding: calc(0.33 * var(--u)) calc(1 * var(--u));
+  font-size: calc(1.11 * var(--u));
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.07em;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.05);
 }
 /* 弃牌者的徽章退成无框灰字：它说的是"这个人已经不在了"，不该和还在牌里
    的人的动作徽章一样显眼 */
 .seat-folded .bubble {
   background: transparent;
   border-color: transparent;
+  box-shadow: none;
   color: var(--text-dim);
 }
-/* 庄家钮做成方块里的一个小白点，不再是独立的圆片——胶囊里已经没有空间
-   放第二个圆形元素了 */
+/* 庄家钮做成头像方块里的一个小白点 */
 .button-chip {
   display: inline-block;
-  width: 5px;
-  height: 5px;
+  width: calc(0.56 * var(--u));
+  height: calc(0.56 * var(--u));
   border-radius: 50%;
   background: #fff;
   align-self: flex-start;
-  margin-top: 3px;
+  margin-top: calc(0.33 * var(--u));
 }
 
 /* ---- 中部：底池与公共牌 ---- */
@@ -397,26 +394,32 @@ body {
    不放进 .pot-won，否则类名出现的那一刻底池会因为盒子变大而跳一下 */
 .pot {
   display: flex;
-  gap: 7px;
+  gap: calc(0.78 * var(--u));
   align-items: baseline;
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(6px);
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 4px 13px;
+  padding: calc(0.67 * var(--u)) calc(1.78 * var(--u));
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.05), 0 10px 20px -12px rgba(17, 20, 26, 0.2);
 }
 .pot-label {
   color: var(--text-dim);
-  font-size: 10.5px;
+  font-size: calc(1.28 * var(--u));
   font-weight: 500;
 }
 .pot-amount {
-  font-size: var(--pot-size);
+  font-size: calc(1.83 * var(--u));
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-.board { display: flex; gap: 5px; }
+.board {
+  display: flex;
+  align-items: flex-end;
+  gap: calc(0.67 * var(--u));
+}
 
 /* ---- 四色牌 ---- */
 /* 设计稿的牌面是"点数在上、花色在下、居中竖排"，白底、圆角、带内描边和
@@ -435,7 +438,6 @@ body {
   justify-content: center;
   gap: 2px;
   background: linear-gradient(180deg, #ffffff, #fbfcfe);
-  border-radius: 7px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   box-shadow: var(--sh-card);
@@ -448,20 +450,37 @@ body {
   line-height: 1;
   font-weight: 500;
 }
-.card-sm { width: var(--card-sm-w); height: var(--card-sm-h); border-radius: 5px; }
-.card-sm .card-rank { font-size: var(--card-sm-rank); }
-.card-sm .card-suit { font-size: var(--card-sm-suit); }
-.card-md { width: var(--card-md-w); height: var(--card-md-h); border-radius: 6px; }
-.card-md .card-rank { font-size: var(--card-md-rank); }
-.card-md .card-suit { font-size: var(--card-md-suit); }
-.card-lg { width: var(--card-lg-w); height: var(--card-lg-h); }
-.card-lg .card-rank { font-size: var(--card-lg-rank); }
-.card-lg .card-suit { font-size: var(--card-lg-suit); }
+/* 三档尺寸全部是设计稿 px / 9 * 1u。lg 取公共牌那一档（70×98）做基准，
+   hero 手牌在 .hero-cards 里缩到设计稿的 62×87。 */
+.card-sm {
+  width: calc(2.9 * var(--u));
+  height: calc(4.05 * var(--u));
+  border-radius: calc(0.5 * var(--u));
+  gap: calc(0.15 * var(--u));
+}
+.card-sm .card-rank { font-size: calc(1.35 * var(--u)); }
+.card-sm .card-suit { font-size: calc(1.2 * var(--u)); }
+.card-md {
+  width: calc(4.4 * var(--u));
+  height: calc(6.2 * var(--u));
+  border-radius: calc(0.7 * var(--u));
+  gap: calc(0.22 * var(--u));
+}
+.card-md .card-rank { font-size: calc(1.9 * var(--u)); }
+.card-md .card-suit { font-size: calc(1.7 * var(--u)); }
+.card-lg {
+  width: calc(7.78 * var(--u));
+  height: calc(10.89 * var(--u));
+  border-radius: calc(1 * var(--u));
+  gap: calc(0.33 * var(--u));
+}
+.card-lg .card-rank { font-size: calc(3.33 * var(--u)); }
+.card-lg .card-suit { font-size: calc(3 * var(--u)); }
 /* 「10」是唯一两个字符的点数，按原字号会挤出牌外；
    缩一档并收紧字距，让它的视觉重量与单字符点数相当。 */
-.card-sm .card-rank-wide { font-size: 10px; letter-spacing: -0.06em; }
-.card-md .card-rank-wide { font-size: var(--card-md-wide); letter-spacing: -0.06em; }
-.card-lg .card-rank-wide { font-size: var(--card-lg-wide); letter-spacing: -0.06em; }
+.card-sm .card-rank-wide { font-size: calc(1.1 * var(--u)); letter-spacing: -0.06em; }
+.card-md .card-rank-wide { font-size: calc(1.55 * var(--u)); letter-spacing: -0.06em; }
+.card-lg .card-rank-wide { font-size: calc(2.7 * var(--u)); letter-spacing: -0.06em; }
 /* 牌背没有子元素，上面的 .card-rank/.card-suit 规则对它无副作用 */
 .card-back {
   background: repeating-linear-gradient(45deg, #dbe1ea, #dbe1ea 3px, #c7cfdc 3px, #c7cfdc 6px);
@@ -482,39 +501,61 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 7px;
-  margin-top: -54px;
-  padding: 8px 0;
+  gap: calc(1.56 * var(--u));
+  /* 压进台面下缘。负 margin 也按比例走，否则小屏上会压过头 */
+  margin-top: calc(-6 * var(--u));
+  padding: calc(0.9 * var(--u)) 0;
 }
-/* 自己的牌比公共牌投影更重一档：它离"镜头"更近 */
-.hero-cards { display: flex; gap: 5px; }
+/* 自己的牌：设计稿是 62×87，比公共牌的 70×98 小一档，投影更重——离"镜头"更近 */
+.hero-cards {
+  display: flex;
+  gap: calc(0.78 * var(--u));
+}
+.hero-cards .card-lg {
+  width: calc(6.89 * var(--u));
+  height: calc(9.67 * var(--u));
+}
+.hero-cards .card-lg .card-rank { font-size: calc(3 * var(--u)); }
+.hero-cards .card-lg .card-suit { font-size: calc(2.67 * var(--u)); }
+.hero-cards .card-lg .card-rank-wide { font-size: calc(2.4 * var(--u)); }
 .hero-cards .card { box-shadow: var(--sh-card-hero); }
 .hero-info {
   display: flex;
-  gap: 9px;
+  gap: calc(1.33 * var(--u));
   align-items: center;
   background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
   border: 1px solid rgba(17, 20, 26, 0.06);
-  border-radius: 14px;
-  padding: 5px 13px;
+  border-radius: calc(1.78 * var(--u));
+  padding: calc(0.78 * var(--u)) calc(1.89 * var(--u)) calc(0.78 * var(--u))
+    calc(0.78 * var(--u));
   box-shadow: var(--sh-seat);
-  font-size: 11px;
   transition: border-color 160ms linear, box-shadow 160ms linear;
+}
+/* 「你」的标记，设计稿里是名字右边一枚蓝色小签 */
+.hero-you {
+  padding: calc(0.11 * var(--u)) calc(0.56 * var(--u));
+  border-radius: calc(0.44 * var(--u));
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: calc(1 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.06em;
 }
 /* 「轮到你了」。蓝环是纯颜色编码，这一行字是它的文字版本——色觉障碍用户
    与读屏用户只能拿到这一个。 */
 .hero-turn {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 10px;
+  gap: calc(0.67 * var(--u));
+  font-size: calc(1.28 * var(--u));
   font-weight: 500;
   color: var(--blue);
 }
 .hero-turn::before {
   content: '';
-  width: 4px;
-  height: 4px;
+  width: calc(0.56 * var(--u));
+  height: calc(0.56 * var(--u));
   border-radius: 50%;
   background: var(--blue);
 }
@@ -524,39 +565,23 @@ body {
   border-color: rgba(47, 111, 237, 0.42);
   box-shadow: var(--sh-seat-act);
 }
-.hero-pos {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text);
-  font-weight: 600;
-}
-/* hero 的 D 钮不在深色方块里，白点会看不见——这里单独给它深底 */
-.hero-pos .button-chip {
-  width: 13px;
-  height: 13px;
-  margin-top: 0;
-  align-self: auto;
-  background: var(--text);
-  color: #fff;
-  font-size: 8px;
-  font-weight: 600;
-  line-height: 13px;
-  text-align: center;
-}
+/* hero 的位置与筹码走与对手座位同一组样式（.seat-badge / .seat-meta），
+   这里只留它独有的两项。 */
 .hero-stack {
-  font-size: 12.5px;
+  font-size: calc(1.39 * var(--u));
   font-weight: 600;
   color: var(--text-2);
+  letter-spacing: -0.012em;
   font-variant-numeric: tabular-nums;
 }
 .hero-bet {
   color: var(--blue);
   font-weight: 600;
+  font-size: calc(1.3 * var(--u));
   font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: calc(0.56 * var(--u));
 }
 
 /* ---- 底部动作条：位于拇指可达区 ----
@@ -566,45 +591,52 @@ body {
    浅色版去掉了整条深色面板：设计稿里底部不是一块背景板，而是几个浮在页面
    底色上的元素，层次靠阴影。 */
 .bottom {
-  padding: 6px 12px calc(12px + var(--safe-bottom));
+  padding: calc(1.11 * var(--u)) calc(1.33 * var(--u))
+    calc(2.44 * var(--u) + var(--safe-bottom));
 }
 
 .actionbar {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: calc(1.11 * var(--u));
 }
 
 .actionbar-idle {
   text-align: center;
   color: var(--text-dim);
-  font-size: 12.5px;
-  padding: 18px 0;
+  font-size: calc(1.39 * var(--u));
+  padding: calc(2 * var(--u)) 0;
 }
 
 .actionbar-row {
   display: flex;
-  gap: 6px;
+  gap: calc(1.11 * var(--u));
 }
 
 .btn {
   flex: 1;
-  min-height: 52px;
+  min-height: calc(6 * var(--u));
   border: 1px solid var(--line-2);
-  border-radius: 13px;
+  border-radius: calc(1.44 * var(--u));
   font-family: var(--font);
-  font-size: 13.5px;
+  font-size: calc(1.56 * var(--u));
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--text);
   background: var(--app);
   box-shadow: var(--sh-1);
   cursor: pointer;
   font-variant-numeric: tabular-nums;
+  transition: background 120ms linear, filter 120ms linear;
 }
+/* 设计稿给三颗按钮各配了 hover：前两颗压一层 --soft，主按钮提亮 */
+.btn:hover { background: var(--soft); }
+.btn-primary:hover { filter: brightness(1.07); }
 /* 主动作是页面上唯一的实心蓝：设计稿里同屏永远只有一个这样的按钮 */
 .btn-primary {
   flex: 1.5;
   border: none;
+  font-size: calc(1.61 * var(--u));
   color: #fff;
   background: linear-gradient(180deg, #3d79ef, #2963e0);
   box-shadow: var(--sh-primary);
@@ -628,47 +660,56 @@ body {
 .raise-panel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(1.11 * var(--u));
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
   border: 1px solid var(--line);
-  border-radius: 13px;
-  padding: 9px 10px;
-  box-shadow: var(--sh-bar);
+  border-radius: calc(1.67 * var(--u));
+  padding: calc(1.11 * var(--u)) calc(1.33 * var(--u));
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.04), 0 12px 26px -16px rgba(17, 20, 26, 0.2);
 }
-.raise-presets { display: flex; gap: 5px; }
+.raise-presets {
+  display: flex;
+  gap: calc(0.89 * var(--u));
+}
 .preset {
   flex: 1;
-  min-height: 34px;
+  min-height: calc(3.6 * var(--u));
   border: 1px solid var(--line-2);
-  border-radius: 7px;
+  border-radius: calc(0.89 * var(--u));
   background: transparent;
   color: var(--text-2);
   font-family: var(--font);
-  font-size: 11.5px;
+  font-size: calc(1.33 * var(--u));
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
+.preset:hover { background: var(--soft); }
 .preset:active {
   background: var(--blue-soft);
   border-color: rgba(47, 111, 237, 0.35);
   color: var(--blue);
 }
-.raise-slider { display: flex; align-items: center; gap: 10px; }
+.raise-slider {
+  display: flex;
+  align-items: center;
+  gap: calc(1.33 * var(--u));
+}
 .raise-slider input {
   flex: 1;
   /* 原生滑块在浅色底上默认是灰轨 + 系统蓝钮，两处都不合调；
      只重画轨与钮，不改行为（步进网格的问题见 RaiseControl.tsx 的注释）。 */
   -webkit-appearance: none;
   appearance: none;
-  height: 22px;
+  height: calc(2.9 * var(--u));
   background: transparent;
   cursor: pointer;
 }
 /* 已走过的部分填蓝：用一道硬边渐变而不是两个色标，--fill 处直接切换，
    不留过渡带。Chrome 与 Firefox 的轨道伪元素名字不同但画法一样。 */
 .raise-slider input::-webkit-slider-runnable-track {
-  height: 5px;
+  height: calc(0.67 * var(--u));
   border-radius: 99px;
   background: linear-gradient(
     to right,
@@ -677,7 +718,7 @@ body {
   );
 }
 .raise-slider input::-moz-range-track {
-  height: 5px;
+  height: calc(0.67 * var(--u));
   border-radius: 99px;
   background: linear-gradient(
     to right,
@@ -688,29 +729,40 @@ body {
 .raise-slider input::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
-  margin-top: -5.5px;
+  width: calc(2 * var(--u));
+  height: calc(2 * var(--u));
+  margin-top: calc(-0.67 * var(--u));
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 4px rgba(17, 20, 26, 0.26), 0 0 0 1px rgba(17, 20, 26, 0.06);
 }
 .raise-slider input::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: calc(2 * var(--u));
+  height: calc(2 * var(--u));
   border: none;
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 4px rgba(17, 20, 26, 0.26), 0 0 0 1px rgba(17, 20, 26, 0.06);
 }
+/* 金额独立成一个描边小盒，与设计稿一致——它是这一条里唯一会变的数字，
+   套个框才不会被两侧的按钮淹掉 */
 .raise-amount {
-  min-width: 62px;
+  min-width: calc(6.2 * var(--u));
   text-align: right;
-  font-size: 12.5px;
+  border: 1px solid var(--line-2);
+  border-radius: calc(1.11 * var(--u));
+  padding: calc(0.78 * var(--u)) calc(1.22 * var(--u));
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.04);
+  font-size: calc(1.5 * var(--u));
   font-weight: 600;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
-.raise-actions { display: flex; gap: 6px; }
+.raise-actions {
+  display: flex;
+  gap: calc(1.11 * var(--u));
+}
 
 .confirm { display: flex; flex-direction: column; gap: 8px; }
 .confirm-text {
@@ -1266,41 +1318,13 @@ body {
   box-shadow: none;
 }
 
-/* ───────── 窄屏（手机）的组件覆盖 ─────────
-   必须放在文件**末尾**：媒体查询不增加特异性，与被覆盖的基础规则同为
-   (0,1,0)，胜负只看源码顺序。这一段原先和上面那组 :root 令牌覆盖写在一起
-   （紧跟 :root 之后），于是每一条都被两百行之后的基础规则压掉，整段是死的
-   ——令牌那组能生效只是因为它压的恰好是紧邻其上的 :root。 */
-@media (max-width: 520px) {
-  .seat { gap: 3px; }
-  .seat-info {
-    gap: 5px;
-    padding: 3px 7px 3px 3px;
-    border-radius: 11px;
-  }
-  .seat-badge {
-    min-width: 24px;
-    height: 21px;
-    padding: 0 3px;
-    font-size: 8px;
-    border-radius: 6px;
-  }
-  .seat-name { font-size: 9px; }
-  .seat-stack { font-size: 8.5px; }
-  .seat-cards { gap: 2px; }
-  .bubble {
-    font-size: 8px;
-    padding: 1px 4px;
-  }
-  /* 窄屏上两端的座位要往**里**收，不是往外拉：胶囊在 373px 视口里就有 82px
-     宽（占屏宽 22%），按桌面的 11%/89% 摆，胶囊左右端正好压在屏幕边上被切掉。
-     实测 14%/86% 两侧各留约 11px。 */
-  .slot-0 { left: 14%; }
-  .slot-4 { left: 86%; }
-  /* 手机上台面是竖长的，28% 那个高度正好撞上两侧座位那一行，底池会挤在
-     BB 和 HJ 中间。往下挪到 38%，落进上下两排座位之间的空档。 */
-  .table-center { padding-top: 38%; }
-}
+/* ───────── 窄屏（手机） ─────────
+   座位 / 牌面 / 气泡 / 槽位那一整组断点覆盖已经删掉了：--u 的 max(7px, …)
+   下限把它们全部替代了（见文件上方「比例尺」那段）。
+
+   那一段还出过一个更隐蔽的问题：它原先写在基础规则**之前**，而媒体查询不
+   增加特异性，同特异性下只看源码顺序——于是整段是死的，改了半天没有任何
+   效果，是在浏览器里量座位坐标才发现的。少一套断点表，就少一处这种事。 */
 
 /* ───────── ③-C 导航壳与历史页 ───────── */
 
@@ -1308,6 +1332,26 @@ body {
    窄屏下面的媒体查询把它折回纵向（导航变成顶部一条）。 */
 .app {
   flex-direction: row;
+}
+
+/*
+ * ===== 比例尺 =====
+ *
+ * 牌桌上所有尺寸都用 --u 表示，1u = 牌桌宽度的 1%。设计稿是按 900px 宽的
+ * 牌桌画的，所以「设计稿的 N px」在这里写成 calc(N / 9 * 1u)——桌子多宽，
+ * 头像、牌、字号就一起按比例走，不必为每个断点再抄一份像素表。
+ *
+ * 下限 7px 不是审美，是因为纯比例在手机上会崩：373px 宽的屏上 1u = 3.7px，
+ * 40px 的头像缩到 16px、名字缩到 5px，谁也读不出来。设计稿自己也是这么处理
+ * 的——它的 H5 版把头像按比例放大回去（28px 对 366px 的台面，相对尺寸是
+ * Web 版的近两倍）。一个 max() 替代了那一整套断点覆盖。
+ *
+ * 结果：u 在 7px（手机）到 9px（桌面，牌桌 900px 封顶）之间，桌面渲染出来
+ * 与设计稿逐像素一致。
+ */
+.app-main > * {
+  --table-w: min(900px, 100cqw);
+  --u: max(7px, calc(var(--table-w) / 100));
 }
 
 /*
@@ -1357,6 +1401,9 @@ body {
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  /* 尺寸容器。开在这里而不是 .table 上，因为 .hero 与 .bottom 是 .table 的
+     兄弟节点，它们要按同一把尺子缩放。 */
+  container-type: inline-size;
   /* 安全区的补偿从 .app 挪到这里：复盘卡片是绝对定位到 .app-main 的，
      包含块得是它。留在 .app 上的话，宽屏有了侧栏之后卡片会连导航一起盖住。 */
   padding-top: var(--safe-top);
@@ -1637,6 +1684,15 @@ body {
     /* 安全区已经由 .nav 的 padding 补过了，这里再补一次就是两倍 */
     padding-top: 0;
   }
+  /* 槽位换成设计稿 H5 版的坐标（SEATS_DEF.h5Pos）。设计稿自己就为手机把两侧
+     座位往里收了——Web 版的 11% / 89% 在 373px 宽的屏上会让座位卡左右各探出
+     屏幕 4px（实测）。这是**设计稿本来就有的两套坐标**，不是我另加的断点。 */
+  .slot-0 { left: 16%; top: 60%; }
+  .slot-1 { left: 17%; top: 24%; }
+  .slot-2 { left: 50%; top: 6%; }
+  .slot-3 { left: 83%; top: 24%; }
+  .slot-4 { left: 84%; top: 60%; }
+
   .hist {
     padding: 12px 12px calc(14px + var(--safe-bottom));
   }
