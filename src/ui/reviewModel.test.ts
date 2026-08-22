@@ -11,11 +11,14 @@ import {
   streetSummaries,
   defaultStreetOf,
   heroNetOf,
+  netBBText,
   endingText,
   handNumberOf,
   handSubtitle,
 } from './reviewModel';
 import { PREFLOP_TAGS, POSTFLOP_TAGS } from '../review/taxonomy';
+import { startSession, stepAi, applyHero } from '../session/handSession';
+import type { SessionConfig } from '../session/handSession';
 
 /**
  * 造一个 DecisionView。这里刻意不跑真实的 analyzeHand ——
@@ -399,5 +402,75 @@ describe('页头文案', () => {
     const text = handSubtitle(record({ id: 'imported-abc' }));
     expect(text).not.toMatch(/NaN|第 null/);
     expect(text.endsWith('· vs 2 名对手')).toBe(true);
+  });
+
+  it('persona id 认不出来时不抛，副标题退回不点名的说法', () => {
+    // 复盘页渲染的是**从库里取出来的**手牌，而 storage/transfer.ts 的
+    // looksLikeHand 不校验 personaId：别人导出的文件、或旧版本里已经删掉的
+    // persona，都会带着一个不认识的 id 进来。getPersona 对未知 id 直接 throw，
+    // 而应用没有 ErrorBoundary —— 不兜底就是整页白屏，白掉的还是「历史里
+    // 随便点开一手」这条主路径。
+    const rec = record({
+      seats: [
+        { seat: 0, position: 'BTN', personaId: 'hero' },
+        { seat: 1, position: 'SB', personaId: 'whale_2019' },
+        { seat: 2, position: 'BB', personaId: 'rock' },
+      ],
+      actions: [
+        { seat: 2, street: 'preflop', type: 'fold', amount: 0, toCall: 1, potBefore: 1.5 },
+      ],
+    } as unknown as Partial<HandRecord>);
+    expect(() => handSubtitle(rec)).not.toThrow();
+    // 叫不出名字就不点名：位置对了、名字是编的，比不点名更糟
+    expect(handSubtitle(rec)).toBe('第 39 手 · vs 2 名对手');
+  });
+
+  it('认得出的 persona 仍然点名 —— 兜底没有把正常路径一起吞掉', () => {
+    const rec = record({
+      actions: [
+        { seat: 2, street: 'preflop', type: 'fold', amount: 0, toCall: 1, potBefore: 1.5 },
+      ] as unknown as HandRecord['actions'],
+    });
+    expect(handSubtitle(rec)).toBe('第 39 手 · vs SB（紧凶）');
+  });
+});
+
+describe('netBBText', () => {
+  it('单位是 BB 不是实额，正数带 +', () => {
+    expect(netBBText(18)).toBe('+18.0 BB');
+  });
+
+  it('负数用 U+2212 减号，与左栏 evText 一致（tabular-nums 下连字符会错位）', () => {
+    expect(netBBText(-2.35)).toBe('−2.4 BB');
+    expect(netBBText(-2.35)).not.toContain('-');
+  });
+
+  it('零算正侧，不印「−0.0 BB」', () => {
+    expect(netBBText(0)).toBe('+0.0 BB');
+    expect(netBBText(-0)).toBe('+0.0 BB');
+  });
+});
+
+/**
+ * handNumberOf 的正则 `/-h(\d+)$/` 隐式依赖 handSession 拼 record.id 的格式
+ * （`${cfg.seed}-h${handIndex}`）。两边没有任何编译期联系，格式一改，页头会
+ * 静默从「第 N 手」退化成显示日期，没有一条测试会红。
+ *
+ * 所以这里跑一手**真实**的会话，拿它自己产出的 record 去断言——不是照着
+ * 格式再抄一遍字符串，那样两边一起改仍然测不出来。
+ */
+describe('handNumberOf 与 handSession 的 id 格式耦合', () => {
+  it('认得出 handSession 真实产出的 record.id', () => {
+    const cfg: SessionConfig = { seed: 'rev-id-coupling', strengthIterations: 8 };
+    let s = startSession(cfg);
+    // hero 一律弃牌，让这一手尽快结束；AI 该动就让它动
+    let guard = 0;
+    while (s.phase !== 'handOver') {
+      if (guard++ > 200) throw new Error('会话没有在合理步数内结束');
+      s = s.phase === 'aiToAct' ? stepAi(s, cfg) : applyHero(s, { type: 'fold' }, cfg);
+    }
+    expect(s.record).not.toBe(null);
+    // 第一手的 handIndex 是 0，显示编号是 1
+    expect(s.record === null ? null : handNumberOf(s.record)).toBe(1);
   });
 });

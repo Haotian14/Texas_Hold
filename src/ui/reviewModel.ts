@@ -349,6 +349,21 @@ export function heroNetOf(record: HandRecord): number {
   return record.results.find(r => r.seat === record.heroSeat)?.netBB ?? 0;
 }
 
+/**
+ * 页头净盈亏的文案，单位 BB。
+ *
+ * **不换算实额**。分工是：牌桌讲「你赢了多少钱」用实额，复盘与报表讲
+ * 「你打得多好」用 BB（报表页已经这么定了，设计稿这一处写的也是 `+18 BB`）。
+ * 同屏的 EV 损失本来就是 BB，混排两种量纲更糟。
+ *
+ * 负号用 U+2212 而不是连字符，与左栏的 evText 一致：tabular-nums 下连字符
+ * 比数字窄，两处并排会错位。正负号在这里出，调用方只负责套红绿。
+ */
+export function netBBText(netBB: number): string {
+  // 金额比较走 chips.ts，不用裸 <（见 Global Constraints）
+  return `${chipsGreater(0, netBB) ? '−' : '+'}${Math.abs(netBB).toFixed(1)} BB`;
+}
+
 /** 这一手怎么结束的。文案与结算条（SummaryBar）刻意不同：那里说的是「有没有摊牌」 */
 export function endingText(record: HandRecord): string {
   return record.results.some(r => r.showdown) ? '摊牌' : '弃牌结束';
@@ -371,6 +386,29 @@ export function handNumberOf(record: HandRecord): number | null {
 }
 
 /**
+ * persona id → 名字，**认不出来时返回 null 而不是抛**。
+ *
+ * personaLabel 底下是 ai/personas.ts 的 getPersona，遇到未知 id 直接 throw。
+ * 在 Seat.tsx 那种调用点这没问题——活局里的 id 是本进程刚发的，必然合法。
+ * 但复盘页会渲染**从库里取出来的**手牌，而 storage/transfer.ts 的
+ * looksLikeHand 不校验 personaId：别人导出的文件、或旧版本里已经删掉的
+ * persona，都会带着一个不认识的 id 进来。应用没有 ErrorBoundary，一抛就是
+ * 整页白屏——而白掉的是「历史里随便点开一手」这条主路径。
+ *
+ * 兜底选在这里而不是改 personaLabel：那个函数服务的是牌桌，让它对未知 id
+ * 静默返回一个名字，等于把「persona 表和存档对不上」这件事永久藏起来。
+ * 这里只需要知道「叫不出名字」，于是副标题退回不点名的说法（`vs 5 名对手`），
+ * 信息量降一档，但页面还在。
+ */
+function personaTextOf(personaId: string): string | null {
+  try {
+    return personaLabel(personaId);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 页头副标题：「第 N 手 · vs 对手」。
  *
  * 「对手」取**打到最后还没弃牌**的那些非 hero 座位：设计稿是单挑局，写的是
@@ -387,9 +425,11 @@ export function handSubtitle(record: HandRecord): string {
   const others = record.seats.filter(s => s.seat !== record.heroSeat);
   const folded = new Set(foldedSeatsOf(record));
   const contested = others.filter(s => !folded.has(s.seat));
+  const only = contested.length === 1 ? contested[0] : null;
+  const persona = only === null ? null : personaTextOf(only.personaId);
   const who =
-    contested.length === 1
-      ? `${contested[0].position}（${personaLabel(contested[0].personaId)}）`
+    only !== null && persona !== null
+      ? `${only.position}（${persona}）`
       : `${others.length} 名对手`;
   return `${head} · vs ${who}`;
 }

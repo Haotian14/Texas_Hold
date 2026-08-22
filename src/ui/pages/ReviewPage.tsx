@@ -7,11 +7,12 @@ import {
   defaultStreetOf,
   severityText,
   heroNetOf,
+  netBBText,
   endingText,
   handSubtitle,
   type StreetStatus,
 } from '../reviewModel';
-import { ACTION_TEXT, chips } from '../format';
+import { ACTION_TEXT } from '../format';
 import { ReviewDecision } from '../components/ReviewDecision';
 import { OpponentCards } from '../components/OpponentCards';
 
@@ -102,9 +103,11 @@ export function ReviewPage({
           <h2 className="rvp-title">复盘</h2>
           <div className="rvp-sub">{handSubtitle(record)}</div>
         </div>
+        {/* 单位是 BB，不是实额：复盘讲的是「你打得多好」，与同屏的 EV 损失
+            同量纲（设计稿这一处写的也是 `+18 BB`）。正负号由 netBBText 出，
+            这里只负责套红绿。 */}
         <div className={isNeg ? 'rvp-net neg' : 'rvp-net pos'}>
-          {isNeg ? '' : '+'}
-          {chips(net)}
+          {netBBText(net)}
           <span className="rvp-net-note"> · {endingText(record)}</span>
         </div>
       </header>
