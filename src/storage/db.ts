@@ -4,9 +4,11 @@ import {
   HANDS_STORE,
   STATS_STORE,
   STATS_KEY,
+  SUMMARIES_STORE,
   STORES,
 } from './schema';
 import type { StoredHand } from './schema';
+import type { HandSummary } from './summary';
 
 /**
  * IndexedDB 适配器。**全项目唯一允许出现 `indexedDB` 的文件**
@@ -219,12 +221,54 @@ export async function putStats<T>(value: T): Promise<void> {
   await promisify(tx(db, STATS_STORE, 'readwrite').put({ key: STATS_KEY, value }));
 }
 
-/** 清空两个 store。「重置数据」用，不删库——删库要等所有连接关闭，容易卡住 */
+/** 清空三个 store。「重置数据」用，不删库——删库要等所有连接关闭，容易卡住 */
 export async function clearAll(): Promise<void> {
   const db = await openDb();
-  const t = db.transaction([HANDS_STORE, STATS_STORE], 'readwrite');
+  const t = db.transaction([HANDS_STORE, STATS_STORE, SUMMARIES_STORE], 'readwrite');
   await Promise.all([
     promisify(t.objectStore(HANDS_STORE).clear()),
     promisify(t.objectStore(STATS_STORE).clear()),
+    promisify(t.objectStore(SUMMARIES_STORE).clear()),
   ]);
+}
+
+export async function putSummary(s: HandSummary): Promise<void> {
+  const db = await openDb();
+  await promisify(tx(db, SUMMARIES_STORE, 'readwrite').put(s));
+}
+
+export async function allSummaries(): Promise<HandSummary[]> {
+  const db = await openDb();
+  return promisify<HandSummary[]>(tx(db, SUMMARIES_STORE, 'readonly').getAll());
+}
+
+export async function countSummaries(): Promise<number> {
+  const db = await openDb();
+  return promisify<number>(tx(db, SUMMARIES_STORE, 'readonly').count());
+}
+
+/**
+ * 按 timestamp 倒序取最近 n 条。
+ *
+ * 用游标而不是 getAll 之后再截：一万条摘要全读进内存只为拿最近 200 条，
+ * 与历史页当初不用 getAll 是同一个理由（见 pageByIndex 的注释）。
+ * 返回的是**倒序**，调用方要升序请自己反转——这里不替它决定。
+ */
+export async function lastSummaries(n: number): Promise<HandSummary[]> {
+  const db = await openDb();
+  const index = tx(db, SUMMARIES_STORE, 'readonly').index('timestamp');
+  return new Promise<HandSummary[]>((resolve, reject) => {
+    const out: HandSummary[] = [];
+    const req = index.openCursor(null, 'prev');
+    req.onerror = () => reject(req.error ?? new Error('游标失败'));
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor === null || out.length >= n) {
+        resolve(out);
+        return;
+      }
+      out.push(cursor.value as HandSummary);
+      cursor.continue();
+    };
+  });
 }

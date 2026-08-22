@@ -4,6 +4,7 @@ import {
   DB_VERSION,
   HANDS_STORE,
   STATS_STORE,
+  SUMMARIES_STORE,
   STORES,
   storedHandOf,
   heroPositionOf,
@@ -39,15 +40,29 @@ function makeRecord(seed: string): HandRecord {
 const OPTS = { iterations: 200, strengthIterations: 15 };
 
 describe('schema 定义', () => {
-  it('库名与版本就是规格 §9 写的那个', () => {
+  it('库名就是规格 §9 写的那个', () => {
     expect(DB_NAME).toBe('poker-trainer');
-    expect(DB_VERSION).toBe(1);
   });
 
-  it('两个 store，主键与规格一致', () => {
-    expect(STORES.map(s => s.name)).toEqual([HANDS_STORE, STATS_STORE]);
+  it('三个 store，主键与规格一致', () => {
+    expect(STORES.map(s => s.name)).toEqual([HANDS_STORE, STATS_STORE, SUMMARIES_STORE]);
     const hands = STORES.find(s => s.name === HANDS_STORE)!;
     expect(hands.keyPath).toBe('id');
+  });
+
+  it('summaries store：主键 id，一个 timestamp 索引', () => {
+    const s = STORES.find(x => x.name === SUMMARIES_STORE);
+    expect(s).toBeDefined();
+    expect(s!.keyPath).toBe('id');
+    expect(s!.indexes.map(i => i.name)).toEqual(['timestamp']);
+  });
+
+  it('DB_VERSION 是 2：加了 summaries store', () => {
+    expect(DB_VERSION).toBe(2);
+  });
+
+  it('三个 store 都在 STORES 里——clearAll 与 onupgradeneeded 都按它走', () => {
+    expect(STORES.map(s => s.name).sort()).toEqual(['hands', 'stats', 'summaries']);
   });
 
   it('hands 上的四个索引一个不少，mistakeTags 是 multiEntry', () => {
