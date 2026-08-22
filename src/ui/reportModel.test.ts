@@ -1,10 +1,60 @@
 import { describe, it, expect } from 'vitest';
-import { kpisOf, curveOf, trendOf, leakBarsOf, streetBarsOf, positionRowsOf, MAX_POINTS } from './reportModel';
+import {
+  kpisOf,
+  curveOf,
+  trendOf,
+  leakBarsOf,
+  streetBarsOf,
+  positionRowsOf,
+  numText,
+  toneOf,
+  forceNegText,
+  MAX_POINTS,
+} from './reportModel';
 import { aggregate } from '../storage/summary';
 
 // 空值从 aggregate([]) 借，不手搓 WindowStats 字面量：手搓的那份在
 // taxonomy 加分类时不会跟着变，而 aggregate 的骨架会。
 const empty = aggregate([]);
+
+describe('numText', () => {
+  it('正数带 ASCII +', () => {
+    expect(numText(4.2)).toBe('+4.2');
+  });
+
+  it('负数带 U+2212 −，且不带 ASCII 连字符', () => {
+    expect(numText(-6.8)).toBe('−6.8');
+    expect(numText(-6.8)).not.toContain('-');
+  });
+
+  it('零不带号', () => {
+    expect(numText(0)).toBe('0.0');
+  });
+});
+
+describe('toneOf', () => {
+  it('正数为 positive', () => {
+    expect(toneOf(4.2)).toBe('positive');
+  });
+
+  it('负数为 negative', () => {
+    expect(toneOf(-6.8)).toBe('negative');
+  });
+
+  it('零为 neutral', () => {
+    expect(toneOf(0)).toBe('neutral');
+  });
+});
+
+describe('forceNegText', () => {
+  it('正数量级也恒显示负号', () => {
+    expect(forceNegText(6.8)).toBe('−6.8');
+  });
+
+  it('零仍显示负号——EV 损失卡恒负，不因为这段时间没漏就变中性', () => {
+    expect(forceNegText(0)).toBe('−0.0');
+  });
+});
 
 describe('kpisOf', () => {
   it('零手时三个卡都出，值为 0，不出 NaN', () => {

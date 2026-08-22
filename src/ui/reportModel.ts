@@ -27,10 +27,24 @@ import { TAG_TEXT } from './reviewModel';
  *
  * 浮点比较走 isZeroChips / chipsGreater，不裸比较——BB 量纲的加减会
  * 留下浮点尾数。
+ *
+ * **导出**：不止 KPI 卡在用，分位置盈亏那一列（ReportPage 组件）展示的
+ * 也是同一种「正负号恒显示」的数字，不能在组件里另写一份——那份重复
+ * 脱离测试覆盖（组件不写自动化测试，这个模块才写）。
  */
-function numText(v: number, decimals = 1): string {
+export function numText(v: number, decimals = 1): string {
   if (isZeroChips(v)) return (0).toFixed(decimals);
   return chipsGreater(v, 0) ? `+${v.toFixed(decimals)}` : `−${Math.abs(v).toFixed(decimals)}`;
+}
+
+/**
+ * 正负号 tone 判断：三态 neutral/positive/negative。KPI 卡（BB/100 那张）
+ * 与分位置盈亏的圆点颜色是同一套「零中性、正绿、负红」的判断，下沉到
+ * 这里导出，两处调用同一个函数，不是各写一份 isZeroChips/chipsGreater。
+ */
+export function toneOf(v: number): 'neutral' | 'positive' | 'negative' {
+  if (isZeroChips(v)) return 'neutral';
+  return chipsGreater(v, 0) ? 'positive' : 'negative';
 }
 
 /**
@@ -38,8 +52,12 @@ function numText(v: number, decimals = 1): string {
  *
  * 它表示「本该更好却没做到多少」，是一个永远该被扣掉的量，不是一次
  * 盈亏——不能因为这段时间碰巧没漏（值为 0）就让它看起来像个中性数字。
+ *
+ * **导出**：漏洞排行榜与分街 EV 损失两处的金额也遵循同一条「恒负号」
+ * 的约定（它们同样是「损失」不是「盈亏」），组件里不再各自拼 `'−' +
+ * toFixed(1)`。
  */
-function forceNegText(magnitude: number, decimals = 1): string {
+export function forceNegText(magnitude: number, decimals = 1): string {
   return `−${Math.abs(magnitude).toFixed(decimals)}`;
 }
 
@@ -75,7 +93,7 @@ export function kpisOf(s: WindowStats): Kpi[] {
       label: 'BB/100',
       value: numText(winrate),
       unit: 'BB/100',
-      tone: isZeroChips(winrate) ? 'neutral' : chipsGreater(winrate, 0) ? 'positive' : 'negative',
+      tone: toneOf(winrate),
     },
     {
       key: 'leak',

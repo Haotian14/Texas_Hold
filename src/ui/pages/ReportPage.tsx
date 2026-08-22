@@ -8,9 +8,11 @@ import {
   leakBarsOf,
   streetBarsOf,
   positionRowsOf,
+  numText,
+  toneOf,
+  forceNegText,
 } from '../reportModel';
 import type { CurvePoint } from '../reportModel';
-import { isZeroChips, chipsGreater } from '../../core/chips';
 
 /**
  * 报表页（规格 §10.5，对应设计稿 Progress 屏）。
@@ -30,19 +32,6 @@ const WINDOWS: readonly { id: ReportWindow; label: string }[] = [
 
 /** 四种空态之外，「统计可能不完整」是叠加在正常渲染上的一条注记，不是空态 */
 type LoadState = 'loading' | 'ready' | 'unavailable' | 'partial-backfill';
-
-/** 与 reportModel.ts::numText 同一套写法（负号用 U+2212），但这里只用于
-    展示 positionRowsOf 的原始 bb100（该函数不产出格式化字符串），
-    不下沉到 reportModel 是因为它纯粹是展示层的格式化，没有可测的判断逻辑 */
-function signText(v: number, decimals = 1): string {
-  if (isZeroChips(v)) return (0).toFixed(decimals);
-  return chipsGreater(v, 0) ? `+${v.toFixed(decimals)}` : `−${Math.abs(v).toFixed(decimals)}`;
-}
-
-function toneOf(v: number): 'positive' | 'negative' | 'neutral' {
-  if (isZeroChips(v)) return 'neutral';
-  return chipsGreater(v, 0) ? 'positive' : 'negative';
-}
 
 const CURVE_W = 300;
 const CURVE_H = 120;
@@ -179,10 +168,7 @@ function ReportBody({ data }: { data: ReportData }) {
                   <div className="rep-bar-line">
                     <span className="rep-bar-name">{l.label}</span>
                     <span className="rep-bar-count">×{l.count}</span>
-                    <span className="rep-bar-amount">
-                      {'−'}
-                      {l.evLoss.toFixed(1)} BB
-                    </span>
+                    <span className="rep-bar-amount">{forceNegText(l.evLoss)} BB</span>
                   </div>
                   <div className="rep-bar-track">
                     <div className="rep-bar-fill" style={{ width: `${l.pct}%` }} />
@@ -198,10 +184,7 @@ function ReportBody({ data }: { data: ReportData }) {
               <div key={b.street} className="rep-bar-row">
                 <div className="rep-bar-line">
                   <span className="rep-bar-name">{b.label}</span>
-                  <span className="rep-bar-amount">
-                    {'−'}
-                    {b.evLoss.toFixed(1)} BB
-                  </span>
+                  <span className="rep-bar-amount">{forceNegText(b.evLoss)} BB</span>
                 </div>
                 <div className="rep-bar-track">
                   <div className="rep-bar-fill" style={{ width: `${b.pct}%` }} />
@@ -222,7 +205,7 @@ function ReportBody({ data }: { data: ReportData }) {
                 />
                 <span className="rep-pos-name">{p.position}</span>
                 <span className="rep-pos-rate">
-                  {p.bb100 === null ? '—' : `${signText(p.bb100)} BB/100`}
+                  {p.bb100 === null ? '—' : `${numText(p.bb100)} BB/100`}
                 </span>
               </div>
             ))}
