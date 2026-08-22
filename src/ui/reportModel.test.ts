@@ -26,6 +26,16 @@ describe('kpisOf', () => {
     expect(winrate.tone).toBe('positive');
     expect(leak.tone).toBe('negative');
   });
+
+  it('BB/100 卡：正数带 ASCII +，负数带 U+2212 −，零不带号——与设计稿（+4.2 / −6.8）一致', () => {
+    const win = kpisOf({ ...empty, hands: 100, netBB: 420 })[1]!;
+    const lose = kpisOf({ ...empty, hands: 100, netBB: -420 })[1]!;
+    const flat = kpisOf(empty)[1]!;
+    expect(win.value.startsWith('+')).toBe(true);
+    expect(lose.value.startsWith('−')).toBe(true);
+    expect(flat.value.startsWith('+')).toBe(false);
+    expect(flat.value.startsWith('−')).toBe(false);
+  });
 });
 
 describe('curveOf', () => {
@@ -90,6 +100,17 @@ describe('leakBarsOf', () => {
   it('标签是中文，来自 TAG_TEXT', () => {
     const s = { ...empty, byTag: { ...empty.byTag, 'loose-call': { count: 1, evLoss: 1 } } };
     expect(leakBarsOf(s)[0]!.label).not.toBe('loose-call');
+  });
+
+  it('榜首 evLoss 为 0（有次数但损失全 0）时不除零，全部记 0 宽', () => {
+    const s = {
+      ...empty,
+      byTag: { ...empty.byTag, 'loose-call': { count: 3, evLoss: 0 }, 'loose-open': { count: 1, evLoss: 0 } },
+    };
+    const bars = leakBarsOf(s);
+    expect(bars).toHaveLength(2);
+    expect(bars.every(b => b.pct === 0)).toBe(true);
+    expect(bars.every(b => Number.isFinite(b.pct))).toBe(true);
   });
 });
 

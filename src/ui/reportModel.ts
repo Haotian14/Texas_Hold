@@ -14,11 +14,23 @@ import { TAG_TEXT } from './reviewModel';
  * 的通用口径，换算成筹码额是 format.ts::chips() 的事，不是这里的事。
  */
 
-/** 数值转文字，负号用 U+2212（−）而不是 ASCII 连字符，浮点比较走
-    isZeroChips / chipsGreater，不裸比较——BB 量纲的加减会留下浮点尾数 */
+/**
+ * 数值转文字，正负号恒显示、零不带号：`+4.2` / `−6.8` / `0.0`。
+ *
+ * 与设计稿一致（KPI 卡 `+4.2 BB/100`、导航底部 `+$312`）——这两个数字
+ * 都是「相对基线的变化量」，光看数字看不出正负时用户得凑近看有没有
+ * 连字符，带号才是一眼扫过去就分得清赢亏的写法。
+ *
+ * 负号用 U+2212（−）而不是 ASCII 连字符 '-'：项目里没有先例可抄，这是
+ * 本文件新立的写法，不是沿用已有惯例。正号用 ASCII '+'——设计稿的两处
+ * 参照写的都是 ASCII 加号，没有理由在这一侧另造一个 Unicode 字符。
+ *
+ * 浮点比较走 isZeroChips / chipsGreater，不裸比较——BB 量纲的加减会
+ * 留下浮点尾数。
+ */
 function numText(v: number, decimals = 1): string {
   if (isZeroChips(v)) return (0).toFixed(decimals);
-  return chipsGreater(v, 0) ? v.toFixed(decimals) : `−${Math.abs(v).toFixed(decimals)}`;
+  return chipsGreater(v, 0) ? `+${v.toFixed(decimals)}` : `−${Math.abs(v).toFixed(decimals)}`;
 }
 
 /**
