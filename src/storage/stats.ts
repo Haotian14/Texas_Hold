@@ -71,7 +71,9 @@ export interface Stats {
   lastHandId: string | null;
 }
 
-function emptyTagStats(): Record<MistakeTag, TagStat> {
+/** 从 taxonomy 的两个常量数组建骨架。summary.ts 的 aggregate 也用它——
+    两处各写一份的话，taxonomy 加分类时只有一处会跟上 */
+export function emptyTagStats(): Record<MistakeTag, TagStat> {
   const out = {} as Record<MistakeTag, TagStat>;
   // 从 taxonomy 的两个常量数组建，不手写字面量：taxonomy 加分类时这里自动跟上，
   // 而手写的对象字面量会缺一项，缺的那一项在 applyHand 里会读到 undefined。
@@ -81,13 +83,15 @@ function emptyTagStats(): Record<MistakeTag, TagStat> {
   return out;
 }
 
-/** Record<Street, number> 而不是普通对象：Street 加成员时这里编译失败 */
-function emptyStreetStats(): Record<Street, number> {
+/** Record<Street, number> 而不是普通对象：Street 加成员时这里编译失败。
+    同样供 summary.ts 的 aggregate 复用，理由同 emptyTagStats */
+export function emptyStreetStats(): Record<Street, number> {
   return { preflop: 0, flop: 0, turn: 0, river: 0 };
 }
 
-/** 同理，Position 加成员时编译失败，而不是在报表上少一行 */
-function emptyPositionStats(): Record<Position, PositionStat> {
+/** 同理，Position 加成员时编译失败，而不是在报表上少一行。
+    同样供 summary.ts 的 aggregate 复用 */
+export function emptyPositionStats(): Record<Position, PositionStat> {
   return {
     UTG: { hands: 0, netBB: 0 },
     HJ: { hands: 0, netBB: 0 },
