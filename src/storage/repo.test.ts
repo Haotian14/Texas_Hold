@@ -5,6 +5,7 @@ import { storedHandOf } from './schema';
 import type { StoredHand } from './schema';
 import type { Stats } from './stats';
 import { heroNetOf } from './stats';
+import { summaryOf, SUMMARY_SCHEMA_VERSION } from './summary';
 import type { HandSummary } from './summary';
 
 /**
@@ -516,6 +517,21 @@ describe('ensureSummaries', () => {
     fake.hands.set('old', storedHandOf(recordOf('old'), viewOf('old')));
     fake.failWrites = true;
     expect(await repo.ensureSummaries()).toBe(false);
+  });
+
+  it('计数相等但版本过期时仍应重建 —— 只比条数会让陈旧摘要被静默沿用', async () => {
+    const hand = storedHandOf(recordOf('old'), viewOf('old'));
+    fake.hands.set('old', hand);
+    // 条数相等（1 手 1 摘要），但摘要是旧形状留下的——v 不是当前版本
+    fake.summaries.set('old', { ...summaryOf(hand), v: SUMMARY_SCHEMA_VERSION - 1 });
+    expect(await repo.ensureSummaries()).toBe(true);
+    expect(fake.summaries.get('old')!.v).toBe(SUMMARY_SCHEMA_VERSION);
+  });
+
+  it('库空时不因版本检查误触发重建', async () => {
+    fake.allHandsCalls = 0;
+    expect(await repo.ensureSummaries()).toBe(true);
+    expect(fake.allHandsCalls).toBe(0);
   });
 });
 
