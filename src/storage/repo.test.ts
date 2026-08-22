@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { HandRecord } from '../core/types';
 import type { HandView } from '../review/view';
+import { storedHandOf } from './schema';
 import type { StoredHand } from './schema';
 import type { Stats } from './stats';
+import { heroNetOf } from './stats';
+import type { HandSummary } from './summary';
 
 /**
  * db.ts 被替换成内存实现。
@@ -15,6 +18,7 @@ import type { Stats } from './stats';
 
 interface FakeDb {
   hands: Map<string, StoredHand>;
+  summaries: Map<string, HandSummary>;
   stats: Stats | undefined;
   /** true 时所有写入抛错，用来测降级 */
   failWrites: boolean;
@@ -25,16 +29,20 @@ interface FakeDb {
   /** 每次 putStats 前等一拍，制造读-改-写交错的机会 */
   slowStats: boolean;
   putStatsCalls: number;
+  /** allHands 被调用的次数。ensureSummaries「计数相等时不扫表」靠它断言 */
+  allHandsCalls: number;
 }
 
 const fake: FakeDb = {
   hands: new Map(),
+  summaries: new Map(),
   stats: undefined,
   failWrites: false,
   failHandId: null,
   failReads: false,
   slowStats: false,
   putStatsCalls: 0,
+  allHandsCalls: 0,
 };
 
 const tick = () => new Promise(r => setTimeout(r, 0));
@@ -52,6 +60,7 @@ vi.mock('./db', () => ({
     return fake.hands.get(id);
   },
   allHands: async () => {
+    fake.allHandsCalls++;
     if (fake.failReads) throw new Error('读取失败');
     return [...fake.hands.values()];
   },
@@ -79,16 +88,37 @@ vi.mock('./db', () => ({
     if (fake.failWrites) throw new Error('写入失败');
     fake.hands.clear();
     fake.stats = undefined;
+    fake.summaries.clear();
+  },
+  putSummary: async (s: HandSummary) => {
+    if (fake.failWrites) throw new Error('写入失败');
+    fake.summaries.set(s.id, s);
+  },
+  allSummaries: async () => {
+    if (fake.failReads) throw new Error('读取失败');
+    return [...fake.summaries.values()];
+  },
+  countSummaries: async () => {
+    if (fake.failReads) throw new Error('读取失败');
+    return fake.summaries.size;
+  },
+  // 按 timestamp 倒序取最近 n 条——图省事返回插入顺序的话，loadReport 里
+  // "取回后按 (timestamp, id) 升序重排"那段逻辑就测不到了，见任务简报。
+  lastSummaries: async (n: number) => {
+    if (fake.failReads) throw new Error('读取失败');
+    return [...fake.summaries.values()]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, n);
   },
 }));
 
 const repo = await import('./repo');
 
-function record(id: string, net: number): HandRecord {
+function record(id: string, net: number, timestamp = 1700000000000): HandRecord {
   return {
     id,
     heroSeat: 0,
-    timestamp: 1700000000000,
+    timestamp,
     seats: [{ seat: 0, position: 'BTN', personaId: 'hero', startingStack: 100, holeCards: [] }],
     results: [{ seat: 0, netBB: net, showdown: true }],
   } as unknown as HandRecord;
@@ -106,14 +136,33 @@ function view(id: string): HandView {
   };
 }
 
+/**
+ * 报表相关测试用的辅助：净值由 id 派生，而不是像 record() 那样由调用方传入。
+ * recordOf 造记录、netOf 供测试端独立算出期望值，两处共用同一个派生规则，
+ * 不会因为分别硬编码而走岔。
+ */
+function netOf(id: string): number {
+  let n = 0;
+  for (let i = 0; i < id.length; i++) n += id.charCodeAt(i);
+  return n;
+}
+
+function recordOf(id: string, timestamp = 1700000000000): HandRecord {
+  return record(id, netOf(id), timestamp);
+}
+
+const viewOf = view;
+
 beforeEach(() => {
   fake.hands.clear();
+  fake.summaries.clear();
   fake.stats = undefined;
   fake.failWrites = false;
   fake.failHandId = null;
   fake.failReads = false;
   fake.slowStats = false;
   fake.putStatsCalls = 0;
+  fake.allHandsCalls = 0;
   repo.__resetForTest();
 });
 
@@ -399,5 +448,84 @@ describe('resetAll', () => {
     expect(fake.hands.size).toBe(0);
     const s = await repo.loadStats();
     expect(s.hands).toBe(0);
+  });
+});
+
+describe('saveHand 同时写摘要', () => {
+  it('一手写进去之后，摘要 store 里有对应的一条', async () => {
+    await repo.saveHand(recordOf('h1'), viewOf('h1'));
+    expect(fake.summaries.size).toBe(1);
+    expect(fake.summaries.get('h1')!.netBB).toBe(heroNetOf(fake.hands.get('h1')!));
+  });
+});
+
+describe('loadReport', () => {
+  it('窗口取最近 N 手，且按 (timestamp, id) 升序喂给 aggregate', async () => {
+    // 故意乱序写入，且制造两条同毫秒的
+    for (const [id, ts] of [
+      ['c', 3],
+      ['a', 1],
+      ['b2', 2],
+      ['b1', 2],
+    ] as const) {
+      await repo.saveHand(recordOf(id, ts), viewOf(id));
+    }
+    const out = await repo.loadReport(200);
+    expect(out.stats.hands).toBe(4);
+    // 升序且同毫秒按 id：a(1), b1(2), b2(2), c(3)
+    expect(out.stats.netSeries).toEqual(['a', 'b1', 'b2', 'c'].map(netOf));
+  });
+
+  it('库里手数少于窗口时 partial 为 true，仍然出数', async () => {
+    await repo.saveHand(recordOf('h1'), viewOf('h1'));
+    const out = await repo.loadReport(1000);
+    expect(out.partial).toBe(true);
+    expect(out.stats.hands).toBe(1);
+  });
+
+  it('窗口 all 时 partial 恒为 false', async () => {
+    await repo.saveHand(recordOf('h1'), viewOf('h1'));
+    expect((await repo.loadReport('all')).partial).toBe(false);
+  });
+
+  it('存储不可用时返回空统计而不是抛错', async () => {
+    fake.failReads = true;
+    const out = await repo.loadReport(200);
+    expect(out.stats.hands).toBe(0);
+    expect(repo.storageStatus()).toBe('unavailable');
+  });
+});
+
+describe('ensureSummaries', () => {
+  it('计数相等时不扫表', async () => {
+    await repo.saveHand(recordOf('h1'), viewOf('h1'));
+    fake.allHandsCalls = 0;
+    expect(await repo.ensureSummaries()).toBe(true);
+    expect(fake.allHandsCalls).toBe(0);
+  });
+
+  it('计数不等时从 hands 重建（③-C 存下的手牌没有摘要）', async () => {
+    // 直接往假 db 里塞手牌，绕过 saveHand——这正是升级前存下的那些手的状态
+    fake.hands.set('old', storedHandOf(recordOf('old'), viewOf('old')));
+    expect(fake.summaries.size).toBe(0);
+    expect(await repo.ensureSummaries()).toBe(true);
+    expect(fake.summaries.size).toBe(1);
+  });
+
+  it('回填失败时返回 false，不抛错', async () => {
+    fake.hands.set('old', storedHandOf(recordOf('old'), viewOf('old')));
+    fake.failWrites = true;
+    expect(await repo.ensureSummaries()).toBe(false);
+  });
+});
+
+describe('importHands 维护摘要', () => {
+  it('导入的每一手都有摘要', async () => {
+    const out = await repo.importHands([
+      storedHandOf(recordOf('i1'), viewOf('i1')),
+      storedHandOf(recordOf('i2'), viewOf('i2')),
+    ]);
+    expect(out.imported).toBe(2);
+    expect(fake.summaries.size).toBe(2);
   });
 });
