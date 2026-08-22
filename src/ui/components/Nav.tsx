@@ -1,3 +1,6 @@
+import { chipsGreater } from '../../core/chips';
+import { chips } from '../format';
+
 export type PageId = 'table' | 'history' | 'report';
 
 /**
@@ -9,6 +12,10 @@ export type PageId = 'table' | 'history' | 'report';
  *
  * 三项：牌桌（正在打的这一手）、历史（已存的手牌列表，规格 §10.4）、
  * 报表（规格 §10.5 的漏洞报表，对应设计稿的 Progress 屏）。
+ *
+ * 底部「会话盈亏」区块是设计稿三屏左栏共有的部分（不是牌桌专属），所以
+ * 净盈亏/买入/静音这几个 prop 挂在这里而不是 TopBar——Nav 本来就是三个
+ * 页面共用的组件，切到历史/报表页时这块信息照样要显示。
  */
 const ITEMS: readonly { id: PageId; label: string }[] = [
   { id: 'table', label: '牌桌' },
@@ -16,7 +23,24 @@ const ITEMS: readonly { id: PageId; label: string }[] = [
   { id: 'report', label: '报表' },
 ];
 
-export function Nav({ page, onNav }: { page: PageId; onNav: (p: PageId) => void }) {
+export function Nav({
+  page,
+  onNav,
+  netBB,
+  totalBuyIn,
+  muted,
+  onToggleMute,
+}: {
+  page: PageId;
+  onNav: (p: PageId) => void;
+  /** hero 本次会话累计净盈亏，BB */
+  netBB: number;
+  /** hero 本次会话累计买入，BB */
+  totalBuyIn: number;
+  muted: boolean;
+  onToggleMute: () => void;
+}) {
+  const isNeg = chipsGreater(0, netBB);
   return (
     <nav className="nav" aria-label="主导航">
       <div className="nav-brand">
@@ -40,6 +64,25 @@ export function Nav({ page, onNav }: { page: PageId; onNav: (p: PageId) => void 
             {item.label}
           </button>
         ))}
+      </div>
+      <div className="nav-session">
+        <div className="nav-session-head">
+          <span className="nav-session-label">会话盈亏</span>
+          <button
+            type="button"
+            className="nav-mute"
+            onClick={onToggleMute}
+            aria-pressed={muted}
+            title={muted ? '取消静音' : '静音'}
+          >
+            {muted ? '🔇' : '🔊'}
+          </button>
+        </div>
+        <div className={`nav-session-net ${isNeg ? 'neg' : 'pos'}`}>
+          {isNeg ? '' : '+'}
+          {chips(netBB)}
+        </div>
+        <div className="nav-session-buyin">买入 {chips(totalBuyIn)}</div>
       </div>
     </nav>
   );

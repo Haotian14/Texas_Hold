@@ -132,23 +132,43 @@ body {
 
 .topbar {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
-  padding: 10px 14px;
-  font-size: 12.5px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  /* 非对称内边距是设计稿原值：顶 14px、左右 22px，底部只留 6px——
+     牌桌区自己的上边距会把视觉间距补足，顶栏不需要在底部再留满。 */
+  padding: 14px 22px 6px;
   color: var(--text);
   background: var(--app);
   border-bottom: 1px solid var(--line);
+}
+/* 游戏类型胶囊。设计稿带一个「▾」暗示可切换游戏，本项目只有德州扑克
+   一种玩法，故不渲染箭头，做成静态标签——尺寸/圆角/边框照抄设计稿。 */
+.topbar-game {
+  display: flex;
+  align-items: center;
+  flex: none;
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+/* 盲注级别 · 桌型 · 手数，合并进设计稿这一行文字 */
+.topbar-meta {
+  font-size: 12.5px;
+  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
-.topbar-item.pos { color: var(--positive); }
-.topbar-item.neg { color: var(--danger); }
-.topbar-item.dim {
-  color: var(--text-dim);
-  font-weight: 500;
+/* 「未记录」「深筹码」这类状态标记，靠右——净盈亏/买入/静音已经搬去
+   Nav 底部的会话盈亏区块，顶栏右侧不再重复显示它们 */
+.topbar-flags {
   margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 .topbar-item.warn {
   color: var(--warn);
@@ -916,18 +936,6 @@ body {
   .pot.pot-won { animation: none; }
 }
 
-.topbar-mute {
-  margin-left: 6px;
-  border: none;
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 14px;
-  line-height: 1;
-  padding: 2px 4px;
-  cursor: pointer;
-}
-.topbar-mute:hover { color: var(--text); }
-
 /* ───────── ③-B 复盘卡片：EV 条形图 ───────── */
 
 /* 三列的宽度定义在这里，是因为它有两个消费者：每行的 grid，以及
@@ -1115,7 +1123,7 @@ body {
 }
 
 /* 净盈亏的红绿。`.neg`/`.pos` 在本项目里从来不是独立类——现有规则是
-   `.topbar-item.neg` 和 `.summary-line .neg`，都带着祖先/同级限定。
+   `.nav-session-net.neg` 和 `.summary-line .neg`，都带着祖先/同级限定。
    照抄 SummaryBar 的 className={isNeg ? 'neg' : 'pos'} 而不配一条自己的
    规则，结果是这里的金额完全没颜色，赢和输长得一模一样，而项目没有
    组件渲染测试，没有任何一条测试会发现。 */
@@ -1483,6 +1491,51 @@ body {
   background: var(--blue);
 }
 
+/* 会话盈亏：贴导航底部，靠 margin-top:auto 撑开——设计稿三屏的左栏都有
+   这一块（不是牌桌专属），所以挂在 Nav 而不是 TopBar 上，见 Nav.tsx 顶部
+   的注释。净盈亏/买入/静音这三样都是从旧版顶栏搬过来的。 */
+.nav-session {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 4px 0;
+  border-top: 1px solid var(--line);
+}
+.nav-session-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nav-session-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.01em;
+}
+.nav-mute {
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+.nav-mute:hover { color: var(--text-dim); }
+.nav-session-net {
+  font-size: 19px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.nav-session-net.pos { color: var(--positive); }
+.nav-session-net.neg { color: var(--danger); }
+.nav-session-buyin {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- 历史页 ---- */
 .hist {
   display: flex;
@@ -1679,6 +1732,17 @@ body {
   .nav-item {
     padding: 6px 12px;
     font-size: 12px;
+  }
+  /* 横向条里没有「底部」可贴：margin-top:auto 在 row 方向上不成立，
+     改用 margin-left:auto 把这一块推到条的最右端，去掉纵向卡片才需要的
+     上边框/内边距，数字右对齐紧凑排布。 */
+  .nav-session {
+    margin-top: 0;
+    margin-left: auto;
+    align-items: flex-end;
+    gap: 2px;
+    padding: 0;
+    border-top: none;
   }
   .app-main {
     /* 安全区已经由 .nav 的 padding 补过了，这里再补一次就是两倍 */

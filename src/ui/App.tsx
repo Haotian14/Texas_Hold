@@ -347,7 +347,14 @@ export function App() {
 
   return (
     <div className="app">
-      <Nav page={page} onNav={setPage} />
+      <Nav
+        page={page}
+        onNav={setPage}
+        netBB={netBB}
+        totalBuyIn={state.ledger.totalBuyIn}
+        muted={muted}
+        onToggleMute={onToggleMute}
+      />
       <div className="app-main">
         {page === 'history' ? (
           <>
@@ -376,12 +383,8 @@ export function App() {
             <TopBar
               handsPlayed={state.ledger.handsPlayed}
               inProgress={state.phase !== 'handOver'}
-              netBB={netBB}
-              totalBuyIn={state.ledger.totalBuyIn}
               deepStack={isDeepStackHand(state)}
               storageOk={storageOk}
-              muted={muted}
-              onToggleMute={onToggleMute}
             />
             <Table
               game={state.game}
