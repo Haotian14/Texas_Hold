@@ -2,7 +2,19 @@ import { describe, it, expect } from 'vitest';
 import type { HandView, DecisionView } from '../review/view';
 import type { HandRecord } from '../core/types';
 import type { EvCandidate } from '../core/evEstimate';
-import { handGrade, timelineOf, barsOf, foldedSeatsOf, TAG_TEXT } from './reviewModel';
+import {
+  handGrade,
+  barsOf,
+  foldedSeatsOf,
+  TAG_TEXT,
+  severityText,
+  streetSummaries,
+  defaultStreetOf,
+  heroNetOf,
+  endingText,
+  handNumberOf,
+  handSubtitle,
+} from './reviewModel';
 import { PREFLOP_TAGS, POSTFLOP_TAGS } from '../review/taxonomy';
 
 /**
@@ -105,33 +117,6 @@ function candidate(over: Partial<EvCandidate> = {}): EvCandidate {
   };
 }
 
-describe('timelineOf', () => {
-  it('按街分组，只保留有决策点的街，街序固定为翻前→翻牌→转牌→河牌', () => {
-    // 刻意乱序传入，验证输出不是照抄输入顺序
-    const groups = timelineOf(analysis([
-      decision({ actionIndex: 3, street: 'river' }),
-      decision({ actionIndex: 0, street: 'preflop' }),
-      decision({ actionIndex: 2, street: 'flop' }),
-    ]));
-    expect(groups.map(g => g.street)).toEqual(['preflop', 'flop', 'river']);
-    expect(groups.map(g => g.label)).toEqual(['翻前', '翻牌', '河牌']);
-  });
-
-  it('组内按 actionIndex 升序，index 指回 decisions 里的原下标', () => {
-    // decisions 数组里的顺序是 2、0、1，actionIndex 是 7、5、6
-    const groups = timelineOf(analysis([
-      decision({ actionIndex: 7, street: 'flop' }),
-      decision({ actionIndex: 5, street: 'flop' }),
-      decision({ actionIndex: 6, street: 'flop' }),
-    ]));
-    expect(groups).toHaveLength(1);
-    expect(groups[0].rows.map(r => r.decision.actionIndex)).toEqual([5, 6, 7]);
-    // index 必须是「在 a.decisions 里的下标」，不是排序后的名次 ——
-    // 展开状态用它做 key，错了会展开错的那一行
-    expect(groups[0].rows.map(r => r.index)).toEqual([1, 2, 0]);
-  });
-});
-
 describe('barsOf', () => {
   it('全为非负 EV 时零点在最左，条从零点向右伸', () => {
     const chart = barsOf(decision({
@@ -217,5 +202,202 @@ describe('TAG_TEXT', () => {
   it('标签互不重复 —— 两个 tag 显示成同一句话，用户分不出自己犯的是哪个错', () => {
     const texts = ALL_TAGS.map(t => TAG_TEXT[t]);
     expect(new Set(texts).size).toBe(texts.length);
+  });
+});
+
+describe('severityText', () => {
+  it('degraded 与 ok 说的不是同一句话 —— 算不出来不等于打得对', () => {
+    expect(severityText(true, 'ok')).toBe('无法判定');
+    expect(severityText(false, 'ok')).toBe('没问题');
+  });
+
+  it('四档 severity 各有一句话，且互不重复', () => {
+    const texts = (['ok', 'minor', 'notable', 'severe'] as const).map(s => severityText(false, s));
+    expect(texts.every(t => t.length > 0)).toBe(true);
+    expect(new Set(texts).size).toBe(4);
+  });
+});
+
+describe('streetSummaries', () => {
+  it('恒返回四条街，即使一条决策点都没有', () => {
+    const list = streetSummaries(analysis([]));
+    expect(list.map(s => s.street)).toEqual(['preflop', 'flop', 'turn', 'river']);
+    expect(list.map(s => s.label)).toEqual(['翻前', '翻牌', '转牌', '河牌']);
+    expect(list.every(s => s.status === 'skip')).toBe(true);
+    expect(list.every(s => s.evText === 'n/a')).toBe(true);
+  });
+
+  it('view 为 null（分析失败）时也给出四条灰卡片，而不是空数组', () => {
+    const list = streetSummaries(null);
+    expect(list).toHaveLength(4);
+    expect(list.every(s => s.status === 'skip' && s.rows.length === 0)).toBe(true);
+  });
+
+  it('该街全是 ok / minor → good，EV 文案是破折号', () => {
+    const list = streetSummaries(analysis([
+      decision({ street: 'flop', actionIndex: 2, severity: 'ok', evLoss: 0 }),
+      decision({ street: 'flop', actionIndex: 3, severity: 'minor', evLoss: 0.2 }),
+    ]));
+    const flop = list[1];
+    expect(flop.status).toBe('good');
+    expect(flop.evText).toBe('—');
+    expect(flop.tagText).toBe('按计划');
+    expect(flop.title).toBe('翻牌 — 打得对');
+  });
+
+  it('该街出现 notable / severe → leak，EV 文案是该街 evLoss 之和', () => {
+    const list = streetSummaries(analysis([
+      decision({ street: 'turn', actionIndex: 4, severity: 'minor', evLoss: 0.3 }),
+      decision({
+        street: 'turn',
+        actionIndex: 5,
+        severity: 'notable',
+        evLoss: 2,
+        tag: 'should_have_folded',
+      }),
+    ]));
+    const turn = list[2];
+    expect(turn.status).toBe('leak');
+    expect(turn.evLoss).toBe(2.3);
+    // U+2212 减号，不是连字符
+    expect(turn.evText).toBe('−2.3 BB');
+    expect(turn.title).toBe('转牌 — 损失 2.3 BB');
+    expect(turn.tagText).toBe(TAG_TEXT.should_have_folded);
+  });
+
+  it('evLoss 求和不带浮点尾数', () => {
+    const list = streetSummaries(analysis([
+      decision({ street: 'river', actionIndex: 6, severity: 'notable', evLoss: 1.1 }),
+      decision({ street: 'river', actionIndex: 7, severity: 'ok', evLoss: 2.2 }),
+    ]));
+    // 1.1 + 2.2 在 IEEE754 里是 3.3000000000000003
+    expect(list[3].evLoss).toBe(3.3);
+  });
+
+  it('该街全部 degraded → skip，不会被当成「打得对」', () => {
+    // degraded 的决策点 severity 恒为 ok，剔不干净就会显示成绿 ✓
+    const list = streetSummaries(analysis([
+      decision({ street: 'preflop', actionIndex: 0, degraded: true, severity: 'ok' }),
+    ]));
+    const pre = list[0];
+    expect(pre.status).toBe('skip');
+    expect(pre.evText).toBe('n/a');
+    // 但决策点本身仍要交给右栏渲染出来，否则那条街的记录就凭空消失了
+    expect(pre.rows).toHaveLength(1);
+    expect(pre.title).toBe('翻前 — 不做判定');
+  });
+
+  it('同一条街的决策点全部保留，按 actionIndex 升序，index 指回原下标', () => {
+    const list = streetSummaries(analysis([
+      decision({ street: 'flop', actionIndex: 9 }),
+      decision({ street: 'flop', actionIndex: 7 }),
+      decision({ street: 'turn', actionIndex: 11 }),
+    ]));
+    expect(list[1].rows.map(r => r.decision.actionIndex)).toEqual([7, 9]);
+    expect(list[1].rows.map(r => r.index)).toEqual([1, 0]);
+    expect(list[2].rows).toHaveLength(1);
+  });
+
+  it('同严重度时标签取损失更大的那个决策点', () => {
+    const list = streetSummaries(analysis([
+      decision({
+        street: 'flop',
+        actionIndex: 2,
+        severity: 'notable',
+        evLoss: 1,
+        tag: 'missed_cbet',
+      }),
+      decision({
+        street: 'flop',
+        actionIndex: 3,
+        severity: 'notable',
+        evLoss: 3,
+        tag: 'over_bluffing',
+      }),
+    ]));
+    expect(list[1].tagText).toBe(TAG_TEXT.over_bluffing);
+  });
+
+  it('leak 但没有分类时给一句兜底话，不留空胶囊', () => {
+    const list = streetSummaries(analysis([
+      decision({ street: 'flop', actionIndex: 2, severity: 'severe', evLoss: 5, tag: null }),
+    ]));
+    expect(list[1].tagText).toBe('有失误');
+  });
+});
+
+describe('defaultStreetOf', () => {
+  it('优先选第一条有失误的街', () => {
+    const list = streetSummaries(analysis([
+      decision({ street: 'preflop', actionIndex: 0, severity: 'ok' }),
+      decision({ street: 'turn', actionIndex: 4, severity: 'notable', evLoss: 2 }),
+      decision({ street: 'river', actionIndex: 6, severity: 'severe', evLoss: 9 }),
+    ]));
+    // 不是「最严重的那条街」，是**第一条**有失误的街 —— 复盘按时间顺序读
+    expect(defaultStreetOf(list)).toBe('turn');
+  });
+
+  it('没有失误时选第一条有决策点的街', () => {
+    const list = streetSummaries(analysis([
+      decision({ street: 'flop', actionIndex: 2, severity: 'ok' }),
+    ]));
+    expect(defaultStreetOf(list)).toBe('flop');
+  });
+
+  it('一条决策点都没有时落回翻前，不返回 null', () => {
+    expect(defaultStreetOf(streetSummaries(analysis([])))).toBe('preflop');
+  });
+});
+
+describe('页头文案', () => {
+  function record(over: Partial<HandRecord> = {}): HandRecord {
+    return {
+      id: 's1700000000000-h38',
+      timestamp: 1700000000000,
+      heroSeat: 0,
+      seats: [
+        { seat: 0, position: 'BTN', personaId: 'hero' },
+        { seat: 1, position: 'SB', personaId: 'tag' },
+        { seat: 2, position: 'BB', personaId: 'rock' },
+      ],
+      actions: [],
+      results: [{ seat: 0, netBB: 3.5, showdown: false }],
+      ...over,
+    } as unknown as HandRecord;
+  }
+
+  it('heroNetOf 取 hero 座位的净盈亏；没有该座位的结果时是 0 而不是 NaN', () => {
+    expect(heroNetOf(record())).toBe(3.5);
+    expect(heroNetOf(record({ results: [] }))).toBe(0);
+  });
+
+  it('endingText 区分摊牌与弃牌结束', () => {
+    expect(endingText(record())).toBe('弃牌结束');
+    expect(endingText(record({ results: [{ seat: 0, netBB: 1, showdown: true }] }))).toBe('摊牌');
+  });
+
+  it('handNumberOf 从 record.id 的 -h 后缀取序号，handIndex 从 0 起所以显示 +1', () => {
+    expect(handNumberOf(record())).toBe(39);
+    // 认不出来时返回 null，不编一个号出来
+    expect(handNumberOf(record({ id: 'imported-abc' }))).toBe(null);
+  });
+
+  it('只剩一个对手没弃牌时副标题点名到人', () => {
+    const rec = record({
+      actions: [
+        { seat: 2, street: 'preflop', type: 'fold', amount: 0, toCall: 1, potBefore: 1.5 },
+      ] as unknown as HandRecord['actions'],
+    });
+    expect(handSubtitle(rec)).toBe('第 39 手 · vs SB（紧凶）');
+  });
+
+  it('对手不止一个时只说人数，不随手挑一个座位冒充「那个对手」', () => {
+    expect(handSubtitle(record())).toBe('第 39 手 · vs 2 名对手');
+  });
+
+  it('认不出手牌序号时退回显示日期，而不是「第 NaN 手」', () => {
+    const text = handSubtitle(record({ id: 'imported-abc' }));
+    expect(text).not.toMatch(/NaN|第 null/);
+    expect(text.endsWith('· vs 2 名对手')).toBe(true);
   });
 });

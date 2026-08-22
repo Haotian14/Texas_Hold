@@ -1,7 +1,13 @@
 import { chipsGreater } from '../../core/chips';
 import { chips } from '../format';
 
-export type PageId = 'table' | 'history' | 'report';
+/**
+ * 「历史」不在导航里：它是复盘页右栏底部那颗「全部手牌」按钮的去处，
+ * 不是一个平级的顶层页面（设计稿三屏里也没有它，见 design-gap.md 第三节）。
+ * 它仍然是一个 PageId —— 页面切换只有这一套状态，为它另开一个布尔量会让
+ * 「现在到底在哪一页」有两个来源。
+ */
+export type PageId = 'table' | 'review' | 'history' | 'report';
 
 /**
  * 主导航。
@@ -10,8 +16,10 @@ export type PageId = 'table' | 'history' | 'report';
  * 控件（全部由 CSS 控制，见 app.css 的 .nav）。写成两套 DOM 再按屏宽二选一
  * 的话，两边的可访问性属性、选中态、键盘顺序都得各维护一遍。
  *
- * 三项：牌桌（正在打的这一手）、历史（已存的手牌列表，规格 §10.4）、
- * 报表（规格 §10.5 的漏洞报表，对应设计稿的 Progress 屏）。
+ * 三项：牌桌（正在打的这一手）、复盘（对应设计稿的 Hand Review 屏，显示
+ * 最近打完或从历史选中的那一手）、报表（规格 §10.5 的漏洞报表，对应设计稿
+ * 的 Progress 屏）。历史列表（规格 §10.4）是复盘页的下一级，从那一页的
+ * 「全部手牌」按钮进，所以在这里高亮的仍是「复盘」。
  *
  * 底部「会话盈亏」区块是设计稿三屏左栏共有的部分（不是牌桌专属），所以
  * 净盈亏/买入/静音这几个 prop 挂在这里而不是 TopBar——Nav 本来就是三个
@@ -19,7 +27,7 @@ export type PageId = 'table' | 'history' | 'report';
  */
 const ITEMS: readonly { id: PageId; label: string }[] = [
   { id: 'table', label: '牌桌' },
-  { id: 'history', label: '历史' },
+  { id: 'review', label: '复盘' },
   { id: 'report', label: '报表' },
 ];
 
@@ -50,20 +58,25 @@ export function Nav({
         <span className="nav-title">德州扑克训练器</span>
       </div>
       <div className="nav-items">
-        {ITEMS.map(item => (
+        {ITEMS.map(item => {
+          // 历史页高亮「复盘」：它是复盘的下一级，不高亮任何一项会让用户在
+          // 那一页看不出自己身处应用的哪一块
+          const on = item.id === page || (item.id === 'review' && page === 'history');
+          return (
           <button
             key={item.id}
             type="button"
-            className={item.id === page ? 'nav-item nav-item-on' : 'nav-item'}
+            className={on ? 'nav-item nav-item-on' : 'nav-item'}
             onClick={() => onNav(item.id)}
             // 当前页用 aria-current 而不是只靠一个蓝点：那个点是 aria-hidden
             // 的装饰，读屏用户只能从这里知道自己在哪一页
-            aria-current={item.id === page ? 'page' : undefined}
+            aria-current={on ? 'page' : undefined}
           >
             <span className="nav-dot" aria-hidden="true" />
             {item.label}
           </button>
-        ))}
+          );
+        })}
       </div>
       <div className="nav-session">
         <div className="nav-session-head">
