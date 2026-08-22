@@ -33,6 +33,7 @@ import { ReviewSheet } from './components/ReviewSheet';
 import { ReviewTrigger, type ReviewStatus } from './components/ReviewTrigger';
 import { Nav, type PageId } from './components/Nav';
 import { HistoryPage } from './pages/HistoryPage';
+import { ReportPage } from './pages/ReportPage';
 import type { StoredHand } from '../storage/schema';
 
 const CFG: SessionConfig = {
@@ -368,6 +369,8 @@ export function App() {
               />
             ) : null}
           </>
+        ) : page === 'report' ? (
+          <ReportPage />
         ) : (
           <>
             <TopBar

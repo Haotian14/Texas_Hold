@@ -1,4 +1,4 @@
-export type PageId = 'table' | 'history';
+export type PageId = 'table' | 'history' | 'report';
 
 /**
  * 主导航。
@@ -7,12 +7,13 @@ export type PageId = 'table' | 'history';
  * 控件（全部由 CSS 控制，见 app.css 的 .nav）。写成两套 DOM 再按屏宽二选一
  * 的话，两边的可访问性属性、选中态、键盘顺序都得各维护一遍。
  *
- * 只有两项。设计稿里还有第三项 Progress（漏洞报表），那是 ③-D——列一个点了
- * 没反应的入口比不列更糟，用户会以为是坏了。
+ * 三项：牌桌（正在打的这一手）、历史（已存的手牌列表，规格 §10.4）、
+ * 报表（规格 §10.5 的漏洞报表，对应设计稿的 Progress 屏）。
  */
 const ITEMS: readonly { id: PageId; label: string }[] = [
   { id: 'table', label: '牌桌' },
   { id: 'history', label: '历史' },
+  { id: 'report', label: '报表' },
 ];
 
 export function Nav({ page, onNav }: { page: PageId; onNav: (p: PageId) => void }) {

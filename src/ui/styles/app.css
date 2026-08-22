@@ -1769,3 +1769,243 @@ body {
   margin-left: auto;
   flex: none;
 }
+
+/* ───────── 报表页（③-D 首个入口，规格 §10.5，对应设计稿 Progress 屏） ───────── */
+
+.rep {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px calc(18px + var(--safe-bottom));
+}
+
+.rep-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.rep-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.rep-win {
+  display: flex;
+  gap: 5px;
+}
+/* 「库里共 N 手」——partial 不是空态，选了大窗口的新用户要看得到报表，
+   这里只提醒实际手数比窗口小 */
+.rep-partial-note {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+/* 回填没成功：正常渲染，只在页头挂一句提醒，不挡内容 */
+.rep-backfill-note {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warn);
+}
+
+.rep-empty {
+  margin: 24px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+/* 卡片外观抄 .hist-row：同一圆角、同一条边线、同一层阴影，不另调一套 */
+.rep-card {
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+}
+
+.rep-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.rep-kpi {
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+  padding: 13px 14px;
+}
+.rep-kpi-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 5px;
+}
+.rep-kpi-value {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.rep-kpi-value-positive { color: var(--positive); }
+.rep-kpi-value-negative { color: var(--danger); }
+.rep-kpi-unit {
+  margin-left: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.rep-main {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.rep-card-title {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.rep-curve-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+}
+.rep-curve-svg {
+  width: 100%;
+  height: 150px;
+}
+.rep-curve-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  padding-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.rep-trend {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.rep-bars-card,
+.rep-pos-card {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.rep-side-empty {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.rep-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rep-bar-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+}
+.rep-bar-name {
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rep-bar-count {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.rep-bar-amount {
+  margin-left: auto;
+  flex: none;
+  color: var(--danger);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.rep-bar-track {
+  height: 5px;
+  border-radius: 99px;
+  background: var(--soft);
+  overflow: hidden;
+}
+.rep-bar-fill {
+  height: 100%;
+  background: var(--danger);
+  border-radius: 99px;
+  opacity: 0.85;
+}
+
+.rep-pos-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+}
+.rep-pos-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-faint);
+}
+.rep-pos-dot-positive { background: var(--positive); }
+.rep-pos-dot-negative { background: var(--danger); }
+.rep-pos-name {
+  width: 34px;
+  flex: none;
+  color: var(--text-2);
+  font-weight: 600;
+}
+.rep-pos-rate {
+  margin-left: auto;
+  color: var(--text);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-note {
+  margin: 4px 0 0;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+@media (max-width: 520px) {
+  .rep {
+    padding: 12px 12px calc(14px + var(--safe-bottom));
+  }
+  .rep-kpis {
+    grid-template-columns: 1fr;
+  }
+  .rep-main {
+    grid-template-columns: 1fr;
+  }
+}
