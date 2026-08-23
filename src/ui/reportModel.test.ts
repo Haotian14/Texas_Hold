@@ -10,6 +10,7 @@ import {
   toneOf,
   forceNegText,
   MAX_POINTS,
+  smoothPath,
 } from './reportModel';
 import { aggregate } from '../storage/summary';
 
@@ -185,5 +186,71 @@ describe('positionRowsOf', () => {
 
   it('没打过的位置 bb100 为 null（界面显示破折号），不是 0', () => {
     expect(positionRowsOf(empty).every(r => r.bb100 === null)).toBe(true);
+  });
+});
+
+describe('smoothPath', () => {
+  const pts = (...xy: [number, number][]) => xy.map(([x, y]) => [x, y] as const);
+
+  it('空数组给空串', () => {
+    expect(smoothPath([])).toBe('');
+  });
+
+  it('单点只有一个 M', () => {
+    expect(smoothPath(pts([10, 20]))).toBe('M10,20');
+  });
+
+  it('两点之间是一段三次曲线，起止点精确落在数据点上', () => {
+    const d = smoothPath(pts([0, 0], [10, 10]));
+    expect(d.startsWith('M0,0')).toBe(true);
+    expect(d.endsWith('10,10')).toBe(true);
+    expect(d).toContain('C');
+  });
+
+  it('平坦数据不产生任何起伏：所有控制点的 y 与数据点相同', () => {
+    const d = smoothPath(pts([0, 5], [10, 5], [20, 5], [30, 5]));
+    const ys = [...d.matchAll(/-?\d+(?:\.\d+)?,(-?\d+(?:\.\d+)?)/g)].map(m => Number(m[1]));
+    expect(ys.every(y => Math.abs(y - 5) < 1e-9)).toBe(true);
+  });
+
+  it('单调数据不过冲——控制点的 y 恒落在相邻两点之间', () => {
+    // 这是用单调三次插值而不是普通样条的全部理由：累计盈亏曲线一旦过冲，
+    // 就会在两手之间画出一段从未发生过的回撤。
+    const data = pts([0, 100], [10, 90], [20, 60], [30, 58], [40, 10]);
+    const d = smoothPath(data);
+    const seg = [...d.matchAll(/C([-\d.]+),([-\d.]+) ([-\d.]+),([-\d.]+) ([-\d.]+),([-\d.]+)/g)];
+    expect(seg.length).toBe(data.length - 1);
+    seg.forEach((m, i) => {
+      const y0 = data[i]![1];
+      const y1 = data[i + 1]![1];
+      const lo = Math.min(y0, y1) - 1e-9;
+      const hi = Math.max(y0, y1) + 1e-9;
+      expect(Number(m[2])).toBeGreaterThanOrEqual(lo);
+      expect(Number(m[2])).toBeLessThanOrEqual(hi);
+      expect(Number(m[4])).toBeGreaterThanOrEqual(lo);
+      expect(Number(m[4])).toBeLessThanOrEqual(hi);
+    });
+  });
+
+  it('局部极值处同样不过冲（先涨后跌）', () => {
+    const data = pts([0, 50], [10, 10], [20, 50]);
+    const d = smoothPath(data);
+    const seg = [...d.matchAll(/C([-\d.]+),([-\d.]+) ([-\d.]+),([-\d.]+) ([-\d.]+),([-\d.]+)/g)];
+    seg.forEach((m, i) => {
+      const lo = Math.min(data[i]![1], data[i + 1]![1]) - 1e-9;
+      const hi = Math.max(data[i]![1], data[i + 1]![1]) + 1e-9;
+      for (const y of [Number(m[2]), Number(m[4])]) {
+        expect(y).toBeGreaterThanOrEqual(lo);
+        expect(y).toBeLessThanOrEqual(hi);
+      }
+    });
+  });
+
+  it('每个数据点都精确出现在路径上，不被平滑抹掉', () => {
+    const data = pts([0, 0], [10, 30], [20, 5], [30, 40]);
+    const d = smoothPath(data);
+    for (const [x, y] of data.slice(1)) {
+      expect(d).toContain(`${x},${y}`);
+    }
   });
 });

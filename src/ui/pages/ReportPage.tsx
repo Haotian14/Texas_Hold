@@ -11,6 +11,7 @@ import {
   numText,
   toneOf,
   forceNegText,
+  smoothPath,
 } from '../reportModel';
 import type { CurvePoint } from '../reportModel';
 
@@ -35,8 +36,14 @@ type LoadState = 'loading' | 'ready' | 'unavailable' | 'partial-backfill';
 
 const CURVE_W = 300;
 const CURVE_H = 120;
-/** 上下各留一点边，末点的实心圆点（半径 3.5）不然会被 viewBox 边缘削掉 */
+/** 上下各留一点边，末点的圆点不然会被 viewBox 边缘削掉 */
 const CURVE_PAD = 6;
+/**
+ * 横向也要留边，理由同上——末点恰好落在 x = CURVE_W 上时，圆点有一半在
+ * 画布外。留 2.5 个 viewBox 单位，横向缩放约 2.9 倍后是 7px 上下，刚好
+ * 兜住那个 6px 的点。
+ */
+const CURVE_PAD_X = 2.5;
 
 /**
  * 内联 SVG 折线图，不引图表库（全局约束）。
@@ -59,13 +66,17 @@ function CurveChart({ points }: { points: CurvePoint[] }) {
   const yOf = (v: number): number =>
     flat ? CURVE_H / 2 : CURVE_PAD + (1 - (v - min) / (max - min)) * usable;
   const xOf = (idx: number): number =>
-    points.length <= 1 ? CURVE_W / 2 : (idx / (points.length - 1)) * CURVE_W;
+    points.length <= 1
+      ? CURVE_W / 2
+      : CURVE_PAD_X + (idx / (points.length - 1)) * (CURVE_W - CURVE_PAD_X * 2);
 
   const coords = points.map((p, idx) => [xOf(idx), yOf(p.cum)] as const);
-  const polyStr = coords.map(([x, y]) => `${x},${y}`).join(' ');
+  const linePath = smoothPath(coords);
   const firstX = coords[0]![0];
   const [lastX, lastY] = coords[coords.length - 1]!;
-  const areaPath = `M${firstX},${CURVE_H} L${polyStr} L${lastX},${CURVE_H} Z`;
+  // 填充区沿用同一条平滑路径，再垂直落到底边闭合——两者若一个曲一个折，
+  // 填充的上沿会和线错开
+  const areaPath = `M${firstX},${CURVE_H} L${firstX},${coords[0]![1]} ${linePath.slice(1)} L${lastX},${CURVE_H} Z`;
   const zeroY = yOf(0);
 
   return (
@@ -88,6 +99,7 @@ function CurveChart({ points }: { points: CurvePoint[] }) {
         y2={CURVE_H * 0.25}
         stroke="var(--line)"
         strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
       />
       <line
         x1={0}
@@ -96,6 +108,7 @@ function CurveChart({ points }: { points: CurvePoint[] }) {
         y2={CURVE_H * 0.55}
         stroke="var(--line)"
         strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
       />
       {/* 回本线：cum = 0 的水平线，虚线——它是这张图最该让人先看到的刻度 */}
       <line
@@ -105,18 +118,29 @@ function CurveChart({ points }: { points: CurvePoint[] }) {
         y2={zeroY}
         stroke="var(--line-2)"
         strokeWidth={1}
-        strokeDasharray="3 3"
+        strokeDasharray="4 4"
+        vectorEffect="non-scaling-stroke"
       />
       <path d={areaPath} fill="url(#repCurveFill)" />
-      <polyline
-        points={polyStr}
+      <path
+        d={linePath}
         fill="none"
         stroke="var(--blue)"
-        strokeWidth={2.25}
+        strokeWidth={2}
         strokeLinejoin="round"
         strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
       />
-      <circle cx={lastX} cy={lastY} r={3.5} fill="var(--blue)" />
+      {/* 末点用「零长度线段 + 圆头线帽」画，而不是 <circle>：viewBox 被
+          非等比拉伸，circle 会变成椭圆，而线帽的粗细走 non-scaling-stroke，
+          在屏幕上恒是正圆。直径 = strokeWidth。 */}
+      <path
+        d={`M${lastX},${lastY} L${lastX},${lastY}`}
+        stroke="var(--blue)"
+        strokeWidth={6}
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      />
     </svg>
   );
 }

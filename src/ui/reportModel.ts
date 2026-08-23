@@ -248,3 +248,74 @@ export function positionRowsOf(s: WindowStats): PositionRow[] {
     };
   });
 }
+
+/** 路径坐标保留三位小数：再多只会撑大 DOM 字符串，肉眼看不出差别 */
+function n3(v: number): number {
+  return Math.round(v * 1000) / 1000;
+}
+
+/**
+ * 把一串坐标点连成**平滑**的 SVG 路径（三次贝塞尔），用单调三次插值
+ * （Fritsch–Carlson）确定切线。
+ *
+ * 为什么不是普通样条：普通样条会在数据点之间**过冲**。放在累计盈亏曲线上，
+ * 过冲就是在两手牌之间画出一段从未发生过的回撤——图表凭空捏造了一次亏损。
+ * 单调三次插值的全部意义就是保证曲线在相邻两点之间不越界，因此这里的
+ * "好看"不以"如实"为代价。
+ *
+ * 入参的 x 必须严格递增（曲线的 x 是手序，天然满足）。少于两个点时退化成
+ * 一条 M 指令或空串，调用方不必特判。
+ */
+export function smoothPath(coords: readonly (readonly [number, number])[]): string {
+  if (coords.length === 0) return '';
+  const head = `M${n3(coords[0]![0])},${n3(coords[0]![1])}`;
+  if (coords.length === 1) return head;
+
+  const n = coords.length;
+  const h: number[] = [];
+  const delta: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const dx = coords[i + 1]![0] - coords[i]![0];
+    h.push(dx);
+    delta.push(dx === 0 ? 0 : (coords[i + 1]![1] - coords[i]![1]) / dx);
+  }
+
+  // 切线初值：端点取单侧斜率，内点取两侧平均
+  const m: number[] = new Array(n);
+  m[0] = delta[0]!;
+  m[n - 1] = delta[n - 2]!;
+  for (let i = 1; i < n - 1; i++) m[i] = (delta[i - 1]! + delta[i]!) / 2;
+
+  // Fritsch–Carlson 修正：把切线压回不会过冲的范围
+  for (let i = 0; i < n - 1; i++) {
+    if (delta[i] === 0) {
+      // 这一段是平的，两端切线都必须归零，否则曲线会在平段里鼓起来
+      m[i] = 0;
+      m[i + 1] = 0;
+      continue;
+    }
+    const a = m[i]! / delta[i]!;
+    const b = m[i + 1]! / delta[i]!;
+    // 切线与段斜率反号说明这里是局部极值，切线必须归零
+    if (a < 0) m[i] = 0;
+    if (b < 0) m[i + 1] = 0;
+    const s = a * a + b * b;
+    if (s > 9) {
+      const t = 3 / Math.sqrt(s);
+      m[i] = t * a * delta[i]!;
+      m[i + 1] = t * b * delta[i]!;
+    }
+  }
+
+  let d = head;
+  for (let i = 0; i < n - 1; i++) {
+    const [x0, y0] = coords[i]!;
+    const [x1, y1] = coords[i + 1]!;
+    const c1x = x0 + h[i]! / 3;
+    const c1y = y0 + (m[i]! * h[i]!) / 3;
+    const c2x = x1 - h[i]! / 3;
+    const c2y = y1 - (m[i + 1]! * h[i]!) / 3;
+    d += ` C${n3(c1x)},${n3(c1y)} ${n3(c2x)},${n3(c2y)} ${n3(x1)},${n3(y1)}`;
+  }
+  return d;
+}
