@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { personaLabel, seatBadge, HERO_PERSONA_ID } from './seatLabels';
+import { personaLabel, seatBadge, personaAvatarLetter, HERO_PERSONA_ID } from './seatLabels';
 import { PERSONAS, GTO_PERSONA } from '../ai/personas';
 
 describe('personaLabel', () => {
@@ -26,8 +26,24 @@ describe('personaLabel', () => {
 });
 
 describe('seatBadge', () => {
-  it('头像方块里放的是位置本身', () => {
+  it('胶囊内小字位置标记放的是位置本身', () => {
     expect(seatBadge('BTN')).toBe('BTN');
     expect(seatBadge('SB')).toBe('SB');
+  });
+});
+
+describe('personaAvatarLetter', () => {
+  it('每个真实 persona 都能查到头像字，六个各不相同', () => {
+    const letters = PERSONAS.map(p => personaAvatarLetter(p.id));
+    expect(letters).toEqual(['G', '紧', '松', '跟', '岩', '疯']);
+    expect(new Set(letters).size).toBe(PERSONAS.length);
+  });
+
+  it('hero 显示 YOU，不是任何一个 persona 的头像字', () => {
+    expect(personaAvatarLetter(HERO_PERSONA_ID)).toBe('YOU');
+  });
+
+  it('id 缺失时兜到 GTO 原型的头像字', () => {
+    expect(personaAvatarLetter(undefined)).toBe(personaAvatarLetter(GTO_PERSONA.id));
   });
 });

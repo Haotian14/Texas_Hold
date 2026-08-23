@@ -13,10 +13,17 @@ import type { ActionType } from '../core/types';
  */
 export const CHIPS_PER_BB = 40;
 
-/** BB → 实额字符串，带千位分隔，取整到个位 */
+/**
+ * BB → 实额字符串，带 `$` 前缀与千位分隔，取整到个位。
+ *
+ * 负号放在 `$` 前面（"-$500"，不是 "$-500"）——调用方若要自己拼 "+" 号
+ * （如「会话盈亏」正数前缀），可以直接 `sign + chips(bb)`，不会跟这里的
+ * "-" 冲突或重复。
+ */
 export function chips(bb: number): string {
   const v = Math.round(bb * CHIPS_PER_BB) || 0;
-  return v.toLocaleString('en-US');
+  const sign = v < 0 ? '-' : '';
+  return `${sign}$${Math.abs(v).toLocaleString('en-US')}`;
 }
 
 /**

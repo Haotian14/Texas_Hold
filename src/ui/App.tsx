@@ -29,11 +29,23 @@ import { saveHand, loadStats, storageStatus, setDisputed } from '../storage/repo
 import { requestPersistence } from '../storage/db';
 import type { Stats } from '../storage/stats';
 import { handGrade } from './reviewModel';
-import { ReviewSheet } from './components/ReviewSheet';
 import { ReviewTrigger, type ReviewStatus } from './components/ReviewTrigger';
 import { Nav, type PageId } from './components/Nav';
 import { HistoryPage } from './pages/HistoryPage';
+import { ReviewPage } from './pages/ReviewPage';
+import { ReportPage } from './pages/ReportPage';
 import type { StoredHand } from '../storage/schema';
+import type { HandRecord } from '../core/types';
+
+/**
+ * 复盘页当前在看哪一手。
+ *
+ * 'live' 不是「当前这一手」而是「最近打完的那一手」—— 新一手开局后
+ * state.record 会被置 null（见 handSession.beginHand），若复盘页跟着它走，
+ * 用户点导航进复盘会看到一片空白。所以刚算完的 record 由本组件自己留一份
+ * （下面的 review 状态），它比 state.record 活得久一手。
+ */
+type ReviewTarget = { kind: 'live' } | { kind: 'stored'; hand: StoredHand };
 
 const CFG: SessionConfig = {
   // 每次刷新换一局。③-C 会把 seed 一并持久化，届时刷新可续上。
@@ -78,13 +90,14 @@ export function App() {
   // 存的是 HandView 而不是 HandAnalysis：后者带着对手范围（ReadonlyMap，序列化
   // 会静默变空）与一个共享对象引用，落不了库。让界面从一开始就只碰视图类型，
   // 「刚算完的」与「从库里取回来的」才是同一条渲染路径。见 review/view.ts。
-  const [review, setReview] = useState<{ recordId: string; view: HandView | null } | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  // 连同 record 一起存（不只是 recordId）：复盘页要在新一手开局之后仍然
+  // 显示上一手，而那时 state.record 已经是 null 了。
+  const [review, setReview] = useState<{ record: HandRecord; view: HandView | null } | null>(null);
   const [page, setPage] = useState<PageId>('table');
-  // 从历史页点开的那一手。它与「刚打完这一手」的复盘走同一个 ReviewSheet——
-  // 两者都吃 HandView（见 review/view.ts），这正是当初让视图类型同时充当
-  // 落库 DTO 的收益：历史里的手不需要任何"复原"步骤就能渲染。
-  const [historyHand, setHistoryHand] = useState<StoredHand | null>(null);
+  // 复盘页在看哪一手。从历史点开的那一手与「刚打完这一手」走同一个 ReviewPage——
+  // 两者都吃 HandRecord + HandView（见 review/view.ts），这正是当初让视图类型
+  // 同时充当落库 DTO 的收益：历史里的手不需要任何"复原"步骤就能渲染。
+  const [reviewTarget, setReviewTarget] = useState<ReviewTarget>({ kind: 'live' });
   /**
    * 历史列表里被改过的那一手，贴回列表用。
    *
@@ -244,7 +257,7 @@ export function App() {
         // 复盘算不出来不该掀掉牌桌 —— 记成「这一手分析失败」，牌局继续。
         view = null;
       }
-      if (!cancelled) setReview({ recordId: rec.id, view });
+      if (!cancelled) setReview({ record: rec, view });
       // 落库。故意**不**受 cancelled 影响：cancelled 只表示"这一手的分析结果
       // 已经没人要显示了"（用户翻到了下一手），不表示"这一手不该被记下来"。
       // 写入失败一律吞掉——storageStatus() 表达失败，牌局继续。
@@ -263,11 +276,6 @@ export function App() {
     };
   }, [recordId]);
 
-  // 新一手开始就关掉卡片
-  useEffect(() => {
-    setSheetOpen(false);
-  }, [state.handIndex]);
-
   const onHero = useCallback((input: ActionInput) => dispatch({ kind: 'hero', input }), []);
   const onNext = useCallback(() => dispatch({ kind: 'nextHand' }), []);
   const onRebuy = useCallback(
@@ -275,9 +283,8 @@ export function App() {
     [],
   );
 
-  // 只认属于当前这一手的分析
-  const currentReview = review !== null && review.recordId === recordId ? review : null;
-  const currentView = currentReview?.view ?? null;
+  // 只认属于当前这一手的分析（结算区那颗按钮上的色点必须说的是**这一手**）
+  const currentReview = review !== null && review.record.id === recordId ? review : null;
   // 三态，不是 grade|null：见 ReviewTrigger 里 ReviewStatus 的注释。
   // currentReview 为 null = 还没算好；算好了但 view 为 null = 算失败了。
   const reviewStatus: ReviewStatus =
@@ -301,23 +308,50 @@ export function App() {
   // 被设计出来的那一手。
   const needsRebuy = heroNeedsRebuy(state);
 
-  const onOpenSheet = useCallback(() => setSheetOpen(true), []);
-  const onCloseSheet = useCallback(() => setSheetOpen(false), []);
-  const onNextFromSheet = useCallback(() => {
-    setSheetOpen(false);
-    // 不靠 reducer 的静默无操作兜底，这里显式判断
-    if (!needsRebuy) dispatch({ kind: 'nextHand' });
-  }, [needsRebuy]);
+  // 结算区那颗按钮不再弹卡片：切到复盘页，并把它指回「刚打完这一手」——
+  // 用户可能上一次看的是历史里翻出来的某一手，不重置的话点了会看到别的手。
+  const onOpenReview = useCallback(() => {
+    setReviewTarget({ kind: 'live' });
+    setPage('review');
+  }, []);
 
-  const onOpenHistoryHand = useCallback((h: StoredHand) => setHistoryHand(h), []);
-  const onCloseHistoryHand = useCallback(() => setHistoryHand(null), []);
+  const onOpenHistoryHand = useCallback((h: StoredHand) => {
+    setReviewTarget({ kind: 'stored', hand: h });
+    setPage('review');
+  }, []);
+  const onAllHands = useCallback(() => setPage('history'), []);
+  const onBackToTable = useCallback(() => setPage('table'), []);
 
-  // 只认属于当前这一手的标记状态，与 currentReview 同一个口径
-  const disputedForCurrent =
-    disputedNow !== null && disputedNow.id === recordId ? disputedNow.value : null;
+  // 复盘页要显示的那一手。stored 优先——它是用户明确点开的
+  const storedTarget = reviewTarget.kind === 'stored' ? reviewTarget.hand : null;
+  const shownRecord = storedTarget !== null ? storedTarget.record : (review?.record ?? null);
+  const shownView = storedTarget !== null ? storedTarget.view : (review?.view ?? null);
+
+  // 「下一手」只在看的正是**当前这一手**、且这一手已经打完、且不需要补码时
+  // 才是一个真动作。历史里翻出来的手没有下一手可开，破产那一手也开不了
+  // （reducer 拦着，handSession.nextHand 更是直接抛）——那两种情况下按钮
+  // 必须改口径，否则它写着「下一手」却什么也不做。
+  const canNext =
+    storedTarget === null &&
+    review !== null &&
+    review.record.id === recordId &&
+    state.phase === 'handOver' &&
+    !needsRebuy;
+  const onPrimary = useCallback(() => {
+    // 先回牌桌再推进：留在复盘页会立刻变成「还没有打完的手牌」的空态
+    setPage('table');
+    if (canNext) dispatch({ kind: 'nextHand' });
+  }, [canNext]);
+
+  // 只认属于**正在显示的那一手**的标记状态，与 currentReview 同一个口径
+  const disputedForLive =
+    review !== null && disputedNow !== null && disputedNow.id === review.record.id
+      ? disputedNow.value
+      : null;
+  const shownDisputed = storedTarget !== null ? storedTarget.disputed : disputedForLive;
 
   const onToggleDisputedNow = useCallback(() => {
-    if (disputedNow === null || disputedNow.id !== recordId) return;
+    if (review === null || disputedNow === null || disputedNow.id !== review.record.id) return;
     const next = !disputedNow.value;
     // 先改界面再写库：这是个纯标注，写失败的代价只是下次打开时它变回去，
     // 而让按钮等一次事务往返才响应，手感上像卡住了。失败时回滚并提示。
@@ -328,57 +362,57 @@ export function App() {
         setStorageOk(false);
       }
     });
-  }, [disputedNow, recordId]);
+  }, [disputedNow, review]);
 
-  const onToggleDisputedHistory = useCallback(() => {
-    if (historyHand === null) return;
-    const next = { ...historyHand, disputed: !historyHand.disputed };
-    setHistoryHand(next);
+  const onToggleDisputedStored = useCallback(() => {
+    if (reviewTarget.kind !== 'stored') return;
+    const next = { ...reviewTarget.hand, disputed: !reviewTarget.hand.disputed };
+    setReviewTarget({ kind: 'stored', hand: next });
     setPatchedHand(next);
     void setDisputed(next.id, next.disputed).then(ok => {
       if (ok) return;
       const rolled = { ...next, disputed: !next.disputed };
-      setHistoryHand(h => (h === null ? h : rolled));
+      // 回滚时先确认页面还停在这一手上：用户可能已经翻到了别的手
+      setReviewTarget(t => (t.kind === 'stored' && t.hand.id === rolled.id ? { kind: 'stored', hand: rolled } : t));
       setPatchedHand(rolled);
       setStorageOk(false);
     });
-  }, [historyHand]);
+  }, [reviewTarget]);
+
+  const onToggleDisputed = storedTarget !== null ? onToggleDisputedStored : onToggleDisputedNow;
 
   return (
     <div className="app">
-      <Nav page={page} onNav={setPage} />
+      <Nav
+        page={page}
+        onNav={setPage}
+        netBB={netBB}
+        totalBuyIn={state.ledger.totalBuyIn}
+        muted={muted}
+        onToggleMute={onToggleMute}
+      />
       <div className="app-main">
         {page === 'history' ? (
-          <>
-            <HistoryPage onOpen={onOpenHistoryHand} patched={patchedHand} />
-            {historyHand !== null ? (
-              <ReviewSheet
-                view={historyHand.view}
-                record={historyHand.record}
-                netBB={
-                  historyHand.record.results.find(r => r.seat === historyHand.record.heroSeat)
-                    ?.netBB ?? 0
-                }
-                onNext={onCloseHistoryHand}
-                // 历史里的手没有"下一手"可开——那颗按钮在这里只能是关闭
-                nextLabel="关闭"
-                disputed={historyHand.disputed}
-                onToggleDisputed={onToggleDisputedHistory}
-                onClose={onCloseHistoryHand}
-              />
-            ) : null}
-          </>
+          <HistoryPage onOpen={onOpenHistoryHand} patched={patchedHand} />
+        ) : page === 'review' ? (
+          <ReviewPage
+            record={shownRecord}
+            view={shownView}
+            disputed={shownDisputed}
+            onToggleDisputed={onToggleDisputed}
+            onAllHands={onAllHands}
+            onPrimary={onPrimary}
+            primaryLabel={canNext ? '下一手' : '回到牌桌'}
+          />
+        ) : page === 'report' ? (
+          <ReportPage />
         ) : (
           <>
             <TopBar
               handsPlayed={state.ledger.handsPlayed}
               inProgress={state.phase !== 'handOver'}
-              netBB={netBB}
-              totalBuyIn={state.ledger.totalBuyIn}
               deepStack={isDeepStackHand(state)}
               storageOk={storageOk}
-              muted={muted}
-              onToggleMute={onToggleMute}
             />
             <Table
               game={state.game}
@@ -398,23 +432,9 @@ export function App() {
               onNext={onNext}
               onRebuy={onRebuy}
               reviewStatus={reviewStatus}
-              onOpenReview={onOpenSheet}
+              onOpenReview={onOpenReview}
               handNetBB={handNetBB}
             />
-            {/* pending 时按钮是禁用的，走不到这里；failed 时 currentAnalysis 为
-                null，卡片壳照开，body 显示「本手复盘失败」——见 Step 0。 */}
-            {sheetOpen && currentReview !== null && state.record !== null ? (
-              <ReviewSheet
-                view={currentView}
-                record={state.record}
-                netBB={handNetBB}
-                onNext={onNextFromSheet}
-                nextLabel={needsRebuy ? '关闭' : '下一手'}
-                disputed={disputedForCurrent}
-                onToggleDisputed={onToggleDisputedNow}
-                onClose={onCloseSheet}
-              />
-            ) : null}
           </>
         )}
       </div>

@@ -6,6 +6,8 @@ import { emptyStats, applyHand } from './stats';
 import { matchesFilter, isFilterEmpty } from './filter';
 import type { HandFilter } from './filter';
 import type { Stats } from './stats';
+import { summaryOf, aggregate, SUMMARY_SCHEMA_VERSION } from './summary';
+import type { WindowStats } from './summary';
 import * as db from './db';
 
 /**
@@ -101,6 +103,9 @@ export function saveHand(record: HandRecord, view: HandView | null): Promise<Sav
     const next = applyHand(prev, hand);
     try {
       await db.putHand(hand);
+      // 摘要写在 hand 之后、stats 之前：三次写不是原子的（既有代码本来就是
+      // 两次非原子写），失败时统一走下面的 catch 降级，不为它单独引事务边界。
+      await db.putSummary(summaryOf(hand));
       await db.putStats(next);
       statsCache = next;
       status = 'ready';
@@ -238,6 +243,7 @@ export function importHands(hands: readonly StoredHand[]): Promise<ImportOutcome
     try {
       for (const h of hands) {
         await db.putHand(h);
+        await db.putSummary(summaryOf(h));
         imported++;
       }
       status = 'ready';
@@ -294,9 +300,79 @@ export function resetAll(): Promise<boolean> {
   });
 }
 
+export type ReportWindow = 200 | 500 | 1000 | 'all';
+
+export interface ReportData {
+  stats: WindowStats;
+  /** 库里的手数少于所请求的窗口。'all' 时恒为 false */
+  partial: boolean;
+}
+
+/**
+ * 取一个窗口的报表数据。
+ *
+ * 排序键是 (timestamp, id)，与 recomputeStatsInline 一致。索引游标只能按
+ * timestamp 排，同毫秒的两手顺序不稳定——累计曲线会因此在两次渲染间变形。
+ */
+export async function loadReport(w: ReportWindow): Promise<ReportData> {
+  try {
+    const rows = w === 'all' ? await db.allSummaries() : await db.lastSummaries(w);
+    rows.sort((a, b) => a.timestamp - b.timestamp || a.id.localeCompare(b.id));
+    status = 'ready';
+    return { stats: aggregate(rows), partial: w !== 'all' && rows.length < w };
+  } catch {
+    status = 'unavailable';
+    return { stats: aggregate([]), partial: false };
+  }
+}
+
+/** 本次会话是否已经回填过。回填是幂等的，但扫全表不便宜，不重复做 */
+let summariesChecked = false;
+
+/**
+ * 确保摘要 store 与 hands store 对得上，不对就回填。
+ *
+ * ③-C 存下的手牌没有摘要（DB_VERSION 2 的升级事务里刻意不做值迁移，
+ * 见 db.ts 里 onupgradeneeded 的注释）。回填放在这里、由报表页触发，
+ * 而不是放在启动路径上——从不看报表的用户不该为这次全表扫描买单。
+ *
+ * 触发重建的条件是两者之一：
+ * 1. 条数不等——真正的威胁是「写了手牌但没写摘要」，那必然让计数不等；
+ * 2. 抽样到的一条摘要 `v !== SUMMARY_SCHEMA_VERSION`。摘要是从 StoredHand
+ *    可重建的派生缓存，将来它的字段集变了（SUMMARY_SCHEMA_VERSION 从 1 变成
+ *    2），条数仍然相等——只比条数的话，陈旧形状的摘要会被静默继续用，报表
+ *    数字会错得没人看得出来。抽样只取一条（`db.lastSummaries(1)`，已经存在，
+ *    不新增 db 函数）；库里一条摘要都没有时跳过版本检查，没东西可比。
+ *
+ * 两种情况都不逐条比 id / 版本：逐条比对要把两个 store 全读出来，代价与
+ * 直接重建相同。
+ */
+export function ensureSummaries(): Promise<boolean> {
+  return serialize(async () => {
+    if (summariesChecked) return true;
+    try {
+      const [hands, summaries] = await Promise.all([db.countHands(), db.countSummaries()]);
+      const sample = summaries > 0 ? await db.lastSummaries(1) : [];
+      const staleVersion = sample.length > 0 && sample[0].v !== SUMMARY_SCHEMA_VERSION;
+      if (hands !== summaries || staleVersion) {
+        for (const h of await db.allHands()) {
+          await db.putSummary(summaryOf(h));
+        }
+      }
+      summariesChecked = true;
+      status = 'ready';
+      return true;
+    } catch {
+      status = 'unavailable';
+      return false;
+    }
+  });
+}
+
 /** 仅测试用：把模块级状态清干净，让每个用例从同一起点开始 */
 export function __resetForTest(): void {
   writeChain = Promise.resolve();
   statsCache = null;
   status = 'unknown';
+  summariesChecked = false;
 }

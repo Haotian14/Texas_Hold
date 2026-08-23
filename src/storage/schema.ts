@@ -13,10 +13,11 @@ import type { MistakeTag } from '../review/taxonomy';
  */
 
 export const DB_NAME = 'poker-trainer';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 export const HANDS_STORE = 'hands';
 export const STATS_STORE = 'stats';
+export const SUMMARIES_STORE = 'summaries';
 
 /** stats 是单条聚合文档，主键固定 */
 export const STATS_KEY = 'global';
@@ -34,9 +35,9 @@ export interface StoreDef {
 }
 
 /**
- * 两个 object store（设计文档 §9）。
+ * 三个 object store（设计文档 §9，summaries 是 ③-D-1 漏洞报表追加的第三个）。
  *
- * 四个索引的 keyPath 都指向 StoredHand 的**顶层**字段，而不是
+ * hands 上四个索引的 keyPath 都指向 StoredHand 的**顶层**字段，而不是
  * `record.timestamp` / `view.worstEvLoss` 这样的点号路径。IndexedDB 支持点号
  * 路径，但那会让索引和内层结构绑死：view 为 null 的那些手（分析失败）在
  * `view.worstEvLoss` 上取不到值，会被索引整个跳过，于是"按损失排序"的列表里
@@ -57,6 +58,14 @@ export const STORES: readonly StoreDef[] = [
     name: STATS_STORE,
     keyPath: 'key',
     indexes: [],
+  },
+  {
+    name: SUMMARIES_STORE,
+    keyPath: 'id',
+    // 只有一个索引：报表按时间取最近 N 手，其余维度（位置、分类、街）都是
+    // 取回之后在内存里聚合的——一千条摘要在内存里过一遍是微秒级，
+    // 为它们各建一个索引只会让每次写入更慢。
+    indexes: [{ name: 'timestamp', keyPath: 'timestamp' }],
   },
 ];
 

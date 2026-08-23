@@ -132,23 +132,43 @@ body {
 
 .topbar {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
-  padding: 10px 14px;
-  font-size: 12.5px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  /* 非对称内边距是设计稿原值：顶 14px、左右 22px，底部只留 6px——
+     牌桌区自己的上边距会把视觉间距补足，顶栏不需要在底部再留满。 */
+  padding: 14px 22px 6px;
   color: var(--text);
   background: var(--app);
   border-bottom: 1px solid var(--line);
+}
+/* 游戏类型胶囊。设计稿带一个「▾」暗示可切换游戏，本项目只有德州扑克
+   一种玩法，故不渲染箭头，做成静态标签——尺寸/圆角/边框照抄设计稿。 */
+.topbar-game {
+  display: flex;
+  align-items: center;
+  flex: none;
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+/* 盲注级别 · 桌型 · 手数，合并进设计稿这一行文字 */
+.topbar-meta {
+  font-size: 12.5px;
+  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
-.topbar-item.pos { color: var(--positive); }
-.topbar-item.neg { color: var(--danger); }
-.topbar-item.dim {
-  color: var(--text-dim);
-  font-weight: 500;
+/* 「未记录」「深筹码」这类状态标记，靠右——净盈亏/买入/静音已经搬去
+   Nav 底部的会话盈亏区块，顶栏右侧不再重复显示它们 */
+.topbar-flags {
   margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 .topbar-item.warn {
   color: var(--warn);
@@ -250,6 +270,8 @@ body {
   gap: calc(0.33 * var(--u));
 }
 .seat-info {
+  /* 定位上下文：庄家钮（.dealer-btn）绝对定位到胶囊外侧，锚点就是这一层 */
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -343,6 +365,18 @@ body {
   letter-spacing: -0.012em;
   font-variant-numeric: tabular-nums;
 }
+/* 位置小标记（BTN/SB/…）。头像方块让位给性格字之后，这条信息退到这里，
+   一枚极小的灰底胶囊，不与姓名/状态点抢视觉重量。 */
+.seat-pos {
+  flex: none;
+  padding: 1px calc(0.44 * var(--u));
+  border-radius: calc(0.44 * var(--u));
+  background: var(--soft);
+  color: var(--text-dim);
+  font-size: calc(1 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
 
 /* 动作徽章＝设计稿的 badge：白底描边小标签，挂在胶囊下方 */
 .bubble {
@@ -358,6 +392,15 @@ body {
   font-variant-numeric: tabular-nums;
   box-shadow: 0 1px 2px rgba(17, 20, 26, 0.05);
 }
+/* raise/bet/allin 类动作：设计稿 BADGE_STYLES.raise 的靛蓝配色，与中性的
+   call/check（上面的默认样式）区分开——"施压"和"跟随"不该长一个样。
+   这三个值是设计稿自己的调色板，不是本项目 --token 体系里的颜色，
+   照抄字面量而不是新建令牌。 */
+.bubble-raise {
+  background: #eeeffc;
+  color: #4a54d6;
+  border-color: rgba(74, 84, 214, 0.22);
+}
 /* 弃牌者的徽章退成无框灰字：它说的是"这个人已经不在了"，不该和还在牌里
    的人的动作徽章一样显眼 */
 .seat-folded .bubble {
@@ -366,15 +409,29 @@ body {
   box-shadow: none;
   color: var(--text-dim);
 }
-/* 庄家钮做成头像方块里的一个小白点 */
-.button-chip {
-  display: inline-block;
-  width: calc(0.56 * var(--u));
-  height: calc(0.56 * var(--u));
+/* 庄家钮：独立的圆形徽章，脱开座位/hero 胶囊，绝对定位在它外侧——
+   不再是头像方块角落里那个 5px、几乎不可辨认的小白点。定位锚点是
+   .seat-info / .hero-info（见那两条规则里的 position: relative）。
+   放在胶囊左上角外侧：这个位置不依赖座位在桌上的左右朝向，六个槽位
+   （含 hero）都不会被推出可视区，比照抄设计稿里"只对 hero 生效"的
+   left:-88px 更通用。 */
+.dealer-btn {
+  position: absolute;
+  top: calc(-1 * var(--u));
+  left: calc(-1 * var(--u));
+  z-index: 2;
+  width: calc(2.89 * var(--u));
+  height: calc(2.89 * var(--u));
   border-radius: 50%;
-  background: #fff;
-  align-self: flex-start;
-  margin-top: calc(0.33 * var(--u));
+  background: var(--app);
+  border: 1px solid var(--line-2);
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.06), 0 6px 14px -6px rgba(17, 20, 26, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(1.22 * var(--u));
+  font-weight: 600;
+  color: var(--text-2);
 }
 
 /* ---- 中部：底池与公共牌 ---- */
@@ -418,7 +475,16 @@ body {
 .board {
   display: flex;
   align-items: flex-end;
-  gap: calc(0.67 * var(--u));
+}
+/* 逐张递增的间距（0 / 6 / 6 / 18px），不是统一 gap——设计稿用第四张前的
+   大间隙暗示"这是转牌，前三张是同一次翻牌"，统一间距会把这条信息抹平。 */
+.board .card:nth-child(1) { margin-left: 0; }
+.board .card:nth-child(2),
+.board .card:nth-child(3) {
+  margin-left: calc(0.67 * var(--u));
+}
+.board .card:nth-child(n + 4) {
+  margin-left: calc(2 * var(--u));
 }
 
 /* ---- 四色牌 ---- */
@@ -520,6 +586,8 @@ body {
 .hero-cards .card-lg .card-rank-wide { font-size: calc(2.4 * var(--u)); }
 .hero-cards .card { box-shadow: var(--sh-card-hero); }
 .hero-info {
+  /* 定位上下文：与 .seat-info 同理，庄家钮锚定在这一层外侧 */
+  position: relative;
   display: flex;
   gap: calc(1.33 * var(--u));
   align-items: center;
@@ -656,11 +724,16 @@ body {
 }
 .btn:active { transform: translateY(1px); }
 
-/* 预设档 + 滑块合成一张浮起的小卡（设计稿的 raise 条就是这一张） */
+/* 预设档 + 滑块 + 金额框合成一整条浮起的卡片（设计稿的 raise 条），
+   与下面的 Fold/Call/Raise 三键行**同屏常驻**，不是点「加注」才展开出来的
+   面板——三态互斥切换是改版前的形状，见 ActionBar.tsx 顶部的注释。
+   设计稿这一整条是单行 flex row（预设按钮/滑块/金额框都是平级子元素），
+   不是"预设一行、滑块一行"的纵向堆叠。 */
 .raise-panel {
   display: flex;
-  flex-direction: column;
-  gap: calc(1.11 * var(--u));
+  flex-direction: row;
+  align-items: center;
+  gap: calc(0.89 * var(--u));
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
   border: 1px solid var(--line);
@@ -668,15 +741,15 @@ body {
   padding: calc(1.11 * var(--u)) calc(1.33 * var(--u));
   box-shadow: 0 1px 2px rgba(17, 20, 26, 0.04), 0 12px 26px -16px rgba(17, 20, 26, 0.2);
 }
-.raise-presets {
-  display: flex;
-  gap: calc(0.89 * var(--u));
-}
+/* 五档预设（1/3池 · 1/2池 · 2/3池 · 池 · 全下）按内容自身宽度排布，
+   不再各占一等份——它们与滑块是同一行里的平级兄弟，滑块才是吃剩余空间
+   的那个（见 .raise-slider 的 flex:1）。 */
 .preset {
-  flex: 1;
+  flex: none;
   min-height: calc(3.6 * var(--u));
   border: 1px solid var(--line-2);
   border-radius: calc(0.89 * var(--u));
+  padding: calc(0.78 * var(--u)) calc(1.33 * var(--u));
   background: transparent;
   color: var(--text-2);
   font-family: var(--font);
@@ -684,9 +757,13 @@ body {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
+  white-space: nowrap;
 }
 .preset:hover { background: var(--soft); }
-.preset:active {
+/* 选中态是持久的（当前滑块值等于这一档），不是只在按下瞬间闪一下——
+   :active 是原生的按压反馈，顺手复用同一组配色，两者不冲突。 */
+.preset:active,
+.preset.preset-on {
   background: var(--blue-soft);
   border-color: rgba(47, 111, 237, 0.35);
   color: var(--blue);
@@ -694,12 +771,13 @@ body {
 .raise-slider {
   display: flex;
   align-items: center;
-  gap: calc(1.33 * var(--u));
+  flex: 1;
+  min-width: calc(6 * var(--u));
 }
 .raise-slider input {
   flex: 1;
   /* 原生滑块在浅色底上默认是灰轨 + 系统蓝钮，两处都不合调；
-     只重画轨与钮，不改行为（步进网格的问题见 RaiseControl.tsx 的注释）。 */
+     只重画轨与钮，不改行为（步进网格的问题见下方注释）。 */
   -webkit-appearance: none;
   appearance: none;
   height: calc(2.9 * var(--u));
@@ -745,33 +823,46 @@ body {
   box-shadow: 0 1px 4px rgba(17, 20, 26, 0.26), 0 0 0 1px rgba(17, 20, 26, 0.06);
 }
 /* 金额独立成一个描边小盒，与设计稿一致——它是这一条里唯一会变的数字，
-   套个框才不会被两侧的按钮淹掉 */
-.raise-amount {
-  min-width: calc(6.2 * var(--u));
-  text-align: right;
+   套个框才不会被两侧的按钮淹掉。盒内还嵌一条竖分隔线 + 「最大」文字链接
+   （设计稿的 Max），点它等价于把滑块拖到头，与「全下」预设是同一个动作。 */
+.raise-amount-box {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: calc(1 * var(--u));
   border: 1px solid var(--line-2);
   border-radius: calc(1.11 * var(--u));
   padding: calc(0.78 * var(--u)) calc(1.22 * var(--u));
   background: #fff;
   box-shadow: 0 1px 2px rgba(17, 20, 26, 0.04);
+}
+.raise-amount {
+  min-width: calc(6.2 * var(--u));
+  text-align: right;
   font-size: calc(1.5 * var(--u));
   font-weight: 600;
   letter-spacing: -0.02em;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-.raise-actions {
-  display: flex;
-  gap: calc(1.11 * var(--u));
+.raise-amount-sep {
+  width: 1px;
+  height: calc(1.56 * var(--u));
+  background: var(--line-2);
+  flex: none;
 }
-
-.confirm { display: flex; flex-direction: column; gap: 8px; }
-.confirm-text {
-  text-align: center;
-  font-size: 13.5px;
+.raise-max {
+  border: none;
+  background: transparent;
+  color: var(--blue);
+  font-family: var(--font);
+  font-size: calc(1.28 * var(--u));
   font-weight: 600;
-  padding: 4px 0;
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
 }
-.confirm-actions { display: flex; gap: 6px; }
+.raise-max:hover { text-decoration: underline; }
 
 .summary { display: flex; flex-direction: column; gap: 8px; }
 .summary-line {
@@ -915,18 +1006,6 @@ body {
   }
   .pot.pot-won { animation: none; }
 }
-
-.topbar-mute {
-  margin-left: 6px;
-  border: none;
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 14px;
-  line-height: 1;
-  padding: 2px 4px;
-  cursor: pointer;
-}
-.topbar-mute:hover { color: var(--text); }
 
 /* ───────── ③-B 复盘卡片：EV 条形图 ───────── */
 
@@ -1072,145 +1151,22 @@ body {
   color: var(--text-dim);
 }
 
-/* ───────── ③-B 复盘卡片：壳与时间线 ───────── */
+/* ───────── ③-B 复盘：决策点详情（现在住在 ③-D 的复盘页右栏里） ─────────
 
-/* 覆盖式卡片。用 absolute 而不是 fixed：桌面端 .app 是限宽 1040×760 的
-   居中容器（见 ③-A 的 Task 3），卡片必须贴着它而不是贴着视口。
-   .app 已有 position: relative 时这条才成立——若没有，需要一并补上。 */
-.rv-sheet {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  background: var(--page);
-}
-
-/* 头部要自己补 --safe-top。
-   绝对定位元素的包含块是 .app 的 **padding box**，所以 top: 0 落在
-   .app 的 padding-top: var(--safe-top) 之外——整张卡会盖进安全区，
-   被遮的恰好是这一行：净盈亏、评级徽章，以及关闭按钮，全屏遮罩唯一
-   的出口。底部的 .rv-foot 补了 --safe-bottom，顶上不补是漏了不是取舍。
-   桌面端 --safe-top 求值为 0px，浏览器验收看不出来。 */
-.rv-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: calc(12px + var(--safe-top)) 16px 12px;
-  background: var(--app);
-  border-bottom: 1px solid var(--line);
-}
-
-.rv-head-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-/* 净盈亏的红绿。`.neg`/`.pos` 在本项目里从来不是独立类——现有规则是
-   `.topbar-item.neg` 和 `.summary-line .neg`，都带着祖先/同级限定。
-   照抄 SummaryBar 的 className={isNeg ? 'neg' : 'pos'} 而不配一条自己的
-   规则，结果是这里的金额完全没颜色，赢和输长得一模一样，而项目没有
-   组件渲染测试，没有任何一条测试会发现。 */
-.rv-head-left .neg { color: var(--danger); }
-.rv-head-left .pos { color: var(--positive); }
-
-/* 评级徽章：浅色底上用"淡底 + 同色字"而不是描边，描边在白底上太细太脏 */
-.rv-grade {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--soft);
-  color: var(--text-dim);
-}
-
-.rv-grade-clean { background: rgba(24, 148, 90, 0.1); color: var(--sev-ok); }
-.rv-grade-minor { background: rgba(217, 162, 58, 0.13); color: #a8761f; }
-.rv-grade-notable { background: rgba(224, 118, 47, 0.12); color: #b95b1c; }
-.rv-grade-severe { background: rgba(220, 76, 71, 0.1); color: var(--sev-severe); }
-.rv-grade-unknown { background: var(--soft); color: var(--text-dim); }
-
-.rv-close {
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  font-size: 16px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-}
-.rv-close:hover { background: var(--soft); color: var(--text); }
-
-.rv-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 14px 16px;
-}
-
-.rv-foot {
-  padding: 12px 16px calc(12px + var(--safe-bottom));
-  background: var(--app);
-  border-top: 1px solid var(--line);
-}
-
-.rv-foot .btn {
-  width: 100%;
-}
+   覆盖式卡片 .rv-sheet、它的头部 / 关闭按钮 / 评级徽章，以及手风琴时间线
+   （.rv-street / .rv-row / .rv-act / .rv-sev）那一整组规则已经删掉：
+   复盘从「牌桌上弹出来的一张卡」改成了整页两栏（见下面的 .rvp-*），
+   ReviewSheet.tsx 与 ReviewTimeline.tsx 两个组件一并删除。留着这些规则
+   不会报错，只会让下一个人以为还有东西在用它们。 */
 
 .rv-empty {
   color: var(--text-dim);
   font-size: 12.5px;
 }
 
-.rv-street-name {
-  font-size: 9.5px;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 14px 0 6px;
-  font-weight: 500;
-}
-
-.rv-row {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--app);
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 12.5px;
-  font-weight: 500;
-  cursor: pointer;
-  text-align: left;
-  box-shadow: var(--sh-1);
-}
-
-.rv-item + .rv-item {
-  margin-top: 6px;
-}
-
-/* 展开时上下两块要拼成一张卡：详情块自己 border-top: none 且只圆下两角，
-   行若还圆着下两角就会露出一道缝 */
-.rv-row-open {
-  border-radius: 11px 11px 0 0;
-  box-shadow: none;
-}
-
 /* 基色就是 --sev-ok，没有 .rv-dot-ok / .rv-dot-clean 规则是有意的：
    两个调用方给的枚举名不同（ReviewTrigger 给 Grade 的 'clean'，
-   ReviewTimeline 给 Severity 的 'ok'），却是同一个「这里没问题」，
+   复盘页的决策点行给 Severity 的 'ok'），却是同一个「这里没问题」，
    与其写两条一模一样的规则，不如让它们一起落到基色上。
    下面四条则必须逐个列出——漏一条就是把某一档失误静默显示成「没问题」。 */
 .rv-dot {
@@ -1226,24 +1182,11 @@ body {
 .rv-dot-severe { background: var(--sev-severe); }
 .rv-dot-unknown { background: var(--sev-unknown); }
 
-.rv-act {
-  flex: 1;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.rv-sev {
-  font-size: 10.5px;
-  color: var(--text-dim);
-  font-weight: 500;
-}
-
+/* 决策点详情。以前是手风琴展开的下半张卡（所以有 border-top: none 和只圆
+   下两角那套写法），现在直接嵌在复盘页右栏的 .rvp-dec 里——外框由 .rvp-dec
+   画，这里只管内容的排布。 */
 .rv-detail {
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-top: none;
-  border-radius: 0 0 11px 11px;
-  background: var(--app);
+  padding: 0;
 }
 
 .rv-stats {
@@ -1284,11 +1227,15 @@ body {
   color: var(--danger);
 }
 
+/* 设计稿右栏的正文规格：14px / line-height 1.7 / --text-2 / max-width 520px。
+   520px 那条是设计稿写死的——一行超过大约 75 个西文字符就开始难读，右栏在
+   宽屏上会比这宽得多。 */
 .rv-text {
-  font-size: 12px;
-  line-height: 1.65;
+  font-size: 14px;
+  line-height: 1.7;
   color: var(--text-2);
-  margin: 8px 0 0;
+  max-width: 520px;
+  margin: 10px 0 0;
 }
 
 .rv-degraded {
@@ -1481,6 +1428,51 @@ body {
 }
 .nav-item-on .nav-dot {
   background: var(--blue);
+}
+
+/* 会话盈亏：贴导航底部，靠 margin-top:auto 撑开——设计稿三屏的左栏都有
+   这一块（不是牌桌专属），所以挂在 Nav 而不是 TopBar 上，见 Nav.tsx 顶部
+   的注释。净盈亏/买入/静音这三样都是从旧版顶栏搬过来的。 */
+.nav-session {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 4px 0;
+  border-top: 1px solid var(--line);
+}
+.nav-session-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nav-session-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.01em;
+}
+.nav-mute {
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+.nav-mute:hover { color: var(--text-dim); }
+.nav-session-net {
+  font-size: 19px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.nav-session-net.pos { color: var(--positive); }
+.nav-session-net.neg { color: var(--danger); }
+.nav-session-buyin {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- 历史页 ---- */
@@ -1680,6 +1672,17 @@ body {
     padding: 6px 12px;
     font-size: 12px;
   }
+  /* 横向条里没有「底部」可贴：margin-top:auto 在 row 方向上不成立，
+     改用 margin-left:auto 把这一块推到条的最右端，去掉纵向卡片才需要的
+     上边框/内边距，数字右对齐紧凑排布。 */
+  .nav-session {
+    margin-top: 0;
+    margin-left: auto;
+    align-items: flex-end;
+    gap: 2px;
+    padding: 0;
+    border-top: none;
+  }
   .app-main {
     /* 安全区已经由 .nav 的 padding 补过了，这里再补一次就是两倍 */
     padding-top: 0;
@@ -1710,29 +1713,6 @@ body {
 
 /* ───────── ③-C 收尾：异议标记与导出/导入 ───────── */
 
-/* 复盘卡片底部现在有两颗按钮。「我不认同」比主按钮轻一档：它是可选的旁支
-   动作，不该和「下一手」抢注意力。 */
-.rv-foot {
-  display: flex;
-  gap: 10px;
-}
-.rv-dispute {
-  flex: 1;
-  background: transparent;
-  border-color: var(--line-2);
-  color: var(--text-dim);
-  box-shadow: none;
-}
-/* 已标记：用琥珀而不是红。红在这套配色里专指"你打错了"，而"我不认同判定"
-   说的是引擎可能错了——两件事不该同色。 */
-.rv-dispute-on {
-  background: rgba(183, 121, 31, 0.09);
-  border-color: rgba(183, 121, 31, 0.28);
-  color: var(--warn);
-}
-.rv-foot .btn-primary {
-  flex: 1.5;
-}
 
 .hist-transfer {
   display: inline-flex;
@@ -1768,4 +1748,568 @@ body {
 .hist-notice .pill {
   margin-left: auto;
   flex: none;
+}
+
+/* ───────── 报表页（③-D 首个入口，规格 §10.5，对应设计稿 Progress 屏） ───────── */
+
+.rep {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px calc(18px + var(--safe-bottom));
+}
+
+.rep-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.rep-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.rep-win {
+  display: flex;
+  gap: 5px;
+}
+/* 「库里共 N 手」——partial 不是空态，选了大窗口的新用户要看得到报表，
+   这里只提醒实际手数比窗口小 */
+.rep-partial-note {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+/* 回填没成功：正常渲染，只在页头挂一句提醒，不挡内容 */
+.rep-backfill-note {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warn);
+}
+
+.rep-empty {
+  margin: 24px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+/* 卡片外观抄 .hist-row：同一圆角、同一条边线、同一层阴影，不另调一套 */
+.rep-card {
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+}
+
+.rep-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.rep-kpi {
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+  padding: 13px 14px;
+}
+.rep-kpi-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 5px;
+}
+.rep-kpi-value {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.rep-kpi-value-positive { color: var(--positive); }
+.rep-kpi-value-negative { color: var(--danger); }
+.rep-kpi-unit {
+  margin-left: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.rep-main {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 10px;
+  /* 两栏等高（默认 stretch）：左栏曲线卡跟右栏三张小卡叠起来的高度看齐，
+     不再各自撑到自己内容的高度——设计稿就是两栏齐平。 */
+}
+
+.rep-card-title {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.rep-curve-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  /* grid 行拉伸出来的高度是明确值，flex:1 的 SVG 才有多余空间可撑——
+     min-height:0 是必须的，不然 flex 子项按内容最小高度撑破容器。 */
+  min-height: 0;
+}
+.rep-curve-svg {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+.rep-curve-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  padding-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.rep-trend {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.rep-bars-card,
+.rep-pos-card {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.rep-side-empty {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.rep-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rep-bar-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+}
+.rep-bar-name {
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rep-bar-count {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.rep-bar-amount {
+  margin-left: auto;
+  flex: none;
+  color: var(--danger);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.rep-bar-track {
+  height: 5px;
+  border-radius: 99px;
+  background: var(--soft);
+  overflow: hidden;
+}
+.rep-bar-fill {
+  height: 100%;
+  background: var(--danger);
+  border-radius: 99px;
+  opacity: 0.85;
+}
+
+.rep-pos-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+}
+.rep-pos-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-faint);
+}
+.rep-pos-dot-positive { background: var(--positive); }
+.rep-pos-dot-negative { background: var(--danger); }
+.rep-pos-name {
+  width: 34px;
+  flex: none;
+  color: var(--text-2);
+  font-weight: 600;
+}
+.rep-pos-rate {
+  margin-left: auto;
+  color: var(--text);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-note {
+  margin: 4px 0 0;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+@media (max-width: 520px) {
+  .rep {
+    padding: 12px 12px calc(14px + var(--safe-bottom));
+  }
+  .rep-kpis {
+    grid-template-columns: 1fr;
+  }
+  .rep-main {
+    grid-template-columns: 1fr;
+  }
+  /* 单栏堆叠之后不再有"跟右栏对齐"这回事——grid 单列的行高就是内容自身
+     高度，flex:1 在这种未定高的容器里没有基准可撑，退回固定高度。 */
+  .rep-curve-card {
+    min-height: auto;
+  }
+  .rep-curve-svg {
+    flex: none;
+    height: 150px;
+  }
+}
+
+/* ───────── ③-D 复盘页（设计稿 Hand Review 屏，整页两栏） ─────────
+
+   尺寸全部照抄设计稿 `data-screen-label="Hand Review (Web)"` 那一段的内联
+   样式：页面 padding 26px 32px、两栏 gap 18px、左栏定宽 254px、右栏
+   border-radius 16px + padding 26px。
+
+   这一屏**不走** --u 那把比例尺（牌桌用的）。理由：--u 是按牌桌宽度算的，
+   而复盘页没有牌桌，屏幕越宽字越大只会让一屏文字变成海报。设计稿这一屏
+   本来也是固定像素。 */
+
+.rvp {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 26px 32px calc(26px + var(--safe-bottom));
+}
+
+.rvp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.rvp-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.rvp-sub {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.rvp-net {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* 与 .nav-session-net / .summary-line 同款：`.neg`/`.pos` 在本项目里从来
+   不是独立类，必须带祖先限定，否则金额完全没颜色、赢和输长得一样，而项目
+   没有组件渲染测试，没有任何一条测试会发现。 */
+.rvp-net.neg { color: var(--danger); }
+.rvp-net.pos { color: var(--positive); }
+/* 「· 摊牌 / · 弃牌结束」是后缀，不跟着金额一起变红绿：它说的是这手怎么
+   结束的，不是输赢。letter-spacing 复位，否则会继承外层的 -0.02em。 */
+.rvp-net-note {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--text-dim);
+  letter-spacing: 0;
+}
+
+.rvp-cols {
+  display: flex;
+  gap: 18px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── 左栏：一街一项，恒四项 ── */
+.rvp-streets {
+  width: 254px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rvp-street {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--app);
+  border-radius: 12px;
+  padding: 13px;
+  font-family: var(--font);
+  cursor: pointer;
+}
+.rvp-street:hover {
+  border-color: var(--line-2);
+}
+/* 选中态用蓝边 + 淡蓝底（设计稿的 #2f6fed / #eaf1fe，即 --blue / --blue-soft），
+   不额外加投影：四张卡片是一列并排的选择器，谁浮起来谁就像是"更重要"，
+   而它们只是"被选中"。 */
+.rvp-street-on {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.rvp-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  line-height: 1;
+}
+/* 三态照抄设计稿 streetVisual。绿/红直接用既有令牌（--positive 就是设计稿的
+   #18945a，--danger 就是 #dc4c47），灰底用 --soft2（#e9ecf1），一个新色都不加。 */
+.rvp-mark-good { background: var(--positive); color: #fff; }
+.rvp-mark-leak { background: var(--danger); color: #fff; }
+.rvp-mark-skip { background: var(--soft2); color: var(--text-dim); }
+
+.rvp-street-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rvp-street-name {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.rvp-street-ev {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+/* 只有失误那一档变红。good 的「—」与 skip 的「n/a」都留在 --text-dim：
+   给"没问题"上绿字会让四张卡片里三张都带颜色，红的那张就不显眼了。 */
+.rvp-street-ev-leak { color: var(--danger); }
+
+/* ── 右栏：选中那条街的全部决策点 ── */
+.rvp-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 26px;
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.04), 0 14px 30px -18px rgba(17, 20, 26, 0.18);
+}
+
+.rvp-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.rvp-detail-title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+/* 标签胶囊。**不要叫 .rv-tag** —— 那个类已经是"失误分类"（决策点详情里那颗
+   红色小标签），语义与配色都不同；也不要叫 .chip，那个是筹码圆片。 */
+.rvp-tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.rvp-tag-good { background: rgba(24, 148, 90, 0.1); color: var(--positive); }
+.rvp-tag-leak { background: rgba(220, 76, 71, 0.1); color: var(--danger); }
+.rvp-tag-skip { background: var(--soft); color: var(--text-dim); }
+
+/* 正文可滚：一条街可能有三四个决策点，每个还带一张 EV 条形图，加上底部的
+   对手底牌，右栏卡片本身不该跟着长高把按钮行推出视口。 */
+.rvp-detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.rvp-body-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-2);
+  max-width: 520px;
+}
+
+/* 一个决策点一块。同一条街有多个决策点时纵向排开，中间一条细线分隔 —— 用
+   border-top 而不是各自描边成卡片：它们已经在右栏这张卡片里了，卡里再套卡
+   会多出两层边框。 */
+.rvp-dec + .rvp-dec {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.rvp-dec-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 10px;
+}
+.rvp-dec-act {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.rvp-dec-sev {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+/* ── 底部按钮行 ── */
+/* margin-top: auto 把它顶到卡片底部（设计稿写的就是这一条），正文再短也不会
+   让按钮浮在半空。 */
+.rvp-actions {
+  margin-top: auto;
+  display: flex;
+  gap: 10px;
+  padding-top: 12px;
+  flex-wrap: wrap;
+}
+.rvp-btn {
+  height: 48px;
+  border-radius: 12px;
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rvp-btn-ghost {
+  padding: 0 20px;
+  border: 1px solid var(--line-2);
+  color: var(--text-dim);
+  background: transparent;
+}
+.rvp-btn-ghost:hover {
+  background: var(--soft);
+  color: var(--text);
+}
+/* 「下一手」推到最右：设计稿把两颗按钮并排贴左，但本页多了「我不认同」
+   第三颗，三颗挤在一起时主按钮认不出来。 */
+.rvp-btn-primary {
+  margin-left: auto;
+  padding: 0 26px;
+  border: none;
+  color: #fff;
+  background: linear-gradient(180deg, #3d79ef, #2963e0);
+  box-shadow: var(--sh-primary);
+}
+.rvp-btn-primary:hover {
+  filter: brightness(1.07);
+}
+/* 已标记有异议：用琥珀而不是红。红在这套配色里专指"你打错了"，而"我不认同
+   判定"说的是引擎可能错了——两件事不该同色。（原样搬自 ③-C 的 .rv-dispute-on） */
+.rvp-dispute-on {
+  background: rgba(183, 121, 31, 0.09);
+  border-color: rgba(183, 121, 31, 0.28);
+  color: var(--warn);
+}
+
+/* 还没有任何一手打完时的空态 */
+.rvp-blank {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+/* 窄屏：两栏折成一列，左栏的四张街道卡片改横排。放在文件末尾——媒体查询不
+   增加特异性，同特异性下只看源码顺序（这一条在本文件上方栽过一次）。
+   断点取 720px 而不是 520px：254 + 18 + 右栏内容宽度在 700px 上下就挤不下了，
+   比手机断点早得多。 */
+@media (max-width: 720px) {
+  .rvp {
+    padding: 16px 14px calc(16px + var(--safe-bottom));
+  }
+  .rvp-cols {
+    flex-direction: column;
+  }
+  .rvp-streets {
+    width: auto;
+    flex-direction: row;
+  }
+  /* 横排时四张卡片等分，圆形标记与街名并排、EV 文案换行到下面 */
+  .rvp-street {
+    flex: 1;
+    min-width: 0;
+    padding: 10px;
+    gap: 8px;
+  }
+  .rvp-detail {
+    padding: 18px;
+  }
+  .rvp-net {
+    font-size: 20px;
+  }
 }
