@@ -102,3 +102,36 @@ function sameEligible(a: number[], b: number[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((v, i) => v === b[i]);
 }
+
+/**
+ * 实际被争夺的底池：总投入减去「无人跟满、结算时原样退回给下注方」的那部分。
+ *
+ * 界面上手牌结束那一刻要显示的是这个数，而不是各座位投入之和。两者在有人
+ * 全下却无人跟满时会差得离谱——实测过的一手：对手全下 4,000、只有 433 被跟到，
+ * 投入之和是 4,453，而真正易手的只有 886。把 4,453 摆出来是在说一个从未存在过
+ * 的底池。
+ *
+ * 算法就是德扑的退回规则本身：最高投入超出「第二高投入」的部分从未被任何人
+ * 跟上，结算时退回原主，因此不属于底池。两人及以上并列最高时差额为 0，不扣。
+ *
+ * 注意这是**结束时**的口径。牌局进行中显示的仍是投入之和——那时下注还可能被
+ * 跟，先把它从池子里减掉会让底池数字在等待对手行动时诡异地缩水。
+ */
+export function contestedTotal(contributions: readonly number[]): number {
+  if (contributions.length === 0) return 0;
+  const total = contributions.reduce((a, b) => a + b, 0);
+
+  let max = -Infinity;
+  let second = -Infinity;
+  for (const c of contributions) {
+    if (c > max) {
+      second = max;
+      max = c;
+    } else if (c > second) {
+      second = c;
+    }
+  }
+  // 只有一个座位时没有「第二高」，等于全部退回：无人与之相争
+  const uncalled = second === -Infinity ? max : max - second;
+  return round2(total - uncalled);
+}

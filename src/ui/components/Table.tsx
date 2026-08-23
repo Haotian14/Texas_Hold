@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { ActionType, GameState } from '../../core/types';
 import { HERO_SEAT } from '../../core/types';
 import { isZeroChips, round2 } from '../../core/chips';
+import { contestedTotal } from '../../core/pots';
 import { Board } from './Board';
 import { Pot } from './Pot';
 import { Seat } from './Seat';
@@ -25,11 +26,14 @@ export function Table({ game, personaIds, lastAction, revealed, heroWon }: Table
   // 让脉冲打在真正赢下的那个数字上。
   // ref 在 effect 里写，不在渲染中写——渲染必须是纯的。与 Seat.tsx 同一模式。
   const potNow = game.seats.reduce((a, s) => a + s.totalContribution, 0);
-  const lastPotRef = useRef(0);
+  // 冻结的是**投入向量**而不只是它的和：结束时要显示的是「实际被争夺的底池」
+  // （见 core/pots.ts 的 contestedTotal），而那个数算不出来，如果手里只剩一个
+  // 加总——退回给下注方的部分要靠最高与次高投入的差额才认得出来。
+  const lastContribRef = useRef<number[]>([]);
   const potEmpty = isZeroChips(round2(potNow));
-  const pot = potEmpty ? lastPotRef.current : potNow;
+  const pot = potEmpty ? contestedTotal(lastContribRef.current) : potNow;
   useEffect(() => {
-    if (!potEmpty) lastPotRef.current = potNow;
+    if (!potEmpty) lastContribRef.current = game.seats.map(s => s.totalContribution);
   });
 
   return (

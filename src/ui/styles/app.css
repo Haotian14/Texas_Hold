@@ -1654,6 +1654,11 @@ body {
   .nav {
     flex-direction: row;
     align-items: center;
+    /* 允许换行，否则金额位数一多就溢出：实测 375px 屏上，新会话（+$0 /
+       买入 $4,000）这一条需要 349px 放得下，而打久之后（−$123,456 /
+       买入 $200,000）需要 385px——溢出 10px，360px 的机器溢出 25px。
+       换行让它退化成两行，而不是把数字裁掉。 */
+    flex-wrap: wrap;
     gap: 10px;
     width: auto;
     padding: calc(8px + var(--safe-top)) 12px 8px;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { buildPots } from './pots';
+import { buildPots, contestedTotal } from './pots';
 
 const contrib = (o: Record<number, number>) =>
   new Map(Object.entries(o).map(([k, v]) => [Number(k), v]));
@@ -142,5 +142,54 @@ describe('buildPots 不变量（属性测试）', () => {
     ]);
     const total = pots.reduce((s, p) => s + p.amount, 0);
     expect(total).toBe(0.04);
+  });
+});
+
+describe('contestedTotal', () => {
+  it('无人投入时为 0，不是 NaN', () => {
+    expect(contestedTotal([])).toBe(0);
+    expect(contestedTotal([0, 0, 0])).toBe(0);
+  });
+
+  it('大家都跟平时就是总投入', () => {
+    expect(contestedTotal([100, 100, 100])).toBe(300);
+  });
+
+  it('两人并列最高时没有退回', () => {
+    expect(contestedTotal([100, 100, 20])).toBe(220);
+  });
+
+  it('全下无人跟满：扣掉退回给下注方的那部分', () => {
+    // 实测过的一手：松凶全下 4000、疯子投入 433、小盲 20，其余 0。
+    // 总投入 4453，但 4000 里只有 433 被跟到，多出的 3567 结算时原样退回。
+    expect(contestedTotal([4000, 433, 20, 0, 0, 0])).toBe(886);
+  });
+
+  it('下注后全体弃牌：未被跟到的那部分同样不算进底池', () => {
+    // hero 下注 100，大盲 40、小盲 20 均弃牌。100 里只有 40 被跟到。
+    expect(contestedTotal([100, 40, 20])).toBe(100);
+  });
+
+  it('只有一个人投入时无人与之相争，结果为 0', () => {
+    expect(contestedTotal([100, 0, 0])).toBe(0);
+  });
+
+  it('浮点投入不产生尾数', () => {
+    expect(contestedTotal([0.1, 0.2, 0.2])).toBe(0.5);
+  });
+
+  it('永远不超过总投入，且不为负（属性测试）', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.integer({ min: 0, max: 10000 }).map(n => n / 2), { minLength: 1, maxLength: 6 }),
+        cs => {
+          const total = cs.reduce((a, b) => a + b, 0);
+          const contested = contestedTotal(cs);
+          expect(contested).toBeGreaterThanOrEqual(0);
+          expect(contested).toBeLessThanOrEqual(total + 1e-9);
+        },
+      ),
+      { numRuns: 300 },
+    );
   });
 });
