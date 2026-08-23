@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { ActionType, SeatState } from '../../core/types';
 import { chipsGreater, isZeroChips, round2 } from '../../core/chips';
-import { personaLabel, seatBadge } from '../../session/seatLabels';
+import { personaLabel, personaAvatarLetter, seatBadge } from '../../session/seatLabels';
 import { ACTION_TEXT, chips } from '../format';
 import { CardView } from './Card';
 import { Chips } from './Chips';
@@ -61,6 +61,13 @@ export function Seat({ seat, isButton, isToAct, personaId, slot, bubble, reveale
 
   const showCards = revealed && !seat.folded;
 
+  // raise/bet/allin 都是"主动施压"的动作，徽章配色统一走靛蓝——与设计稿
+  // BADGE_STYLES.raise 对齐；call/check 是中性色（.bubble 的默认样式），
+  // fold 的 muted 灰已经由 .seat-folded .bubble 覆盖，不需要在这里再判一次。
+  const isAggro = bubble
+    ? bubble.type === 'bet' || bubble.type === 'raise' || bubble.type === 'allin'
+    : false;
+
   return (
     <div className={cls}>
       {showCards && (
@@ -71,13 +78,22 @@ export function Seat({ seat, isButton, isToAct, personaId, slot, bubble, reveale
         </div>
       )}
       <div className="seat-info">
+        {/* 庄家钮：设计稿里是脱开胶囊、独立浮在外侧的一枚圆徽章，不是嵌在
+            头像方块角落里的一个几乎看不见的小白点。 */}
+        {isButton && (
+          <span className="dealer-btn" aria-hidden="true">
+            D
+          </span>
+        )}
         <span className="seat-badge" data-av={slot % 5}>
-          {seatBadge(seat.position)}
-          {isButton && <span className="button-chip">D</span>}
+          {personaAvatarLetter(personaId)}
         </span>
         <span className="seat-meta">
           <span className="seat-name-row">
             <span className="seat-name">{personaLabel(personaId)}</span>
+            {/* 位置标记：坐在哪比叫什么更能提示威胁，头像方块让位给性格字
+                之后，这条信息不能跟着丢，缩成胶囊内的一枚小标签留下来。 */}
+            <span className="seat-pos">{seatBadge(seat.position)}</span>
             {/* 状态点：蓝＝正在行动，灰＝已弃牌，绿＝还在牌里。
                 它是设计稿座位卡上唯一的状态指示，但**不是唯一编码**——
                 正在行动同时有整张卡的蓝环，已弃牌同时有整块淡出与「弃牌」徽章。 */}
@@ -90,7 +106,7 @@ export function Seat({ seat, isButton, isToAct, personaId, slot, bubble, reveale
         </span>
       </div>
       {bubble && (
-        <div className="bubble">
+        <div className={isAggro ? 'bubble bubble-raise' : 'bubble'}>
           {ACTION_TEXT[bubble.type]}
           {chipsGreater(bubble.amount, 0) && ` ${chips(bubble.amount)}`}
         </div>

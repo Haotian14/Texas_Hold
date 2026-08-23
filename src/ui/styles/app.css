@@ -270,6 +270,8 @@ body {
   gap: calc(0.33 * var(--u));
 }
 .seat-info {
+  /* 定位上下文：庄家钮（.dealer-btn）绝对定位到胶囊外侧，锚点就是这一层 */
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -363,6 +365,18 @@ body {
   letter-spacing: -0.012em;
   font-variant-numeric: tabular-nums;
 }
+/* 位置小标记（BTN/SB/…）。头像方块让位给性格字之后，这条信息退到这里，
+   一枚极小的灰底胶囊，不与姓名/状态点抢视觉重量。 */
+.seat-pos {
+  flex: none;
+  padding: 1px calc(0.44 * var(--u));
+  border-radius: calc(0.44 * var(--u));
+  background: var(--soft);
+  color: var(--text-dim);
+  font-size: calc(1 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
 
 /* 动作徽章＝设计稿的 badge：白底描边小标签，挂在胶囊下方 */
 .bubble {
@@ -378,6 +392,15 @@ body {
   font-variant-numeric: tabular-nums;
   box-shadow: 0 1px 2px rgba(17, 20, 26, 0.05);
 }
+/* raise/bet/allin 类动作：设计稿 BADGE_STYLES.raise 的靛蓝配色，与中性的
+   call/check（上面的默认样式）区分开——"施压"和"跟随"不该长一个样。
+   这三个值是设计稿自己的调色板，不是本项目 --token 体系里的颜色，
+   照抄字面量而不是新建令牌。 */
+.bubble-raise {
+  background: #eeeffc;
+  color: #4a54d6;
+  border-color: rgba(74, 84, 214, 0.22);
+}
 /* 弃牌者的徽章退成无框灰字：它说的是"这个人已经不在了"，不该和还在牌里
    的人的动作徽章一样显眼 */
 .seat-folded .bubble {
@@ -386,15 +409,29 @@ body {
   box-shadow: none;
   color: var(--text-dim);
 }
-/* 庄家钮做成头像方块里的一个小白点 */
-.button-chip {
-  display: inline-block;
-  width: calc(0.56 * var(--u));
-  height: calc(0.56 * var(--u));
+/* 庄家钮：独立的圆形徽章，脱开座位/hero 胶囊，绝对定位在它外侧——
+   不再是头像方块角落里那个 5px、几乎不可辨认的小白点。定位锚点是
+   .seat-info / .hero-info（见那两条规则里的 position: relative）。
+   放在胶囊左上角外侧：这个位置不依赖座位在桌上的左右朝向，六个槽位
+   （含 hero）都不会被推出可视区，比照抄设计稿里"只对 hero 生效"的
+   left:-88px 更通用。 */
+.dealer-btn {
+  position: absolute;
+  top: calc(-1 * var(--u));
+  left: calc(-1 * var(--u));
+  z-index: 2;
+  width: calc(2.89 * var(--u));
+  height: calc(2.89 * var(--u));
   border-radius: 50%;
-  background: #fff;
-  align-self: flex-start;
-  margin-top: calc(0.33 * var(--u));
+  background: var(--app);
+  border: 1px solid var(--line-2);
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.06), 0 6px 14px -6px rgba(17, 20, 26, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(1.22 * var(--u));
+  font-weight: 600;
+  color: var(--text-2);
 }
 
 /* ---- 中部：底池与公共牌 ---- */
@@ -438,7 +475,16 @@ body {
 .board {
   display: flex;
   align-items: flex-end;
-  gap: calc(0.67 * var(--u));
+}
+/* 逐张递增的间距（0 / 6 / 6 / 18px），不是统一 gap——设计稿用第四张前的
+   大间隙暗示"这是转牌，前三张是同一次翻牌"，统一间距会把这条信息抹平。 */
+.board .card:nth-child(1) { margin-left: 0; }
+.board .card:nth-child(2),
+.board .card:nth-child(3) {
+  margin-left: calc(0.67 * var(--u));
+}
+.board .card:nth-child(n + 4) {
+  margin-left: calc(2 * var(--u));
 }
 
 /* ---- 四色牌 ---- */
@@ -540,6 +586,8 @@ body {
 .hero-cards .card-lg .card-rank-wide { font-size: calc(2.4 * var(--u)); }
 .hero-cards .card { box-shadow: var(--sh-card-hero); }
 .hero-info {
+  /* 定位上下文：与 .seat-info 同理，庄家钮锚定在这一层外侧 */
+  position: relative;
   display: flex;
   gap: calc(1.33 * var(--u));
   align-items: center;
@@ -676,11 +724,16 @@ body {
 }
 .btn:active { transform: translateY(1px); }
 
-/* 预设档 + 滑块合成一张浮起的小卡（设计稿的 raise 条就是这一张） */
+/* 预设档 + 滑块 + 金额框合成一整条浮起的卡片（设计稿的 raise 条），
+   与下面的 Fold/Call/Raise 三键行**同屏常驻**，不是点「加注」才展开出来的
+   面板——三态互斥切换是改版前的形状，见 ActionBar.tsx 顶部的注释。
+   设计稿这一整条是单行 flex row（预设按钮/滑块/金额框都是平级子元素），
+   不是"预设一行、滑块一行"的纵向堆叠。 */
 .raise-panel {
   display: flex;
-  flex-direction: column;
-  gap: calc(1.11 * var(--u));
+  flex-direction: row;
+  align-items: center;
+  gap: calc(0.89 * var(--u));
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
   border: 1px solid var(--line);
@@ -688,15 +741,15 @@ body {
   padding: calc(1.11 * var(--u)) calc(1.33 * var(--u));
   box-shadow: 0 1px 2px rgba(17, 20, 26, 0.04), 0 12px 26px -16px rgba(17, 20, 26, 0.2);
 }
-.raise-presets {
-  display: flex;
-  gap: calc(0.89 * var(--u));
-}
+/* 五档预设（1/3池 · 1/2池 · 2/3池 · 池 · 全下）按内容自身宽度排布，
+   不再各占一等份——它们与滑块是同一行里的平级兄弟，滑块才是吃剩余空间
+   的那个（见 .raise-slider 的 flex:1）。 */
 .preset {
-  flex: 1;
+  flex: none;
   min-height: calc(3.6 * var(--u));
   border: 1px solid var(--line-2);
   border-radius: calc(0.89 * var(--u));
+  padding: calc(0.78 * var(--u)) calc(1.33 * var(--u));
   background: transparent;
   color: var(--text-2);
   font-family: var(--font);
@@ -704,9 +757,13 @@ body {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
+  white-space: nowrap;
 }
 .preset:hover { background: var(--soft); }
-.preset:active {
+/* 选中态是持久的（当前滑块值等于这一档），不是只在按下瞬间闪一下——
+   :active 是原生的按压反馈，顺手复用同一组配色，两者不冲突。 */
+.preset:active,
+.preset.preset-on {
   background: var(--blue-soft);
   border-color: rgba(47, 111, 237, 0.35);
   color: var(--blue);
@@ -714,12 +771,13 @@ body {
 .raise-slider {
   display: flex;
   align-items: center;
-  gap: calc(1.33 * var(--u));
+  flex: 1;
+  min-width: calc(6 * var(--u));
 }
 .raise-slider input {
   flex: 1;
   /* 原生滑块在浅色底上默认是灰轨 + 系统蓝钮，两处都不合调；
-     只重画轨与钮，不改行为（步进网格的问题见 RaiseControl.tsx 的注释）。 */
+     只重画轨与钮，不改行为（步进网格的问题见下方注释）。 */
   -webkit-appearance: none;
   appearance: none;
   height: calc(2.9 * var(--u));
@@ -765,33 +823,46 @@ body {
   box-shadow: 0 1px 4px rgba(17, 20, 26, 0.26), 0 0 0 1px rgba(17, 20, 26, 0.06);
 }
 /* 金额独立成一个描边小盒，与设计稿一致——它是这一条里唯一会变的数字，
-   套个框才不会被两侧的按钮淹掉 */
-.raise-amount {
-  min-width: calc(6.2 * var(--u));
-  text-align: right;
+   套个框才不会被两侧的按钮淹掉。盒内还嵌一条竖分隔线 + 「最大」文字链接
+   （设计稿的 Max），点它等价于把滑块拖到头，与「全下」预设是同一个动作。 */
+.raise-amount-box {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: calc(1 * var(--u));
   border: 1px solid var(--line-2);
   border-radius: calc(1.11 * var(--u));
   padding: calc(0.78 * var(--u)) calc(1.22 * var(--u));
   background: #fff;
   box-shadow: 0 1px 2px rgba(17, 20, 26, 0.04);
+}
+.raise-amount {
+  min-width: calc(6.2 * var(--u));
+  text-align: right;
   font-size: calc(1.5 * var(--u));
   font-weight: 600;
   letter-spacing: -0.02em;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-.raise-actions {
-  display: flex;
-  gap: calc(1.11 * var(--u));
+.raise-amount-sep {
+  width: 1px;
+  height: calc(1.56 * var(--u));
+  background: var(--line-2);
+  flex: none;
 }
-
-.confirm { display: flex; flex-direction: column; gap: 8px; }
-.confirm-text {
-  text-align: center;
-  font-size: 13.5px;
+.raise-max {
+  border: none;
+  background: transparent;
+  color: var(--blue);
+  font-family: var(--font);
+  font-size: calc(1.28 * var(--u));
   font-weight: 600;
-  padding: 4px 0;
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
 }
-.confirm-actions { display: flex; gap: 6px; }
+.raise-max:hover { text-decoration: underline; }
 
 .summary { display: flex; flex-direction: column; gap: 8px; }
 .summary-line {
@@ -1774,7 +1845,8 @@ body {
   display: grid;
   grid-template-columns: 1.3fr 1fr;
   gap: 10px;
-  align-items: start;
+  /* 两栏等高（默认 stretch）：左栏曲线卡跟右栏三张小卡叠起来的高度看齐，
+     不再各自撑到自己内容的高度——设计稿就是两栏齐平。 */
 }
 
 .rep-card-title {
@@ -1787,10 +1859,14 @@ body {
   padding: 16px;
   display: flex;
   flex-direction: column;
+  /* grid 行拉伸出来的高度是明确值，flex:1 的 SVG 才有多余空间可撑——
+     min-height:0 是必须的，不然 flex 子项按内容最小高度撑破容器。 */
+  min-height: 0;
 }
 .rep-curve-svg {
   width: 100%;
-  height: 150px;
+  flex: 1;
+  min-height: 0;
 }
 .rep-curve-axis {
   display: flex;
@@ -1916,6 +1992,15 @@ body {
   }
   .rep-main {
     grid-template-columns: 1fr;
+  }
+  /* 单栏堆叠之后不再有"跟右栏对齐"这回事——grid 单列的行高就是内容自身
+     高度，flex:1 在这种未定高的容器里没有基准可撑，退回固定高度。 */
+  .rep-curve-card {
+    min-height: auto;
+  }
+  .rep-curve-svg {
+    flex: none;
+    height: 150px;
   }
 }
 

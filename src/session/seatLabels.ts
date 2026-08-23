@@ -30,12 +30,35 @@ export function personaLabel(personaId: string | undefined): string {
 }
 
 /**
- * 座位头像方块里的字。
+ * 座位胶囊里的小字位置标记（BTN/SB/…）。
  *
- * 设计稿放的是名字缩写（`wide_lag` → WL），纯装饰。这里改放**位置**——
- * 在扑克里"这个人坐在哪"比"他叫什么"重要得多：同一个性格在 UTG 和在 BTN
- * 是两种威胁。名字仍在旁边一行，信息一个没少，装饰位换成了有用的东西。
+ * 曾经这个值放在头像方块里代替名字缩写（"在扑克里坐在哪比叫什么重要"）。
+ * 头像方块现在改放性格首字（见 personaAvatarLetter），位置退回胶囊内的一枚
+ * 小标记——信息一个没少，只是换了个位置：性格是"这个人怎么打"，位置是
+ * "他现在坐在哪"，两者都要留，缺哪个都会让读桌变难。
  */
 export function seatBadge(position: Position): string {
   return position;
+}
+
+/**
+ * persona id → 头像方块里的字（一个汉字，或 hero 的固定标记）。
+ *
+ * 不用"姓名首字母"那种通用算法（取 persona.name 的第一个字）：GTO 原型的
+ * 中文名是"平衡"，首字"平"和缩写"GTO"对不上号，这张表由产品直接指定
+ * 六个字，逐个对应，不做推导。
+ */
+const AVATAR_LETTERS: Readonly<Record<string, string>> = {
+  gto: 'G',
+  tag: '紧',
+  lag: '松',
+  station: '跟',
+  rock: '岩',
+  maniac: '疯',
+};
+
+export function personaAvatarLetter(personaId: string | undefined): string {
+  if (personaId === HERO_PERSONA_ID) return 'YOU';
+  const id = personaId === undefined ? GTO_PERSONA.id : getPersona(personaId).id;
+  return AVATAR_LETTERS[id] ?? getPersona(id).name.slice(0, 1);
 }
