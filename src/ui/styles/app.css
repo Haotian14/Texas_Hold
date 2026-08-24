@@ -248,6 +248,7 @@ body {
 .slot-2 { left: 50%; top: 7%; }
 .slot-3 { left: 89%; top: 25%; }
 .slot-4 { left: 89%; top: 60%; }
+/* 窄牌桌上这几个 top 会被文件末尾那个 @container 块改掉，改坐标时记得一起看 */
 
 /* 座位卡。所有尺寸 = 设计稿 px / 9 * 1u（见上面「比例尺」那段）。 */
 .seat {
@@ -1751,6 +1752,7 @@ body {
   .slot-2 { left: 50%; top: 6%; }
   .slot-3 { left: 83%; top: 24%; }
   .slot-4 { left: 84%; top: 60%; }
+  /* top 另由文件末尾的 @container 块覆盖（公共牌遮挡），这里只管 left */
 
   .hist {
     padding: 12px 12px calc(14px + var(--safe-bottom));
@@ -2386,4 +2388,60 @@ body {
   .rvp-net {
     font-size: 20px;
   }
+}
+
+/* ───────── 窄牌桌：把公共牌与两侧座位在**纵向**上错开 ─────────
+
+   手机上实测（393×873）：公共牌压住左右两个座位各约 85×25px，座位只露出
+   头像和半截筹码数——用户报的「遮挡太明显」就是这个。
+
+   根因是两把不同的尺子。座位槽位用 `top: %`（百分比按容器**高度**算），而
+   牌桌中心区的下移用的是 `.table-center { padding-top: 28% }` —— CSS 里
+   padding 的百分比一律按容器**宽度**算，即使是 padding-top。宽屏上两者都大，
+   看不出问题；窄高的手机上宽度小了，28% 只剩 110px，公共牌整体上移，正好
+   撞进两侧座位那条带子。
+
+   横向上让不开：公共牌占牌桌宽度的 79%（393px 屏上是 42→351），而两个座位
+   胶囊各宽约 120px，加起来 240px，中间只剩 153px——想不重叠，牌得缩到 28px
+   宽，那已经读不出点数了。所以只能纵向错开。
+
+   三处一组：把中心区改成绝对定位 + `top: %`（换成和座位同一把尺子）、两侧
+   座位上下再拉开一点、公共牌在窄桌上比手牌小一号（`card-lg` 是和 hero 手牌
+   同规格的，桌上五张排开时太占地方）。`.slot-*` 这里只覆盖 `top`，`left`
+   仍然由 520px 那个断点里设计稿的 H5 坐标提供。
+
+   用**容器查询而不是媒体查询**：碰撞取决于牌桌宽度，而宽屏下左侧导航要占
+   190px，视口宽和牌桌宽差着一截（视口 745px 时牌桌只有 555px，照样会撞）。
+   `.app-main` 已经是 `container-type: inline-size`，直接问它就行。
+   阈值 560px 实测交叉点干净：牌桌 555px 生效、565px 不生效，两侧均无重叠；
+   393 / 450 / 555 / 565 / 585 / 610 / 644 / 900 八档牌桌宽度逐档验过。
+
+   本块必须留在文件末尾——它覆盖的 `.table-center`（441 行）、`.card-lg`
+   （537 行）、`.slot-*`（1749 行那组）都在前面，同特异性下后写的才生效。 */
+@container (max-width: 560px) {
+  .slot-2 { top: 12%; }
+  .slot-1,
+  .slot-3 { top: 19%; }
+  .slot-0,
+  .slot-4 { top: 67%; }
+
+  /* 绝对定位是为了把 `top` 从「按宽度」换成「按高度」，不是为了脱离文档流。
+     left/right 归零让它仍然占满整宽，内部照旧居中。 */
+  .table-center {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 36%;
+    padding-top: 0;
+    gap: 8px;
+  }
+
+  /* 公共牌降一号。字号跟着降，否则点数会顶破牌面。 */
+  .board .card-lg {
+    width: calc(6.4 * var(--u));
+    height: calc(9 * var(--u));
+  }
+  .board .card-lg .card-rank { font-size: calc(2.3 * var(--u)); }
+  .board .card-lg .card-suit { font-size: calc(2.1 * var(--u)); }
+  .board .card-lg .card-rank-wide { font-size: calc(2 * var(--u)); }
 }
