@@ -733,8 +733,13 @@ body {
   font-variant-numeric: tabular-nums;
   transition: background 120ms linear, filter 120ms linear;
 }
-/* 设计稿给三颗按钮各配了 hover：前两颗压一层 --soft，主按钮提亮 */
-.btn:hover { background: var(--soft); }
+/* 设计稿给三颗按钮各配了 hover：前两颗压一层 --soft，主按钮提亮。
+   :not(.btn-primary) 不是装饰——`.btn:hover` 是 (0,2,0)，而 .btn-primary
+   的蓝底只有 (0,1,0)，不排除的话 hover 时灰底会盖掉蓝底，而主按钮是白字，
+   白字压在近白的 --soft 上等于整颗按钮消失（实测：文字完全看不见）。
+   受影响的是全部三处 .btn-primary：动作条主按钮、补码的两颗、结算的
+   「下一手」。 */
+.btn:not(.btn-primary):hover { background: var(--soft); }
 .btn-primary:hover { filter: brightness(1.07); }
 /* 主动作是页面上唯一的实心蓝：设计稿里同屏永远只有一个这样的按钮 */
 .btn-primary {
@@ -2305,7 +2310,10 @@ body {
   color: var(--text-dim);
   background: transparent;
 }
-.rvp-btn-ghost:hover {
+/* 排除已标记态，理由同 .btn:not(.btn-primary):hover —— 这条是 (0,2,0)，
+   而下面 .rvp-dispute-on 的琥珀底只有 (0,1,0)，不排除的话鼠标一放上去
+   「已标记有异议」就变回未标记的样子，看起来像点了没生效。 */
+.rvp-btn-ghost:not(.rvp-dispute-on):hover {
   background: var(--soft);
   color: var(--text);
 }
