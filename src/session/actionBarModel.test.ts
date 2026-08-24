@@ -95,6 +95,28 @@ describe('actionBarModel', () => {
     expect(checkedCount).toBeGreaterThanOrEqual(1);
   });
 
+  // 引擎的 raise.min/max/presets.amount 全是**本次投入额**（见 gameEngine 的
+  // ActionInput 注释），而动作条上那颗按钮写的是「加注到 X」——两者相差 hero
+  // 本街已投入的部分。committed 就是这个差额，交给 UI 拼出「加注到」的总额，
+  // 免得它自己去 state 里取（src/ui 不得从引擎取值）。
+  it('committed 是 hero 本街已投入额，加注到的总额 = committed + 投入额', () => {
+    // hero 在 BB：本街已放着 1BB 的盲注，committed 必须非零，否则这条测试
+    // 会在 committed 恒为 0 的实现下也通过。
+    const s = advanceTo(startHand({ seed: 'abm-committed', buttonSeat: 4 }), HERO_SEAT);
+    const m = actionBarModel(s);
+    expect(m.raise).not.toBeNull();
+
+    const seat = s.seats[HERO_SEAT];
+    expect(seat.streetContribution).toBeGreaterThan(0);
+    expect(m.raise!.committed).toBe(seat.streetContribution);
+
+    // 「加注到」的总额必须等于本街最终投入，且严格大于场上当前下注额——
+    // 一次合法的加注不可能加到比现有下注还低的位置。
+    for (const p of m.raise!.presets) {
+      expect(m.raise!.committed + p.amount).toBeGreaterThan(s.currentBet);
+    }
+  });
+
   it('all-in 是独立字段，不混在 presets 里', () => {
     const s = advanceTo(startHand({ seed: 'abm-5', buttonSeat: 0 }), HERO_SEAT);
     const m = actionBarModel(s);

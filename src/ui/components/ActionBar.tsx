@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ActionInput } from '../../core/gameEngine';
 import type { ActionBarModel } from '../../session/actionBarModel';
-import { chipsGreater } from '../../core/chips';
+import { chipsGreater, round2 } from '../../core/chips';
 import { SMALL_BLIND } from '../../core/types';
 import { chips } from '../format';
 
@@ -52,11 +52,19 @@ export function ActionBar({
   const chipsEqual = (a: number, b: number): boolean =>
     !chipsGreater(a, b) && !chipsGreater(b, a);
 
+  // 滑块与预设走的是引擎口径的**本次投入额**，而按钮上写的是「加注到 X」
+  // ——本街已投入的部分（大盲、或自己先下注后被再加注的那笔）也算在「加注
+  // 到」里面，不加回去就会少报一个 committed。BB 防守时这个差额恰好是 1BB：
+  // 界面会写着「加注到 $720」而实际加注到 $760。
+  // 下注（committed 恒为 0）与全下不受影响：全下写的是"你推出去多少"，
+  // 也就是你面前那摞筹码本身，不是加注到的总额。
+  const raiseTo = model.raise ? round2(clamped + model.raise.committed) : clamped;
+
   let primaryLabel: string | null = null;
   if (model.raise) {
     primaryLabel = isAllin
       ? `全下 ${chips(clamped)}`
-      : `${model.raise.type === 'bet' ? '下注' : '加注到'} ${chips(clamped)}`;
+      : `${model.raise.type === 'bet' ? '下注' : '加注到'} ${chips(raiseTo)}`;
   } else if (model.allin) {
     primaryLabel = `全下 ${chips(model.allin.amount)}`;
   }
@@ -117,7 +125,8 @@ export function ActionBar({
           </div>
 
           <div className="raise-amount-box">
-            <span className="raise-amount">{chips(clamped)}</span>
+            {/* 与主按钮印同一个数：两处一旦口径不同，用户没有办法判断该信哪个 */}
+            <span className="raise-amount">{chips(isAllin ? clamped : raiseTo)}</span>
             <span className="raise-amount-sep" aria-hidden="true" />
             <button
               type="button"

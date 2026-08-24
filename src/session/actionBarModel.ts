@@ -9,6 +9,13 @@ export interface RaiseModel {
   max: number;
   /** 快捷尺度。超出 [min,max] 的档位不会出现在这里 */
   presets: { label: string; amount: number }[];
+  /**
+   * hero 本街已投入额。上面三个字段全是**本次投入额**（引擎的口径，见
+   * gameEngine 的 ActionInput 注释），而动作条上写的是「加注到 X」——两者
+   * 相差的就是这个数。放在这里是为了让 UI 不必自己去 GameState 里取
+   * `seats[HERO_SEAT].streetContribution`（src/ui 不得从引擎取值）。
+   */
+  committed: number;
 }
 
 export interface ActionBarModel {
@@ -81,6 +88,7 @@ export function actionBarModel(state: GameState): ActionBarModel {
       min: raiseAction.min,
       max: raiseAction.max,
       presets,
+      committed: seat.streetContribution,
     };
   }
 
