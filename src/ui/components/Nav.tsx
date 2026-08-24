@@ -1,5 +1,6 @@
 import { chipsGreater } from '../../core/chips';
 import { chips } from '../format';
+import { IconPercent, IconVolumeOff, IconVolumeOn } from './icons';
 
 /**
  * 「历史」不在导航里：它是复盘页右栏底部那颗「全部手牌」按钮的去处，
@@ -93,18 +94,22 @@ export function Nav({
             className={showEquity ? 'nav-mute nav-toggle-on' : 'nav-mute'}
             onClick={onToggleEquity}
             aria-pressed={showEquity}
+            // 图标是 aria-hidden 的，按钮里再没有别的文字，所以可访问名字只能
+            // 由 aria-label 给——光留 title 的话部分读屏软件会念成「按钮」
+            aria-label={showEquity ? '隐藏胜率' : '显示胜率'}
             title={showEquity ? '隐藏胜率' : '显示胜率'}
           >
-            %
+            <IconPercent />
           </button>
           <button
             type="button"
             className="nav-mute"
             onClick={onToggleMute}
             aria-pressed={muted}
+            aria-label={muted ? '取消静音' : '静音'}
             title={muted ? '取消静音' : '静音'}
           >
-            {muted ? '🔇' : '🔊'}
+            {muted ? <IconVolumeOff /> : <IconVolumeOn />}
           </button>
         </div>
         <div className={`nav-session-net ${isNeg ? 'neg' : 'pos'}`}>

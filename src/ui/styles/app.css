@@ -1493,31 +1493,58 @@ body {
 .nav-session-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 4px;
 }
 .nav-session-label {
   font-size: 11px;
   color: var(--text-dim);
   letter-spacing: 0.01em;
+  /* 把两颗开关一起推到右边。原来这里是 space-between，三个子元素
+     被均匀撒开，两颗同类按钮中间隔出一大段空白，看不出它们是一组 */
+  margin-right: auto;
 }
+/* 两颗图标开关（百分号 = 胜率读数，喇叭 = 音效）。图标本体只有 15px，
+   按钮撑到 26px 是为了点击区：手机上导航折成顶部那条时这两颗仍然要能
+   用手指点准，15px 的裸图标点不中。 */
 .nav-mute {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
   border: none;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-faint);
-  font-size: 13px;
+  /* 图标的宽高是 1em，所以这一行就是图标边长 */
+  font-size: 15px;
   line-height: 1;
   padding: 0;
   cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease;
 }
-.nav-mute:hover { color: var(--text-dim); }
-/* 开着的显示开关。静音键靠图标本身（🔇/🔊）就能表达开关态，「%」不能，
-   所以这一颗要有独立的选中态——否则用户只能靠牌桌上有没有数字来反推。
-   字重也一起加：只靠颜色的话色觉障碍用户拿不到这个状态。 */
+/* 悬停只加一层极淡的底 + 把描边提一档，不整颗变色块：它们是坐在
+   导航底部的次要开关，不该比旁边的净盈亏数字还抢眼 */
+.nav-mute:hover {
+  color: var(--text-2);
+  background: var(--soft);
+}
+.nav-mute .icon {
+  display: block;
+}
+/* 开着的胜率开关。静音键靠图标本身（喇叭带不带叉）就能表达开关态，
+   百分号不能，所以这一颗要有独立的选中态——否则用户只能靠牌桌上有没有
+   数字来反推。除了变蓝，底也一起上：只靠颜色的话色觉障碍用户拿不到这个
+   状态，而描边图标没有"加粗"这条路可走（原来那个"%"字符靠 font-weight）。 */
 .nav-mute.nav-toggle-on {
   color: var(--blue);
-  font-weight: 700;
+  background: var(--blue-soft);
 }
-.nav-mute.nav-toggle-on:hover { color: var(--blue); }
+.nav-mute.nav-toggle-on:hover {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
 .nav-session-net {
   font-size: 19px;
   font-weight: 600;
@@ -1744,6 +1771,15 @@ body {
     gap: 2px;
     padding: 0;
     border-top: none;
+  }
+  /* 与上面藏掉产品名同理：横条上这一行放不下四样东西。实测品牌 42 +
+     三项导航 200 + 会话块 104（会话盈亏 44 + 两颗 26 的图标开关）+ 间距
+     内边距 44 = 390px，360px 屏上会话块整个折到第二行，顶栏从 84px 涨到
+     109px。四样里「会话盈亏」是最该让位的：下面那行大字净盈亏和「买入 …」
+     已经说清这块是什么，而两颗开关的 26px 是手指点得中的下限，不能再缩。
+     藏掉之后 360 / 390 两档都是单行 84px（旧版这两档分别是 109 / 72）。 */
+  .nav-session-label {
+    display: none;
   }
   .app-main {
     /* 安全区已经由 .nav 的 padding 补过了，这里再补一次就是两倍 */

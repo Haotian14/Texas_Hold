@@ -250,3 +250,5 @@ AI 层（②-B-1）这边：
 TypeScript（strict）· Vitest · fast-check · Node 24 · React 19 · Vite 7 · Web Audio
 
 React 与 Vite 已在 ③-A 加入；IndexedDB 待 ③-C。core / ai / review 三层仍不依赖它们，也不会依赖。
+
+界面图标（导航底部的胜率开关与静音键）取自 [Lucide](https://lucide.dev)（ISC 许可），路径原样内联在 `src/ui/components/icons.tsx` 里，不引图标库——UI 层的运行时依赖仍只有 React 一项。
