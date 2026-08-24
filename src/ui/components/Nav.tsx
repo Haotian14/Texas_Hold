@@ -38,6 +38,8 @@ export function Nav({
   totalBuyIn,
   muted,
   onToggleMute,
+  showEquity,
+  onToggleEquity,
 }: {
   page: PageId;
   onNav: (p: PageId) => void;
@@ -47,6 +49,8 @@ export function Nav({
   totalBuyIn: number;
   muted: boolean;
   onToggleMute: () => void;
+  showEquity: boolean;
+  onToggleEquity: () => void;
 }) {
   const isNeg = chipsGreater(0, netBB);
   return (
@@ -81,6 +85,18 @@ export function Nav({
       <div className="nav-session">
         <div className="nav-session-head">
           <span className="nav-session-label">会话盈亏</span>
+          {/* 胜率开关与静音并排：两者是同一类东西——纯显示偏好、随时可切、
+              存 localStorage、与对局状态无关。放在设置页更"正确"，但设置页
+              是 ③-D-3，而一个训练辅助开关埋进二级页面等于没有。 */}
+          <button
+            type="button"
+            className={showEquity ? 'nav-mute nav-toggle-on' : 'nav-mute'}
+            onClick={onToggleEquity}
+            aria-pressed={showEquity}
+            title={showEquity ? '隐藏胜率' : '显示胜率'}
+          >
+            %
+          </button>
           <button
             type="button"
             className="nav-mute"

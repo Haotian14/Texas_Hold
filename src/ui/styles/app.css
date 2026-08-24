@@ -585,6 +585,41 @@ body {
 .hero-cards .card-lg .card-suit { font-size: calc(2.67 * var(--u)); }
 .hero-cards .card-lg .card-rank-wide { font-size: calc(2.4 * var(--u)); }
 .hero-cards .card { box-shadow: var(--sh-card-hero); }
+/* 胜率读数。尺寸走 --u（牌桌那把比例尺），和它上面的底牌一起缩放。
+   底色用中性灰而不是 --blue：蓝在这套配色里是"轮到你/推荐"的专用色，
+   一个常驻读数占着它，会让"该你了"那圈蓝环不再是唯一信号。 */
+.hero-equity {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: calc(0.67 * var(--u));
+  padding: calc(0.33 * var(--u)) calc(1.11 * var(--u));
+  border-radius: calc(1.11 * var(--u));
+  background: var(--soft);
+  border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.hero-equity-num {
+  font-size: calc(1.78 * var(--u));
+  font-weight: 650;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.hero-equity-label {
+  font-size: calc(1.11 * var(--u));
+  color: var(--text-dim);
+}
+/* 降级：数字是放宽成全范围后算的。用 --warn（"注意但不是错"那一档），
+   不用 --danger —— 它不是一个错误，是一个不该被当真的数。 */
+.hero-equity.degraded {
+  background: rgba(183, 121, 31, 0.09);
+  border-color: rgba(183, 121, 31, 0.22);
+}
+.hero-equity.degraded .hero-equity-num,
+.hero-equity.degraded .hero-equity-label {
+  color: var(--warn);
+}
+
 .hero-info {
   /* 定位上下文：与 .seat-info 同理，庄家钮锚定在这一层外侧 */
   position: relative;
@@ -1469,6 +1504,14 @@ body {
   cursor: pointer;
 }
 .nav-mute:hover { color: var(--text-dim); }
+/* 开着的显示开关。静音键靠图标本身（🔇/🔊）就能表达开关态，「%」不能，
+   所以这一颗要有独立的选中态——否则用户只能靠牌桌上有没有数字来反推。
+   字重也一起加：只靠颜色的话色觉障碍用户拿不到这个状态。 */
+.nav-mute.nav-toggle-on {
+  color: var(--blue);
+  font-weight: 700;
+}
+.nav-mute.nav-toggle-on:hover { color: var(--blue); }
 .nav-session-net {
   font-size: 19px;
   font-weight: 600;

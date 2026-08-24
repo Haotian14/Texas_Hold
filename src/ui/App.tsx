@@ -16,6 +16,9 @@ import {
 import type { HandSessionState, SessionConfig } from '../session/handSession';
 import { heroNet } from '../session/ledger';
 import { actionBarModel } from '../session/actionBarModel';
+import { heroEquityNow } from '../session/heroEquity';
+import type { HeroEquity } from '../session/heroEquity';
+import { showEquityPref, setShowEquityPref } from './prefs';
 import { TopBar } from './components/TopBar';
 import { Table } from './components/Table';
 import { HeroHand } from './components/HeroHand';
@@ -83,6 +86,13 @@ export function App() {
   const [state, dispatch] = useReducer(reducer, CFG, startSession);
 
   const [muted, setMutedState] = useState(isMuted);
+  const [showEquity, setShowEquityState] = useState(showEquityPref);
+  /**
+   * 算好的胜率。与它属于哪一步绑在一起（handIndex + stepIndex）——不绑的话，
+   * 上一步算出来的数会在新局面上多显示一帧，而那一帧里它是错的。
+   * 这与复盘结果绑 recordId 是同一个理由。
+   */
+  const [equity, setEquity] = useState<{ key: string; value: HeroEquity | null } | null>(null);
 
   // 复盘分析与它属于哪一手绑在一起。只要 recordId 与屏幕上这一手对不上，
   // 就当作「还没算好」—— 这是「连打十手不串手」那条验收的唯一防线。
@@ -141,6 +151,52 @@ export function App() {
       return next;
     });
   }, []);
+
+  const onToggleEquity = useCallback(() => {
+    setShowEquityState(prev => {
+      const next = !prev;
+      setShowEquityPref(next);
+      return next;
+    });
+  }, []);
+
+  /**
+   * 算胜率。与复盘那次分析走同一套路数：蒙特卡洛是同步的，直接在渲染里算
+   * 会把「轮到你了」那一帧卡住，用 setTimeout 让出一帧再算。
+   *
+   * 只在开关打开且轮到 hero 时算 —— 关着的时候一次都不算，这个功能对没开
+   * 它的人是零成本。取消逻辑保证用户连点两下（或 StrictMode 双跑）时不会
+   * 有一个过期的结果后到并覆盖新的。
+   */
+  const equityKey = `${state.handIndex}-${state.stepIndex}`;
+  useEffect(() => {
+    if (!showEquity || state.phase !== 'awaitingHero') {
+      setEquity(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      let value: HeroEquity | null = null;
+      try {
+        value = heroEquityNow(state);
+      } catch {
+        // 算不出来不该掀掉牌桌：读数消失即可，牌局继续
+        value = null;
+      }
+      if (!cancelled) setEquity({ key: equityKey, value });
+    }, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // state 整体不进依赖：它每步都是新引用，而这一步该不该重算由
+    // equityKey（handIndex + stepIndex）决定，那才是"局面变了"的判据。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEquity, state.phase, equityKey]);
+
+  // 键对不上就当作"还没算好"，不显示上一步的数
+  const shownEquity = equity !== null && equity.key === equityKey ? equity.value : null;
 
   // 浏览器在用户第一次手势前不允许播放音频。任何一次点击都算手势，
   // 所以挂在根节点上捕获一次就够，之后自行解绑。
@@ -390,6 +446,8 @@ export function App() {
         totalBuyIn={state.ledger.totalBuyIn}
         muted={muted}
         onToggleMute={onToggleMute}
+        showEquity={showEquity}
+        onToggleEquity={onToggleEquity}
       />
       <div className="app-main">
         {page === 'history' ? (
@@ -425,6 +483,7 @@ export function App() {
               seat={hero}
               isButton={state.game.buttonSeat === HERO_SEAT}
               isToAct={state.game.toAct === HERO_SEAT}
+              equity={shownEquity}
             />
             <BottomSlot
               state={state}
