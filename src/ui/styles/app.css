@@ -1348,6 +1348,14 @@ body {
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  /* flex 项的 min-height 默认是 auto，意思是「不许收缩到内容高度以下」。
+     内容一旦比视口高，.app-main 就跟着涨（实测手机上复盘页 972px vs 视口
+     844px），把整个应用顶出视口，再被 body 的 overflow: hidden 裁掉——而
+     body 那条 overflow 是故意的（动作条要贴底），于是内容既滚不到也看不见。
+     min-height: 0 让它老实停在分给它的高度上，溢出的部分交给各页自己的
+     滚动容器（.hist / .rep 有，.rvp 在下面的 720px 断点里补上）。
+     牌桌页不受影响：它本来就靠 .table 的 flex: 1 自适应，从不溢出。 */
+  min-height: 0;
   /* 尺寸容器。开在这里而不是 .table 上，因为 .hero 与 .bottom 是 .table 的
      兄弟节点，它们要按同一把尺子缩放。 */
   container-type: inline-size;
@@ -2294,11 +2302,29 @@ body {
    断点取 720px 而不是 520px：254 + 18 + 右栏内容宽度在 700px 上下就挤不下了，
    比手机断点早得多。 */
 @media (max-width: 720px) {
+  /* 手机上整页滚，而不是在右栏里开一个小窗口滚。
+     桌面两栏时「页面不滚、右栏正文自己滚」是对的：左栏四张街道卡要一直
+     看得见。塌成上下堆叠之后这个前提就没了——页头 + 四张街道卡 + 详情卡
+     的固定部分先占掉大半屏，留给 .rvp-detail-body 的那点高度装不下一个
+     决策点，而 .rvp 自己没有 overflow（.hist / .rep 都有），于是页面整体
+     既滚不动、内容又被裁掉。
+     这里三条 + 上面 .app-main 的 min-height: 0 是一组，**缺任何一半都无效**，
+     实测过：只改这三条，.app-main 仍涨到 972px，.rvp 没有溢出可滚；只改
+     min-height，.rvp 的 overflow 还是 visible，压根不是滚动容器。两边都到位
+     才有 772/972 这个可滚的 200px。
+     三条各自的作用：.rvp 开滚、.rvp-cols 不再抢满高（flex:1 会把它压回容器
+     高度，外层就永远没有可滚的溢出）、内层交还滚动权（否则两层嵌套滚动，
+     手指在正文上滑动时外层不动）。 */
   .rvp {
     padding: 16px 14px calc(16px + var(--safe-bottom));
+    overflow-y: auto;
   }
   .rvp-cols {
     flex-direction: column;
+    flex: none;
+  }
+  .rvp-detail-body {
+    overflow: visible;
   }
   .rvp-streets {
     width: auto;
