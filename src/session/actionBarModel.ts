@@ -1,6 +1,7 @@
 import type { GameState } from '../core/types';
 import { HERO_SEAT } from '../core/types';
 import { legalActions, currentPot, round2, chipsGreater } from '../core/gameEngine';
+import { betInvestment } from '../core/evEstimate';
 
 export interface RaiseModel {
   /** 最小投入额，直接取自 legalActions */
@@ -71,14 +72,16 @@ export function actionBarModel(state: GameState): ActionBarModel {
 
   let raise: ActionBarModel['raise'] = null;
   if (raiseAction) {
-    // 尺度的通用口径是跟注后的底池：先把欠的跟平，再按比例往里加。
-    // 所以「满池」不是「往池里放一个当前底池」——面对 $80 的开池、底池
-    // $140 时，满池档是 80 + (140+80) = $300，对手正好面对一个满池注。
-    // toCall 为 0 时退化成「下注 X 倍底池」，与直觉一致。
-    const potAfterCall = round2(currentPot(state) + toCall);
+    // 尺度换算走 core 的 betInvestment，不在这里另写一遍公式——它同时是
+    // EV 引擎候选尺度、AI 出牌尺度与复盘判定（bet_size_too_small /
+    // _too_large 按 investment 就近匹配候选档）的口径。这里曾经按「跟注后
+    // 的底池」算，比引擎多算一个 toCall：底池 $140、面对 $80 开池时按钮
+    // 给 $300 而引擎的「满池」是 $220，点着满池打出的是复盘引擎认不出的
+    // 尺度。同一个名字必须是同一个数。
+    const pot = currentPot(state);
     const presets = PRESET_FRACTIONS.map(({ label, f }) => ({
       label,
-      amount: round2(toCall + f * potAfterCall),
+      amount: betInvestment(pot, toCall, f),
     })).filter(
       // 落在界外的档位直接不出现，而不是夹到边界上：夹到 max 会变成一个
       // 伪装成「1/2 池」的全下，而全下需要二次确认。宁可少给一个按钮。

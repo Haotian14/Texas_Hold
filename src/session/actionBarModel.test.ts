@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { startHand, applyAction, legalActions } from '../core/gameEngine';
 import { HERO_SEAT, SEAT_COUNT } from '../core/types';
 import type { GameState } from '../core/types';
+import { betInvestment } from '../core/evEstimate';
 import { actionBarModel } from './actionBarModel';
 
 /** 把牌局推进到指定座位行动为止，途中所有人都用 fold 以外的最省事动作 */
@@ -66,7 +67,7 @@ describe('actionBarModel', () => {
     expect(checkedCount).toBeGreaterThanOrEqual(1);
   });
 
-  it('快捷尺度按「跟注后的底池」计价：投入额 = toCall + f × (pot + toCall)', () => {
+  it('快捷尺度与 EV 引擎同口径：投入额 = toCall + f × pot（跟平前的底池）', () => {
     const s = advanceTo(startHand({ seed: 'abm-4', buttonSeat: 0 }), HERO_SEAT);
     const m = actionBarModel(s);
     expect(m.raise).not.toBeNull();
@@ -74,7 +75,6 @@ describe('actionBarModel', () => {
     const seat = s.seats[HERO_SEAT];
     const toCall = s.currentBet - seat.streetContribution;
     const pot = s.seats.reduce((a, x) => a + x.totalContribution, 0);
-    const potAfterCall = pot + toCall;
 
     const FRACTIONS: Record<string, number> = {
       '1/3 池': 1 / 3,
@@ -89,10 +89,37 @@ describe('actionBarModel', () => {
     for (const p of m.raise!.presets) {
       const f = FRACTIONS[p.label];
       expect(f).toBeDefined();
-      expect(p.amount).toBeCloseTo(toCall + f * potAfterCall, 2);
+      // 直接对 betInvestment 断言：档位金额的唯一权威是它，这条测试同时
+      // 钉住「动作条不自己另算一遍」。
+      expect(p.amount).toBeCloseTo(betInvestment(pot, toCall, f), 2);
       checkedCount++;
     }
     expect(checkedCount).toBeGreaterThanOrEqual(1);
+  });
+
+  // 回归：动作条曾按「跟注后的底池」计价（toCall + f × (pot + toCall)），
+  // 比 EV 引擎多算一个 toCall。翻前面对一个 2BB 开池时那是 7.5BB 而不是
+  // 5.5BB——按钮写着「满池」，打出去的却是引擎口径的 1.4 倍。
+  it('翻前面对 2BB 开池：满池档是 5.5BB（pot 3.5 + toCall 2），不是 7.5BB', () => {
+    let s = startHand({ seed: 'abm-pot', buttonSeat: 1 });
+    // 推进到 hero（座位 0，此局在 BTN）行动：前面几家全弃，只留开池的那家。
+    // 找到第一个能加注的座位让它开到 2BB，其余弃牌。
+    const opener = s.toAct!;
+    const raise = legalActions(s).find(a => a.type === 'raise' || a.type === 'bet');
+    expect(raise).toBeDefined();
+    // 「开到 2BB」= 本次投入 2 − 已投入（开池者若在盲注位则要减掉盲注）
+    const openTo = 2 - s.seats[opener].streetContribution;
+    s = applyAction(s, { type: raise!.type, amount: openTo });
+    while (s.toAct !== HERO_SEAT) s = applyAction(s, { type: 'fold' });
+
+    const pot = s.seats.reduce((a, x) => a + x.totalContribution, 0);
+    const toCall = s.currentBet - s.seats[HERO_SEAT].streetContribution;
+    expect(pot).toBeCloseTo(3.5, 2);   // SB 0.5 + BB 1 + 开池 2
+    expect(toCall).toBeCloseTo(2, 2);
+
+    const full = actionBarModel(s).raise!.presets.find(p => p.label === '满池');
+    expect(full).toBeDefined();
+    expect(full!.amount).toBeCloseTo(5.5, 2);  // 旧口径会给 2 + 1×5.5 = 7.5
   });
 
   // 引擎的 raise.min/max/presets.amount 全是**本次投入额**（见 gameEngine 的
