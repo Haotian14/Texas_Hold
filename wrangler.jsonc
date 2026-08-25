@@ -1,7 +1,8 @@
 {
-  // Worker 名。必须与 Cloudflare 面板上那个 Worker 一致——versions upload
-  // 是往一个**已存在**的 Worker 上传版本，名字对不上会直接失败。
-  "name": "poker-trainer",
+  // Worker 名。必须与 Cloudflare 上那个 Worker 一致（面板里叫 texas-hold，
+  // 不是 package.json 的 poker-trainer）——versions upload 是往一个**已存在**
+  // 的 Worker 上传版本，名字对不上就会去找/建另一个 Worker。
+  "name": "texas-hold",
 
   // 只影响 Workers 运行时的行为基线。这里没有 Worker 脚本（纯静态资源），
   // 但 wrangler 仍要求这个字段。
