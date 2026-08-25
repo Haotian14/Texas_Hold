@@ -1,4 +1,6 @@
 import { chips } from '../format';
+import { Button } from './ui/button';
+import { PRIMARY_BTN } from './ui/tableButton';
 
 export function RebuyPrompt({
   options,
@@ -22,9 +24,9 @@ export function RebuyPrompt({
       </div>
       <div className="rebuy-actions">
         {options.map(o => (
-          <button key={o} className="btn btn-primary" onClick={() => onRebuy(o)}>
+          <Button key={o} className={PRIMARY_BTN} onClick={() => onRebuy(o)}>
             补 {chips(o)}
-          </button>
+          </Button>
         ))}
       </div>
     </div>

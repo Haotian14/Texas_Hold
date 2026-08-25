@@ -1,13 +1,23 @@
+import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 // base 用相对路径，使构建产物可以放在静态托管的任意子路径下
 // （③-D 上线时不必回头改这里）。
 export default defineConfig({
   base: './',
+  // '@/x' → 'src/x'。shadcn 生成的组件之间用这个前缀互相引用，是它的约定，
+  // 不是本项目的偏好——现有代码继续用相对路径，不必回头改。
+  // vitest.config.ts 里有一份同样的声明：两份配置各自独立，测试跑的时候
+  // 不经过 vite.config.ts。
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
   plugins: [
     react(),
+    tailwindcss(),
     VitePWA({
       // 'prompt' 而不是 'autoUpdate'：autoUpdate 发现新版本会直接
       // location.reload()，而**对局状态刷新即丢**（只有结算后的 HandRecord

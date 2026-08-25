@@ -14,6 +14,7 @@ import {
   smoothPath,
 } from '../reportModel';
 import type { CurvePoint } from '../reportModel';
+import { Button } from '../components/ui/button';
 
 /**
  * 报表页（规格 §10.5，对应设计稿 Progress 屏）。
@@ -282,14 +283,20 @@ export function ReportPage() {
         <h2 className="rep-title">报表</h2>
         <div className="rep-win">
           {WINDOWS.map(w => (
-            <button
+            <Button
               key={String(w.id)}
-              type="button"
-              className={w.id === win ? 'pill pill-on' : 'pill'}
+              size="sm"
+              variant={w.id === win ? 'outline' : 'ghost'}
+              className={
+                w.id === win
+                  ? 'border-primary/30 bg-accent text-accent-foreground'
+                  : 'border border-input text-secondary-foreground'
+              }
+              aria-pressed={w.id === win}
               onClick={() => setWin(w.id)}
             >
               {w.label}
-            </button>
+            </Button>
           ))}
         </div>
         {/* 库里一手都没有时已经在下面用「还没有记录」说清楚了，这里不重复 */}

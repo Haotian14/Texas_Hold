@@ -1,5 +1,17 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { AiMode } from '../prefs';
+import { Button } from '../components/ui/button';
+import { Switch } from '../components/ui/switch';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../components/ui/alert-dialog';
 import { allHands, importHands, resetAll, storageStatus } from '../../storage/repo';
 import { buildTransfer, parseTransfer, transferFileName } from '../../storage/transfer';
 
@@ -44,21 +56,21 @@ function Toggle({
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
+  // label 与控件用 htmlFor/id 关联，而不是把控件包在 label 里面：Radix 的
+  // Switch 渲染的是 button，包起来不会像原生 checkbox 那样自动转发点击。
+  // button 是 HTML 规定的可标注元素，for 指过来同样能整行可点。
+  const id = useId();
   return (
-    <label className="set-row">
-      <span className="set-row-text">
+    <div className="set-row">
+      <label className="set-row-text" htmlFor={id}>
         <span className="set-row-label">{label}</span>
         {hint !== undefined && <span className="set-row-hint">{hint}</span>}
-      </span>
-      {/* 原生 checkbox 而不是 div + onClick：键盘、读屏、长按选中全都免费，
-          外观由 CSS 的 .set-switch 接管 */}
-      <input
-        type="checkbox"
-        className="set-switch"
-        checked={checked}
-        onChange={e => onChange(e.target.checked)}
-      />
-    </label>
+      </label>
+      {/* ml-auto 把控件顶到行尾。.set-row 是 flex，.set-row-text 不撑开，
+          原来这件事由 .set-switch 的 margin-left:auto 做，那条规则随控件
+          一起删掉了 */}
+      <Switch id={id} className="ml-auto" checked={checked} onCheckedChange={onChange} />
+    </div>
   );
 }
 
@@ -82,17 +94,30 @@ function Choice<T extends string>({
         <span className="set-row-label">{label}</span>
         {hint !== undefined && <span className="set-row-hint">{hint}</span>}
       </span>
-      <span className="set-seg" role="group" aria-label={label}>
+      {/* 分段控件：一条浅底轨道上放两颗按钮，选中的那颗浮起来。没有用
+          shadcn 的 ToggleGroup——那个组件的语义是"一组可切换项"，而这里
+          两项永远必选其一，aria-pressed 比 ToggleGroup 的 data-state 更
+          直白，读屏也念得对 */}
+      <span
+        className="ml-auto inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-secondary p-0.5"
+        role="group"
+        aria-label={label}
+      >
         {options.map(o => (
-          <button
+          <Button
             key={o.value}
-            type="button"
-            className={o.value === value ? 'set-seg-btn set-seg-on' : 'set-seg-btn'}
+            size="sm"
+            variant={o.value === value ? 'outline' : 'ghost'}
+            className={
+              o.value === value
+                ? 'bg-accent text-accent-foreground border-transparent hover:bg-accent hover:text-accent-foreground'
+                : 'hover:bg-transparent hover:text-foreground'
+            }
             aria-pressed={o.value === value}
             onClick={() => onChange(o.value)}
           >
             {o.text}
-          </button>
+          </Button>
         ))}
       </span>
     </div>
@@ -205,23 +230,29 @@ export function SettingsPage(props: SettingsPageProps) {
             <span className="set-row-hint">JSON 文件，只在本机之间搬</span>
           </span>
           <span className="set-actions">
-            <button type="button" className="pill" onClick={() => void onExport()}>
+            <Button variant="outline" size="sm" onClick={() => void onExport()}>
               导出
-            </button>
-            <label className="pill set-import">
-              导入
-              <input
-                type="file"
-                accept="application/json,.json"
-                onChange={e => {
-                  const f = e.target.files?.[0];
-                  // 立刻清空 value：不清的话，用户导入同一个文件第二次不会触发
-                  // change 事件（值没变），看起来像点了没反应
-                  e.target.value = '';
-                  if (f) void onImportFile(f);
-                }}
-              />
-            </label>
+            </Button>
+            {/* asChild：样式套在 label 上而不是渲染一个 button。点 label 会
+                触发它裹着的 file input，这是唯一能自定义文件选择器外观的
+                办法——input[type=file] 自带的那颗按钮改不动 */}
+            <Button asChild variant="outline" size="sm" className="cursor-pointer">
+              <label>
+                导入
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  className="sr-only"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    // 立刻清空 value：不清的话，用户导入同一个文件第二次不会触发
+                    // change 事件（值没变），看起来像点了没反应
+                    e.target.value = '';
+                    if (f) void onImportFile(f);
+                  }}
+                />
+              </label>
+            </Button>
           </span>
         </div>
 
@@ -231,25 +262,35 @@ export function SettingsPage(props: SettingsPageProps) {
             <span className="set-row-hint">删掉全部手牌与统计，不可撤销</span>
           </span>
           <span className="set-actions">
-            {confirmingReset ? (
-              <>
-                <button type="button" className="pill" onClick={() => setConfirmingReset(false)}>
-                  取消
-                </button>
-                <button type="button" className="pill set-danger" onClick={() => void onReset()}>
-                  确认清空
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="pill set-danger"
-                onClick={() => setConfirmingReset(true)}
-                disabled={storageStatus() === 'unavailable'}
-              >
-                重置
-              </button>
-            )}
+            <AlertDialog open={confirmingReset} onOpenChange={setConfirmingReset}>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={storageStatus() === 'unavailable'}
+                >
+                  重置
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogTitle>清空全部手牌与统计？</AlertDialogTitle>
+                <AlertDialogDescription>
+                  这会删掉本机存下的每一手牌、它们的复盘结果与全部统计，
+                  <strong className="font-semibold text-foreground">不可撤销</strong>
+                  。想留个备份的话，先用上面的「导出」存一份 JSON。
+                </AlertDialogDescription>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  {/* 点下去对话框立刻关闭（Radix 自带），回执由页面底部那句
+                      role="status" 说——它在对话框外面，异步结果晚一点到也
+                      有地方落。别在这里拦 Radix 的关闭去等异步：确认之后
+                      对话框还杵着不动，用户不知道自己那一下有没有生效 */}
+                  <AlertDialogAction onClick={() => void onReset()}>
+                    确认清空
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </span>
         </div>
       </section>

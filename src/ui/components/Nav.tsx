@@ -1,6 +1,20 @@
 import { chipsGreater } from '../../core/chips';
 import { chips } from '../format';
-import { IconPercent, IconVolumeOff, IconVolumeOn } from './icons';
+import { Percent, Volume2, VolumeX } from 'lucide-react';
+import { Button } from './ui/button';
+import { cn } from '../lib/utils';
+
+/*
+ * 图标改从 lucide-react 按需引入，src/ui/components/icons.tsx 随之删除。
+ *
+ * 那个文件顶上写着"为两颗按钮拉进一个几百个图标的包不划算"——当时成立，
+ * 现在不成立了：Select 的对勾与箭头已经把 lucide-react 带进了 bundle，
+ * 再手抄三条路径只是让同一批图标在仓库里存两份。按名字引入是 ESM 具名
+ * 导入，Vite 只打包用到的那几个，不会把整个图标集拖进来。
+ *
+ * 尺寸沿用原来那版的做法：跟随字号（1em）而不是写死 24px，改按钮的
+ * font-size 就够了，不必两处对齐。
+ */
 
 /**
  * 「历史」不在导航里：它是复盘页右栏底部那颗「全部手牌」按钮的去处，
@@ -73,10 +87,14 @@ export function Nav({
           // 那一页看不出自己身处应用的哪一块
           const on = item.id === page || (item.id === 'review' && page === 'history');
           return (
-          <button
+          <Button
             key={item.id}
-            type="button"
-            className={on ? 'nav-item nav-item-on' : 'nav-item'}
+            variant="ghost"
+            // min-h-0 与 justify-start 是把 Button 默认尺寸档里那两条中和掉：
+            // .nav-item 自己没写 min-height 和 justify-content，不中和的话
+            // 导航项会被撑到 44px 高、内容还被居中。其余（padding、字号、
+            // 圆角）都由 .nav-item 写死，无层规则本来就压得住 Button 的工具类
+            className={cn('min-h-0 justify-start', on ? 'nav-item nav-item-on' : 'nav-item')}
             onClick={() => onNav(item.id)}
             // 当前页用 aria-current 而不是只靠一个蓝点：那个点是 aria-hidden
             // 的装饰，读屏用户只能从这里知道自己在哪一页
@@ -84,7 +102,7 @@ export function Nav({
           >
             <span className="nav-dot" aria-hidden="true" />
             {item.label}
-          </button>
+          </Button>
           );
         })}
       </div>
@@ -95,8 +113,9 @@ export function Nav({
               存 localStorage、与对局状态无关。设置页现在有了，这两项也在
               那边各有一行，但这两颗按钮留着：打牌途中要切的开关埋进二级
               页面等于没有。两处读写的是同一个偏好，不会分叉。 */}
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             className={showEquity ? 'nav-mute nav-toggle-on' : 'nav-mute'}
             onClick={onToggleEquity}
             aria-pressed={showEquity}
@@ -105,18 +124,19 @@ export function Nav({
             aria-label={showEquity ? '隐藏胜率' : '显示胜率'}
             title={showEquity ? '隐藏胜率' : '显示胜率'}
           >
-            <IconPercent />
-          </button>
-          <button
-            type="button"
+            <Percent className="size-[1em]" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             className="nav-mute"
             onClick={onToggleMute}
             aria-pressed={muted}
             aria-label={muted ? '取消静音' : '静音'}
             title={muted ? '取消静音' : '静音'}
           >
-            {muted ? <IconVolumeOff /> : <IconVolumeOn />}
-          </button>
+            {muted ? <VolumeX className="size-[1em]" /> : <Volume2 className="size-[1em]" />}
+          </Button>
         </div>
         <div className={`nav-session-net ${isNeg ? 'neg' : 'pos'}`}>
           {isNeg ? '' : '+'}

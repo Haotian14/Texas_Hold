@@ -15,6 +15,28 @@ import {
 import { ACTION_TEXT } from '../format';
 import { ReviewDecision } from '../components/ReviewDecision';
 import { OpponentCards } from '../components/OpponentCards';
+import { Button } from '../components/ui/button';
+import { cn } from '../lib/utils';
+
+/**
+ * 复盘页底部那三颗按钮的共同尺寸，数值原样搬自被删掉的 app.css `.rvp-btn`。
+ *
+ * 这一页的按钮不跟 --u 缩放（它不在牌桌区域里，是坐下来看的一页），所以
+ * 这里是固定像素，与牌桌那批（见 ui/tableButton.ts）不是一套。
+ */
+const RVP_BTN = 'h-12 rounded-xl text-[13.5px] font-semibold';
+
+/** 描边款。对应被删掉的 `.rvp-btn-ghost` */
+const RVP_GHOST = 'border border-input px-5 text-muted-foreground bg-transparent';
+
+/**
+ * 主按钮。对应被删掉的 `.rvp-btn-primary`。
+ *
+ * `ml-auto` 把它推到最右——设计稿把两颗按钮并排贴左，但本页多了「我不认同」
+ * 第三颗，三颗挤在一起时主按钮认不出来。这一条在换组件时差点丢掉。
+ */
+const RVP_PRIMARY =
+  'ml-auto border-none px-[26px] text-primary-foreground bg-[linear-gradient(180deg,#3d79ef,#2963e0)] shadow-[var(--sh-primary)]';
 
 /**
  * 左栏圆形标记里的符号，照抄设计稿 streetVisual 的三态。
@@ -78,9 +100,9 @@ export function ReviewPage({
         </header>
         <p className="rvp-blank">
           打完一手之后，这里会显示那一手的逐街复盘。也可以从下面翻已经存下来的手牌。
-          <button type="button" className="rvp-btn rvp-btn-ghost" onClick={onAllHands}>
+          <Button variant="outline" size="sm" className={cn(RVP_BTN, RVP_GHOST)} onClick={onAllHands}>
             全部手牌
-          </button>
+          </Button>
         </p>
       </div>
     );
@@ -177,26 +199,28 @@ export function ReviewPage({
           </div>
 
           <div className="rvp-actions">
-            <button type="button" className="rvp-btn rvp-btn-ghost" onClick={onAllHands}>
+            <Button variant="outline" size="sm" className={cn(RVP_BTN, RVP_GHOST)} onClick={onAllHands}>
               全部手牌
-            </button>
+            </Button>
             {/* 只有落了库的手才谈得上标记。分析失败（view 为 null）的手照样可以
                 标——用户不认同的可能正是「这手算不出来」这件事本身。 */}
             {disputed !== null && (
-              <button
-                type="button"
-                className={
-                  disputed ? 'rvp-btn rvp-btn-ghost rvp-dispute-on' : 'rvp-btn rvp-btn-ghost'
-                }
+              <Button
+                variant="outline"
+                size="sm"
+                // rvp-dispute-on 是无层规则，压得过 Button 的 hover 工具类——
+                // 已标记态鼠标放上去不会变回未标记的样子。原来这件事要靠
+                // `.rvp-btn-ghost:not(.rvp-dispute-on):hover` 手动排除
+                className={cn(RVP_BTN, RVP_GHOST, disputed && 'rvp-dispute-on')}
                 onClick={onToggleDisputed}
                 aria-pressed={disputed}
               >
                 {disputed ? '已标记有异议' : '我不认同这个判定'}
-              </button>
+              </Button>
             )}
-            <button type="button" className="rvp-btn rvp-btn-primary" onClick={onPrimary}>
+            <Button size="sm" className={cn(RVP_BTN, RVP_PRIMARY)} onClick={onPrimary}>
               {primaryLabel}
-            </button>
+            </Button>
           </div>
         </section>
       </div>
