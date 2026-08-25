@@ -48,17 +48,20 @@ beforeEach(() => {
   vi.mocked(storageStatus).mockReturnValue('ready');
 });
 
+// 控件的 role 是 switch 而不是 checkbox：Radix 的 Switch 渲染
+// role="switch"，读屏会念「开/关」而不是「已选中/未选中」，这正是
+// 这类"立刻生效的开关"该有的语义
 describe('设置页的开关', () => {
   it('checked 状态跟着 props 走，不自己记状态', () => {
     render(<SettingsPage {...props({ fastMode: true, autoReview: false })} />);
-    expect(screen.getByRole('checkbox', { name: /极速模式/ })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: /结算后自动打开复盘/ })).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: /极速模式/ })).toBeChecked();
+    expect(screen.getByRole('switch', { name: /结算后自动打开复盘/ })).not.toBeChecked();
   });
 
   it('点一下把「取反后的值」交给回调', async () => {
     const p = props({ fastMode: false });
     render(<SettingsPage {...p} />);
-    await userEvent.click(screen.getByRole('checkbox', { name: /极速模式/ }));
+    await userEvent.click(screen.getByRole('switch', { name: /极速模式/ }));
     expect(p.onFastMode).toHaveBeenCalledWith(true);
   });
 
@@ -66,13 +69,13 @@ describe('设置页的开关', () => {
   // 换控件时把这一层取反弄丢，界面会变成「打开音效 = 静音」。
   it('音效项与 muted 是反的：muted=false 时开关是开着的', () => {
     render(<SettingsPage {...props({ muted: false })} />);
-    expect(screen.getByRole('checkbox', { name: /音效/ })).toBeChecked();
+    expect(screen.getByRole('switch', { name: /音效/ })).toBeChecked();
   });
 
   it('音效项与 muted 是反的：关掉音效等于 onMuted(true)', async () => {
     const p = props({ muted: false });
     render(<SettingsPage {...p} />);
-    await userEvent.click(screen.getByRole('checkbox', { name: /音效/ }));
+    await userEvent.click(screen.getByRole('switch', { name: /音效/ }));
     expect(p.onMuted).toHaveBeenCalledWith(true);
   });
 });
@@ -80,13 +83,13 @@ describe('设置页的开关', () => {
 describe('震动项只在设备支持时出现', () => {
   it('navigator.vibrate 不存在时整项不渲染', () => {
     render(<SettingsPage {...props()} />);
-    expect(screen.queryByRole('checkbox', { name: /震动/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: /震动/ })).not.toBeInTheDocument();
   });
 
   it('navigator.vibrate 存在时渲染出来', () => {
     vi.stubGlobal('navigator', { ...navigator, vibrate: () => true });
     render(<SettingsPage {...props()} />);
-    expect(screen.getByRole('checkbox', { name: /震动/ })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: /震动/ })).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 });

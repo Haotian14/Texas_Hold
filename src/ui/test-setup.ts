@@ -12,3 +12,34 @@
  * 一个要跑几十秒，让它们平白套一层 jsdom 只会更慢，而且它们一行 DOM 都不碰。
  */
 import '@testing-library/jest-dom/vitest';
+
+/**
+ * jsdom 的缺口补丁。
+ *
+ * Radix 的浮层组件（Select、AlertDialog）依赖几个 jsdom 至今没有实现的
+ * 浏览器 API。它们在真浏览器里全部存在，所以这里补的是**测试环境的缺口，
+ * 不是应用的兼容层**——应用代码里一行都不该出现这些判断。
+ *
+ * 只在有 document 时执行：同一个引导文件也被 800 多个 node 环境的用例加载，
+ * 那边没有 Element 可以打补丁，也不需要。
+ */
+if (typeof document !== 'undefined') {
+  // 指针捕获：Radix 用它判断拖拽是否仍在控件上。jsdom 的 Element 上没有
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false;
+    Element.prototype.setPointerCapture = () => undefined;
+    Element.prototype.releasePointerCapture = () => undefined;
+  }
+  // 下拉打开时把选中项滚进视野。jsdom 不做布局，这里是空实现
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => undefined;
+  }
+  // 浮层测量触发器尺寸用。jsdom 没有 ResizeObserver
+  if (!('ResizeObserver' in globalThis)) {
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  }
+}
