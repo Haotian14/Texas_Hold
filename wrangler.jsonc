@@ -1,0 +1,18 @@
+{
+  // Worker 名。必须与 Cloudflare 面板上那个 Worker 一致——versions upload
+  // 是往一个**已存在**的 Worker 上传版本，名字对不上会直接失败。
+  "name": "poker-trainer",
+
+  // 只影响 Workers 运行时的行为基线。这里没有 Worker 脚本（纯静态资源），
+  // 但 wrangler 仍要求这个字段。
+  "compatibility_date": "2026-08-20",
+
+  // 没有 "main"：这个项目不含 Worker 脚本，是一个纯静态站，
+  // 由 Workers Static Assets 直接托管 vite 的构建产物。
+  //
+  // 不配 not_found_handling（默认 "none"）：页面切换是 App.tsx 里的 React
+  // state，不走 URL 路由，只有根目录一个 index.html，不需要 SPA 回退。
+  "assets": {
+    "directory": "./dist"
+  }
+}
