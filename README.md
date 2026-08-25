@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-**三期已全部完成：引擎、估值、AI 对手、复盘引擎、牌桌与对局会话（③-A）、复盘卡片（③-B）、持久化与历史页（③-C）、漏洞报表与设计稿对齐（③-D-1）、部署（③-D-2）、PWA 与设置页（③-D-3）。界面是四个页面：牌桌 / 复盘 / 报表 / 设置。牌桌能完整玩一局：AI 自动行动、hero 下场打牌、手牌结算、破产补码，结算后可打开复盘卡片逐个决策点回看；牌桌上可开一个胜率读数（对手范围，非底牌）；每手自动落库，历史页可按最大损失/时间排序并按位置·街道·失误分类·是否有异议筛选，支持 JSON 导出导入。可装到主屏、断网可用。**
+**三期已全部完成，④ 的界面重构也已落地：引擎、估值、AI 对手、复盘引擎、牌桌与对局会话（③-A）、复盘卡片（③-B）、持久化与历史页（③-C）、漏洞报表与设计稿对齐（③-D-1）、部署（③-D-2）、PWA 与设置页（③-D-3）、组件库与 UI 测试网（④）。界面是四个页面：牌桌 / 复盘 / 报表 / 设置。牌桌能完整玩一局：AI 自动行动、hero 下场打牌、手牌结算、破产补码，结算后可打开复盘卡片逐个决策点回看；牌桌上可开一个胜率读数（对手范围，非底牌）；每手自动落库，历史页可按最大损失/时间排序并按位置·街道·失误分类·是否有异议筛选，支持 JSON 导出导入。可装到主屏、断网可用。**
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
@@ -20,8 +20,9 @@
 | ③-D-1 漏洞报表 | 每手摘要 · 窗口聚合 · 报表页 · 设计稿对齐 | ✅ 完成 |
 | ③-D-2 部署 | Cloudflare Workers · GitHub 自动构建 | ✅ 完成 |
 | ③-D-3 上线收尾 | PWA（manifest · Service Worker · 离线可用） · 设置页 · 复盘页补免责声明 | ✅ 完成 |
+| ④ 界面重构 | Tailwind 4 · shadcn/ui（Radix）· 渲染冒烟测试 · 视觉回归工具 | ✅ 完成 |
 
-共 874 个测试（871 通过，3 个如实跳过，见下）。
+共 923 个测试（920 通过，3 个如实跳过，见下）。其中 49 个是 ④ 补的 UI 渲染冒烟测试。
 
 给一份 `HandRecord`，`analyzeHand()` 现在能逐个决策点回答：**这一步错了吗、亏了多少 BB、属于哪类错误、为什么**。这是整个项目最初的目的。
 
@@ -31,6 +32,8 @@
 
 ③-A 起有了一个可玩的牌桌界面（`npm run dev`），③-B 加上复盘卡片，③-C 让每手自动落进 IndexedDB 并有了历史页，③-D-1 加上漏洞报表并把三个页面按设计稿重做了一遍，③-D-2 上线，③-D-3 让它能装到主屏、断网也能打，并补上了设置页。三期至此走完。
 
+④ 把界面的**通用交互原语**换成了组件库（按钮、下拉、开关、滑块、对话框、徽章走 shadcn/ui + Radix），扑克专有的那批组件（牌面、座位、底池、筹码堆、EV 条形图）保持手写——没有任何组件库覆盖它们。同时补上了 UI 层此前完全没有的两样东西：渲染冒烟测试与视觉回归工具。收益最实在的一处是历史页那四个筛选下拉：原生 `<select>` 在移动端由系统接管，外观字号选中态都不受页面控制，换成自绘的之后终于和设计稿是一套语言了。详见「技术栈 · 界面组件」。
+
 **线上地址：<https://texas-hold.luohaotian0616.workers.dev/>**
 
 ## 快速开始
@@ -38,7 +41,7 @@
 ```bash
 npm install
 npm run dev       # 开发服务器，浏览器打开 http://localhost:5173
-npm test          # 874 个测试（871 通过，3 个如实跳过），约 70 秒（含两百手 AI 自对弈）
+npm test          # 923 个测试（920 通过，3 个如实跳过），约 75 秒（含两百手 AI 自对弈）
 npm run typecheck
 npm run build     # 静态产物到 dist/
 ```
@@ -147,11 +150,18 @@ src/session/              对局会话状态机（③-A），纯逻辑，不 imp
 src/ui/                   渲染层，React 组件与格式化，不从引擎取值（类型导入除外）
   pages/                  四个页面：Review · History · Report · Settings
   components/             牌桌与卡片的组件（Table · Seat · ActionBar · EvBars · Nav …）
+  components/ui/          shadcn/ui 组件源码（Button · Select · Switch · Slider …）
+  lib/utils.ts            cn()：shadcn 全部组件的 class 合并入口
   reviewModel.ts          复盘卡片的纯数据变形
   reportModel.ts          报表页的纯数据变形
   format.ts               BB ↔ 实额换算的唯一一处，牌面与日期文字
   prefs.ts                界面偏好的持久化（localStorage）
   sound.ts                录音加载 + 实时合成 + 静音状态
+  test-setup.ts           测试引导：jest-dom 断言 + jsdom 的几个缺口补丁
+
+tools/                    视觉回归
+  screenshot.mjs          四个页面 × 两种屏宽，用 Chromium 截图
+  visual-diff.mjs         两组截图逐像素对比，差异图写进第三个目录
 
 docs/superpowers/
   specs/                  设计文档
@@ -168,10 +178,34 @@ docs/superpowers/
 
 **外部基准。** 蒙特卡洛胜率与精确穷举对拍误差 < 1.5 个百分点，且已知值对得上公开的德扑胜率表（AA 对单个随机手 ≈85%、72o ≈34.5%、AA 对五家 ≈49%）。
 
+**渲染冒烟测试（④ 补）。** UI 层此前一行渲染测试都没有——测的全是 `reviewModel` / `reportModel` / `actionBarModel` 这些**模型**，渲染部分完全裸奔。④ 要把手写控件换成组件库，而这种重构坏掉的东西恰好都在渲染层，所以先补网再动刀。
+
+用 jsdom + Testing Library，钉的是「换实现时最容易悄悄弄坏、坏了又看不出来」的地方：动作条上滑块与按钮的**金额口径**（这两者混淆过一次真 bug，界面写「加注到 $720」而实际加注到 $760）、音效开关与 `muted` 的**取反方向**、重置数据的**二次确认必须仍是两步**、历史页筛选交给 `listHands` 的**形状**。
+
+环境用文件头的 `@vitest-environment jsdom` 逐个声明，不改全局 `environment`——现有那批自对弈/蒙特卡洛用例一个要跑几十秒，让它们平白套一层 jsdom 只会更慢，而它们一行 DOM 都不碰。
+
+读滑块、选下拉都走了一层辅助函数，兼容原生元素与自绘组件两种实现。这不是过度设计：这几条测试的价值恰恰在于**跨过那次替换仍然成立**，因为底层换了个元素就变红的测试证明不了任何行为。
+
+**视觉回归（④ 补）。** `tools/screenshot.mjs` 起 `vite preview`，用 Chromium 把四个页面在桌面/手机两种屏宽下截图；`tools/visual-diff.mjs` 逐像素对比两组。
+
+```bash
+npm run build && npx vite preview --port 4173 &
+node tools/screenshot.mjs before      # 改动前
+# ...改动...
+npm run build && node tools/screenshot.mjs after
+node tools/visual-diff.mjs before after diff
+```
+
+**牌桌那两张有约 0.5% 的固有噪声**（每次会话 seed 随机、发的牌不同，同一份构建自己跑两次也是这个数），判断有没有改坏时以另外三页为准，它们静态、无改动时应当 0.000%。
+
+这一层在 ④ 抓到两处手点几乎不可能发现的回归：Tailwind 的 preflight 把 `html` 的 `line-height` 设成 1.5，而现有 CSS 的行高是在浏览器默认的 `normal` 下调出来的，每一行被顶高 5~6px；以及 Button 默认尺寸档的 `min-h-11` 在 `.nav-item` 上生效，导航项被撑到 44px 高、内容还被居中，**每一个页面**的内容跟着下移。两处的症状都只是"看着好像高了一点"。
+
 ### 已知的覆盖边界
 
 - **边池分层自 ③-A 起进入产品路径。** 此前固定 100BB 等额起始筹码使 `buildPots` 每次都合并成单池；③-A 改为筹码跨手延续 + 破产补码（100BB 或 200BB）后，各座位筹码不再恒等，分层真正启用。验收关卡断言 200 手中必须出现多池——若为 0 则停下来查边池，不许换 seed 绕过。
 - **`buildPots` 的取整假设输入是分位对齐的。** 引擎产生的投入都经过 `round2`，满足该前提；子分金额（如 0.005）不在支持范围内。
+- **四个重用例的超时阈值是按开发机的速度定的。** `decide.test.ts` 里那两条性格对比、`scriptedPlay.test.ts` 的「同 seed 跑两遍」与「补 200BB 的变体」都是蒙特卡洛/自对弈密集的，在开发机上压着 vitest 默认的 5 秒（以及那条写死的 30 秒）通过。**换一台更慢的机器就会因超时而红，断言本身是过的**——给足时间四条全部通过。目前没有 CI，这批测试只在本地手动执行，所以这个差异一直没有暴露。要让它与机器无关，给这四条配显式超时即可。
+
 - **盲注不在动作日志里。** `startHand` 直接扣盲，`actions` 开局为空数组。任何靠累加 `Action.amount` 来重建投入的代码，对小盲和大盲都会算错——用 `HandRecord.pots` 或 `replayHandRecord()`。
 
 估值引擎（②-A）这边：
@@ -200,7 +234,7 @@ AI 层（②-B-1）这边：
 
 牌桌与会话（③-A）这边：
 
-- **对局编排是纯 TS，React 只是壳。** `src/session/` 不得 import React、不得出现计时器与 DOM，`src/ui/` 不得从引擎取值（类型导入除外）。两条由 `src/session/architecture.test.ts` 的结构性守卫盯着。这样做的理由是这套测试（现 874 个）的说服力全部建立在「纯逻辑、可在 node 里完整驱动」之上，把对局循环写进 React hook 就得把验收关卡搬进 jsdom。
+- **对局编排是纯 TS，React 只是壳。** `src/session/` 不得 import React、不得出现计时器与 DOM，`src/ui/` 不得从引擎取值（类型导入除外）。两条由 `src/session/architecture.test.ts` 的结构性守卫盯着。这样做的理由是这套测试（现 923 个）的说服力全部建立在「纯逻辑、可在 node 里完整驱动」之上，把对局循环写进 React hook 就得把验收关卡搬进 jsdom。
 - **会话状态里不存 `Rng`。** 它有内部可变状态，进了 React 状态后 StrictMode 的 effect 双调用会让它多走一步，同 seed 不再复现。改用 `stepIndex` 派生 seed，`stepAi` / `applyHero` 因此是幂等纯函数。**代价：会话层与 `playAiHand` 用的是不同的随机流，同一个 seed 在两者下产生的牌局不相同**，两条路径各自内部可复现，互不对表。
 - **实额只存在于 `src/ui/format.ts`。** 界面显示 20/40 盲注、4000 后手，内部量纲仍是 0.5/1 BB 与 100BB——20/40/4000 在 BB 量纲上与原设计完全一致，所以这是显示单位而非引擎改动。EV 损失例外，保持 BB。
 - **净盈亏按「当前筹码 − 累计买入」算，不累加每手 `netBB`。** 补码是往桌上添钱不是盈利；账本记的是实际添入额（目标额 − 补码前筹码）而非目标额，否则恒等式会差掉零头。验收关卡用两条独立路径算同一个数来守这条。界面上补码按钮文案「补 4,000」「补 8,000」显示的是补码后的**目标筹码额**（100BB / 200BB），不是本次添加的筹码量——只有补码前筹码恰为 0 时两者才相等。例如破产到 0 后点「补 4,000」，账本只记入 4,000，累计买入由 4,000 增至 8,000，净盈亏仍保持 −4,000 不变。
@@ -298,8 +332,28 @@ AI 层（②-B-1）这边：
 
 ## 技术栈
 
-TypeScript（strict）· Vitest · fast-check · Node 24 · React 19 · Vite 7 · vite-plugin-pwa · IndexedDB · Web Audio
+TypeScript（strict）· Vitest · fast-check · Node 24 · React 19 · Vite 7 · Tailwind 4 · shadcn/ui（Radix）· lucide-react · vite-plugin-pwa · IndexedDB · Web Audio
 
-React 与 Vite 在 ③-A 加入，IndexedDB 在 ③-C，`vite-plugin-pwa` 在 ③-D-3。core / ai / review 三层仍不依赖它们，也不会依赖——运行时依赖只有 React 一项（`vite-plugin-pwa` 是构建期的）。
+React 与 Vite 在 ③-A 加入，IndexedDB 在 ③-C，`vite-plugin-pwa` 在 ③-D-3，Tailwind 与 shadcn/ui 在 ④ 的界面重构。**core / ai / review / session / storage 五层仍然一个 UI 依赖都没有，也不会有**——组件库只影响 `src/ui/`。
 
-界面图标（导航底部的胜率开关与静音键）取自 [Lucide](https://lucide.dev)（ISC 许可），路径原样内联在 `src/ui/components/icons.tsx` 里，不引图标库——UI 层的运行时依赖仍只有 React 一项。
+### 界面组件（④）
+
+**通用交互原语走 shadcn/ui，扑克专有组件保持手写。** 按钮、下拉、开关、滑块、对话框、徽章来自 [shadcn/ui](https://ui.shadcn.com)（底层是 [Radix](https://www.radix-ui.com) 的无样式原语）；而牌面、座位、底池、筹码堆、EV 条形图没有任何组件库覆盖，它们的样式原样留在 `app.css` 里。这条边界是选的，不是偷懒：把那批组件的 CSS 逐行翻成工具类是纯搬砖，还没有视觉测试兜底。
+
+**shadcn 的组件源码在 `src/ui/components/ui/`，是手写的。** shadcn 的分发方式是把源码复制进你的仓库而不是发 npm 包，复制来源是 `ui.shadcn.com`；本项目的开发环境访问不到那个域名（网关 403），所以照它的形状手写——一样的 `data-slot` 约定、一样的 `cn()` 入口、一样的 cva 变体结构。`components.json` 已配好，日后网络通了可以直接用 CLI 覆盖。
+
+**Tailwind 的 preflight 与工具类都落进 `@layer`，而 `app.css` 那两千多行是无层的。** 无层规则的优先级高于任何 `@layer`，所以接入 Tailwind 对现有界面是视觉中性的（实测静态页面逐像素一致）。反过来的代价要记住：**写在 shadcn 组件上的工具类也压不过 `app.css` 里的手写规则**，两者选中同一个元素时赢的是手写那条。替换组件要连带删掉旧规则，而不是留着让它们打架。
+
+**shadcn 的主题令牌全部指回项目原有的设计令牌，没有引入一个新颜色**（`--primary` 就是 `--blue`，`--destructive` 就是 `--danger`）。配色的唯一权威仍然是设计稿 `docs/design-ref/poker-trainer-ui.dc.html`。用 `@theme inline` 而不是普通 `@theme`：后者会把值复制一份出去，此后改 `--blue` 不再影响工具类，那正是「两个权威」的老问题。
+
+图标来自 [lucide-react](https://lucide.dev)（ISC 许可），按名字具名导入，Vite 只打包用到的那 5 个（产物里 `lucide` 字样只出现 3 次）。
+
+**体积代价**（引入组件库最该盯的一项）：
+
+| | 重构前 | 重构后 |
+|---|---|---|
+| JS | 291.31 KB / gzip 93.71 | 435.30 KB / gzip 142.58 |
+| CSS | 36.14 KB / gzip 7.31 | 58.96 KB / gzip 11.70 |
+| PWA 预缓存 | 374.83 KiB | 537.73 KiB |
+
+多出来的几乎全是 Radix 及其依赖（浮层定位、滚动锁定、aria-hidden）。对一个首屏之后就走 Service Worker 的离线应用，这个量级可以接受，但它是真实成本，不是零。
