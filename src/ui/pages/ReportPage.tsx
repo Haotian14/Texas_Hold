@@ -15,6 +15,7 @@ import {
 } from '../reportModel';
 import type { CurvePoint } from '../reportModel';
 import { Button } from '../components/ui/button';
+import { QuickToggles } from '../components/QuickToggles';
 
 /**
  * 报表页（规格 §10.5，对应设计稿 Progress 屏）。
@@ -241,7 +242,7 @@ function ReportBody({ data }: { data: ReportData }) {
   );
 }
 
-export function ReportPage() {
+export function ReportPage({ onSettings }: { onSettings: () => void }) {
   const [win, setWin] = useState<ReportWindow>(200);
   const [data, setData] = useState<ReportData | null>(null);
   const [state, setState] = useState<LoadState>('loading');
@@ -299,6 +300,9 @@ export function ReportPage() {
             </Button>
           ))}
         </div>
+        {/* 设置不再有自己的导航项（收进了右上角齿轮），所以每一页的页头都要
+            有一个入口——只在牌桌页给的话，用户在这一页会找不到它 */}
+        <QuickToggles tableToggles={false} onSettings={onSettings} />
         {/* 库里一手都没有时已经在下面用「还没有记录」说清楚了，这里不重复 */}
         {data !== null && data.partial && !noHands && (
           <span className="rep-partial-note">库里共 {data.stats.hands} 手</span>

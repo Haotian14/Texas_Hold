@@ -16,6 +16,7 @@ import { ACTION_TEXT } from '../format';
 import { ReviewDecision } from '../components/ReviewDecision';
 import { OpponentCards } from '../components/OpponentCards';
 import { Button } from '../components/ui/button';
+import { QuickToggles } from '../components/QuickToggles';
 import { cn } from '../lib/utils';
 
 /**
@@ -68,6 +69,7 @@ export function ReviewPage({
   onAllHands,
   onPrimary,
   primaryLabel,
+  onSettings,
 }: {
   /** 要复盘的那一手。null = 还没有任何一手打完（会话刚开始） */
   record: HandRecord | null;
@@ -76,6 +78,8 @@ export function ReviewPage({
   /** 「我不认同这个判定」的当前状态。null = 这一手还没落库，标记无处可存 */
   disputed: boolean | null;
   onToggleDisputed: () => void;
+  /** 打开设置页。设置没有导航项了，每一页的页头各挂一个入口 */
+  onSettings: () => void;
   /** 右栏底部次要按钮：进历史列表（设计稿那颗 All hands） */
   onAllHands: () => void;
   onPrimary: () => void;
@@ -97,6 +101,8 @@ export function ReviewPage({
             <h2 className="rvp-title">复盘</h2>
             <div className="rvp-sub">还没有打完的手牌</div>
           </div>
+          {/* 设置的入口，理由见 ReportPage 里那条注释 */}
+          <QuickToggles tableToggles={false} onSettings={onSettings} />
         </header>
         <p className="rvp-blank">
           打完一手之后，这里会显示那一手的逐街复盘。也可以从下面翻已经存下来的手牌。
@@ -132,6 +138,8 @@ export function ReviewPage({
           {netBBText(net)}
           <span className="rvp-net-note"> · {endingText(record)}</span>
         </div>
+        {/* 设置的入口，理由见 ReportPage 里那条注释 */}
+        <QuickToggles tableToggles={false} onSettings={onSettings} />
       </header>
 
       <div className="rvp-cols">

@@ -241,9 +241,14 @@ body {
   background: var(--page);
 }
 
+/* 顶栏：一行装下身份、进度、开关三段。
+   左边是"这是什么局"（黑桃标 + 盲注 + 6-max）与"这次坐下发生了什么"
+   （第几手 · 会话盈亏），右边是状态标记与三颗开关。
+   会话盈亏原来在 Nav 底部，随导航移到底部一起搬了过来——底部标签栏只有
+   三个图标的高度，塞不下一个金额块。 */
 .topbar {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   /* 非对称内边距是设计稿原值：顶 14px、左右 22px，底部只留 6px——
      牌桌区自己的上边距会把视觉间距补足，顶栏不需要在底部再留满。 */
@@ -252,34 +257,90 @@ body {
   background: var(--app);
   border-bottom: 1px solid var(--line);
 }
-/* 游戏类型胶囊。设计稿带一个「▾」暗示可切换游戏，本项目只有德州扑克
-   一种玩法，故不渲染箭头，做成静态标签——尺寸/圆角/边框照抄设计稿。 */
-.topbar-game {
+/* 黑桃标。设计稿这里是个带「▾」的游戏类型胶囊，暗示可切换游戏；本项目
+   只有德州扑克一种玩法，渲染成可切换控件是「列一个点了没反应的入口」，
+   所以收成一枚纯标识，把省下的横向空间让给右边的开关。 */
+.topbar-mark {
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
   flex: none;
-  background: var(--app);
-  border: 1px solid var(--line);
   border-radius: 9px;
-  padding: 7px 12px;
+  background: var(--text);
+  color: #fff;
+  font-size: 15px;
+}
+/* min-width: 0 让这一段在窄屏上能被压缩。flex 子项默认 min-width: auto，
+   不写这条的话它会把右边的开关顶出屏幕，而不是自己收窄。 */
+.topbar-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.topbar-game {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text);
   letter-spacing: -0.01em;
+  white-space: nowrap;
 }
-/* 盲注级别 · 桌型 · 手数，合并进设计稿这一行文字 */
+/* 第几手 · 会话盈亏 */
 .topbar-meta {
-  font-size: 12.5px;
+  font-size: 11.5px;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-/* 「未记录」「深筹码」这类状态标记，靠右——净盈亏/买入/静音已经搬去
-   Nav 底部的会话盈亏区块，顶栏右侧不再重复显示它们 */
+.topbar-meta .pos { color: var(--positive); font-weight: 600; }
+.topbar-meta .neg { color: var(--danger); font-weight: 600; }
+/* 「未记录」「深筹码」这类状态标记，靠右 */
 .topbar-flags {
   margin-left: auto;
   display: flex;
   gap: 6px;
   align-items: center;
+}
+
+/* ---- 右上角那一组开关 ---- */
+/* .topbar-flags 已经用 margin-left:auto 占住了推开的活儿；这一组紧跟其后，
+   两者之间只留一点间距，读起来是同一块「状态与控制」。
+   没有标记时 flags 是个零宽的 flex 容器，auto 边距照样生效。 */
+.quick-toggles {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+/* 复盘页与报表页的页头里，这一组要自己占住右端。
+   顶栏那边靠 .topbar-flags 的 margin-left: auto 顺带推开了它，但这两个页头
+   没有那一块；而且它们都是 flex-wrap: wrap，不推的话齿轮会跟着换行落到
+   第二行的**左**端（报表页实测如此）。 */
+.rvp-head .quick-toggles,
+.rep-head .quick-toggles {
+  margin-left: auto;
+}
+.quick-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 9px;
+  color: var(--text-faint);
+  /* 图标的宽高是 1em，所以这一行就是图标边长 */
+  font-size: 16px;
+  line-height: 1;
+}
+.quick-btn:hover {
+  background: var(--soft);
+  color: var(--text-2);
+}
+/* 开着的状态用浅蓝底 + 蓝字，与设置页那个分段控件的选中态同一套 */
+.quick-btn-on,
+.quick-btn-on:hover {
+  background: var(--blue-soft);
+  color: var(--blue);
 }
 
 .table {
@@ -388,6 +449,16 @@ body {
   padding: calc(0.78 * var(--u)) calc(1.89 * var(--u)) calc(0.78 * var(--u))
     calc(0.78 * var(--u));
   box-shadow: var(--sh-seat);
+  /* 胶囊不许探出牌桌。
+     宽屏的座位锚点是 left: 11% / 89%（`.slot-*`），胶囊以锚点为中心，所以
+     「不出界」的条件是宽度不超过 11% × 2 = 22% 的牌桌宽。cqw 问的是
+     .app-main，也就是牌桌自己的宽度。
+     这一条在宽屏上几乎不触发（1280px 屏上 22cqw = 240px，而胶囊只要 130px），
+     但**牌桌宽度在 560–620px 那一段会触发**：那里既够不到下面窄桌的容器查询，
+     22% 又只剩 127px。胶囊的宽度随筹码位数变化（$3,980 与 $12,345 不一样宽），
+     所以那一段是间歇性出界——768px 屏上实测探出 1px，换一手就好了，靠截图
+     查不出来。 */
+  max-width: 22cqw;
 }
 
 /* 头像方块。设计稿放名字缩写（纯装饰），这里放位置——在扑克里"坐在哪"
@@ -437,6 +508,9 @@ body {
   flex-direction: column;
   gap: calc(0.11 * var(--u));
   line-height: 1.25;
+  /* flex 子项默认 min-width: auto，不写这条的话上面那个 max-width 压不动它
+     ——胶囊会溢出而不是收缩 */
+  min-width: 0;
 }
 .seat-name-row {
   display: flex;
@@ -449,6 +523,10 @@ body {
   color: var(--text);
   letter-spacing: -0.015em;
   white-space: nowrap;
+  /* 胶囊被 max-width 压到放不下时，让位的是名字——位置标签与筹码数是信息，
+     名字只是标识 */
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* 状态点。不是唯一编码：正在行动同时有整张卡的蓝环，已弃牌同时有整块淡出
    与「弃牌」徽章。 */
@@ -645,19 +723,26 @@ body {
 }
 .card-lg .card-rank { font-size: calc(3.33 * var(--u)); }
 .card-lg .card-suit { font-size: calc(3 * var(--u)); }
-/* 「10」是唯一两个字符的点数，按原字号会挤出牌外；
-   缩一档并收紧字距，让它的视觉重量与单字符点数相当。 */
-.card-sm .card-rank-wide { font-size: calc(1.1 * var(--u)); letter-spacing: -0.06em; }
-.card-md .card-rank-wide { font-size: calc(1.55 * var(--u)); letter-spacing: -0.06em; }
-.card-lg .card-rank-wide { font-size: calc(2.7 * var(--u)); letter-spacing: -0.06em; }
+/* 「10」是唯一两个字符的点数。**字号与单字符点数完全一致**（2026-08-25
+   用户决定）——此前它被缩一档，结果是牌桌上 10 比 9 明显小一圈，一眼看
+   过去像是另一种东西。
+   只保留收紧字距：两个数字并排本来就比单个宽，-0.06em 让它不至于把牌面
+   撑满，但不动字号。牌宽容得下——tools/card-fit-check.mjs 逐张量过。 */
+.card-rank-wide { letter-spacing: -0.06em; }
 /* 牌背没有子元素，上面的 .card-rank/.card-suit 规则对它无副作用 */
 .card-back {
   background: repeating-linear-gradient(45deg, #dbe1ea, #dbe1ea 3px, #c7cfdc 3px, #c7cfdc 6px);
   box-shadow: var(--sh-1), inset 0 0 0 1px rgba(17, 20, 26, 0.05);
 }
+/* 花色配色。
+   ♦ 由蓝改红（2026-08-25 用户决定）——这偏离了设计文档 §「四色牌」定的
+   ♠黑 ♥红 ♦蓝 ♣绿。四色牌的用处是让同花一眼可辨，改回传统两色之后
+   ♥ 与 ♦ 同色，**区分只剩花色符号本身**。这是有意的取舍，不是漏改。
+   ♣ 仍保留绿色：它与 ♠ 同为黑色系时最容易互相看错，而那一对没有
+   「红黑」这种强对比兜底。 */
 .suit-s { color: #111419; }
 .suit-h { color: #d93a3f; }
-.suit-d { color: #2f6fed; }
+.suit-d { color: #d93a3f; }
 .suit-c { color: #18945a; }
 
 /* ---- hero ---- */
@@ -686,7 +771,6 @@ body {
 }
 .hero-cards .card-lg .card-rank { font-size: calc(3 * var(--u)); }
 .hero-cards .card-lg .card-suit { font-size: calc(2.67 * var(--u)); }
-.hero-cards .card-lg .card-rank-wide { font-size: calc(2.4 * var(--u)); }
 .hero-cards .card { box-shadow: var(--sh-card-hero); }
 /* 胜率读数。尺寸走 --u（牌桌那把比例尺），和它上面的底牌一起缩放。
    底色用中性灰而不是 --blue：蓝在这套配色里是"轮到你/推荐"的专用色，
@@ -1458,6 +1542,11 @@ body {
   border-radius: 50%;
   background: #dfe3ea;
 }
+/* 宽屏侧栏用蓝点标当前页（设计稿原样），窄屏底部标签栏改用图标。
+   一份 DOM 两种版式，靠这两条互斥的显示开关切换，而不是渲染两套结构。 */
+.nav-icon {
+  display: none;
+}
 .nav-item-on .nav-dot {
   background: var(--blue);
 }
@@ -1465,82 +1554,18 @@ body {
 /* 会话盈亏：贴导航底部，靠 margin-top:auto 撑开——设计稿三屏的左栏都有
    这一块（不是牌桌专属），所以挂在 Nav 而不是 TopBar 上，见 Nav.tsx 顶部
    的注释。净盈亏/买入/静音这三样都是从旧版顶栏搬过来的。 */
-.nav-session {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 14px 4px 0;
-  border-top: 1px solid var(--line);
-}
-.nav-session-head {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.nav-session-label {
-  font-size: 11px;
-  color: var(--text-dim);
-  letter-spacing: 0.01em;
-  /* 把两颗开关一起推到右边。原来这里是 space-between，三个子元素
-     被均匀撒开，两颗同类按钮中间隔出一大段空白，看不出它们是一组 */
-  margin-right: auto;
-}
+
 /* 两颗图标开关（百分号 = 胜率读数，喇叭 = 音效）。图标本体只有 15px，
    按钮撑到 26px 是为了点击区：手机上导航折成顶部那条时这两颗仍然要能
    用手指点准，15px 的裸图标点不中。 */
-.nav-mute {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-faint);
-  /* 图标的宽高是 1em，所以这一行就是图标边长 */
-  font-size: 15px;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-  transition: color 120ms ease, background-color 120ms ease;
-}
+
 /* 悬停只加一层极淡的底 + 把描边提一档，不整颗变色块：它们是坐在
    导航底部的次要开关，不该比旁边的净盈亏数字还抢眼 */
-.nav-mute:hover {
-  color: var(--text-2);
-  background: var(--soft);
-}
-.nav-mute .icon {
-  display: block;
-}
+
 /* 开着的胜率开关。静音键靠图标本身（喇叭带不带叉）就能表达开关态，
    百分号不能，所以这一颗要有独立的选中态——否则用户只能靠牌桌上有没有
    数字来反推。除了变蓝，底也一起上：只靠颜色的话色觉障碍用户拿不到这个
    状态，而描边图标没有"加粗"这条路可走（原来那个"%"字符靠 font-weight）。 */
-.nav-mute.nav-toggle-on {
-  color: var(--blue);
-  background: var(--blue-soft);
-}
-.nav-mute.nav-toggle-on:hover {
-  color: var(--blue);
-  background: var(--blue-soft);
-}
-.nav-session-net {
-  font-size: 19px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-}
-.nav-session-net.pos { color: var(--positive); }
-.nav-session-net.neg { color: var(--danger); }
-.nav-session-buyin {
-  font-size: 11px;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
 
 /* ---- 历史页 ---- */
 .hist {
@@ -1694,62 +1719,74 @@ body {
   margin-left: 8px;
 }
 
-/* 窄屏：侧栏折成顶部一条。一份 DOM 两种版式，靠 flex 方向切换——
-   .app 变回纵向列，.nav 变成横向条，两者的子元素顺序天然还是对的。
-   放在文件末尾的原因见上面那段：媒体查询不增加特异性，只看源码顺序。 */
+/* 窄屏：侧栏折成**底部**一条标签栏。一份 DOM 两种版式，靠 flex 方向 + order
+   切换——.app 变回纵向列、.nav 变成横向条并用 order 挪到主内容之后，DOM 顺序
+   不动（读屏与键盘 Tab 仍然先到导航，那是对的：它是页面的主结构）。
+   放在文件末尾的原因见上面那段：媒体查询不增加特异性，只看源码顺序。
+
+   放底部而不是顶部有两条理由。牌桌页最缺的是纵向空间，而顶栏那一条已经
+   合并成单行、把会话盈亏一起装了进去；再压一条导航在上面，牌桌就只剩不到
+   半屏。另一条是拇指——底部标签栏是移动端的通行版式，够得到。 */
 @media (max-width: 520px) {
   .app {
     flex-direction: column;
   }
   .nav {
+    order: 1;
     flex-direction: row;
-    align-items: center;
-    /* 允许换行，否则金额位数一多就溢出：实测 375px 屏上，新会话（+$0 /
-       买入 $4,000）这一条需要 349px 放得下，而打久之后（−$123,456 /
-       买入 $200,000）需要 385px——溢出 10px，360px 的机器溢出 25px。
-       换行让它退化成两行，而不是把数字裁掉。 */
-    flex-wrap: wrap;
-    gap: 10px;
+    align-items: stretch;
+    justify-content: space-around;
+    gap: 0;
     width: auto;
-    padding: calc(8px + var(--safe-top)) 12px 8px;
+    padding: 4px 8px calc(4px + var(--safe-bottom));
     border-right: none;
-    border-bottom: 1px solid var(--line);
+    border-top: 1px solid var(--line);
+    /* 上缘一道极轻的投影，让标签栏浮在内容之上而不是被内容顶着 */
+    box-shadow: 0 -1px 2px rgba(17, 20, 26, 0.03);
   }
-  /* 手机上不占一行去写产品名：那一行既不能点也不带信息 */
-  .nav-title {
+  /* 手机上不占位置写产品名与图标：那一块既不能点也不带信息 */
+  .nav-brand {
     display: none;
   }
   .nav-items {
+    flex: 1;
     flex-direction: row;
-    gap: 4px;
+    gap: 0;
   }
+  /* 每项一格等分，图标在上、文字在下——移动端标签栏的通行版式。
+     44px 是触摸目标下限，标签栏整体 56px 左右。 */
   .nav-item {
-    padding: 6px 12px;
-    font-size: 12px;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    min-height: 44px;
+    padding: 5px 2px;
+    font-size: 10.5px;
+    font-weight: 500;
+    border-radius: 10px;
   }
-  /* 横向条里没有「底部」可贴：margin-top:auto 在 row 方向上不成立，
-     改用 margin-left:auto 把这一块推到条的最右端，去掉纵向卡片才需要的
-     上边框/内边距，数字右对齐紧凑排布。 */
-  .nav-session {
-    margin-top: 0;
-    margin-left: auto;
-    align-items: flex-end;
-    gap: 2px;
-    padding: 0;
-    border-top: none;
-  }
-  /* 与上面藏掉产品名同理：横条上这一行放不下四样东西。实测品牌 42 +
-     三项导航 200 + 会话块 104（会话盈亏 44 + 两颗 26 的图标开关）+ 间距
-     内边距 44 = 390px，360px 屏上会话块整个折到第二行，顶栏从 84px 涨到
-     109px。四样里「会话盈亏」是最该让位的：下面那行大字净盈亏和「买入 …」
-     已经说清这块是什么，而两颗开关的 26px 是手指点得中的下限，不能再缩。
-     藏掉之后 360 / 390 两档都是单行 84px（旧版这两档分别是 109 / 72）。 */
-  .nav-session-label {
+  /* 蓝点是侧栏那一版的当前页标记，标签栏改用图标 + 文字上色 */
+  .nav-dot {
     display: none;
   }
+  .nav-icon {
+    display: block;
+    width: 19px;
+    height: 19px;
+  }
+  .nav-item-on {
+    background: transparent;
+  }
+  /* 底部安全区归导航条独占。
+     .nav 现在是屏幕最下面那个元素，由它的 padding 把内容顶到 home 指示条
+     之上；而动作条、历史页、报表页、设置页、复盘页都各自也加了一份
+     var(--safe-bottom)——那些 padding 现在落在导航条**上方**，再补一次就是
+     凭空多出一条空白。
+     在 .app-main 上把这个变量清零，一次覆盖掉它全部后代；.nav 是 .app-main
+     的兄弟节点，仍然从 :root 读到真值，不受影响。 */
   .app-main {
-    /* 安全区已经由 .nav 的 padding 补过了，这里再补一次就是两倍 */
-    padding-top: 0;
+    --safe-bottom: 0px;
   }
   /* 槽位换成设计稿 H5 版的坐标（SEATS_DEF.h5Pos）。设计稿自己就为手机把两侧
      座位往里收了——Web 版的 11% / 89% 在 373px 宽的屏上会让座位卡左右各探出
@@ -1809,6 +1846,15 @@ body {
 .rep-win {
   display: flex;
   gap: 5px;
+}
+/* 窄屏上让四个窗口档位自己占一行，把首行留给「报表」和右上角的齿轮。
+   .rep-head 是 flex-wrap: wrap，不这么排的话四颗按钮会把首行填满，齿轮被
+   挤到第二行的右端——孤零零挂在那里，看不出它属于页头。 */
+@media (max-width: 520px) {
+  .rep-win {
+    order: 1;
+    flex-basis: 100%;
+  }
 }
 /* 「库里共 N 手」——partial 不是空态，选了大窗口的新用户要看得到报表，
    这里只提醒实际手数比窗口小 */
@@ -2083,7 +2129,7 @@ body {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-/* 与 .nav-session-net / .summary-line 同款：`.neg`/`.pos` 在本项目里从来
+/* 与 .topbar-meta .pos/.neg 与 .summary-line 同款：`.neg`/`.pos` 在本项目里从来
    不是独立类，必须带祖先限定，否则金额完全没颜色、赢和输长得一样，而项目
    没有组件渲染测试，没有任何一条测试会发现。 */
 .rvp-net.neg { color: var(--danger); }
@@ -2366,11 +2412,16 @@ body {
    本块必须留在文件末尾——它覆盖的 `.table-center`（441 行）、`.card-lg`
    （537 行）、`.slot-*`（1749 行那组）都在前面，同特异性下后写的才生效。 */
 @container (max-width: 560px) {
-  .slot-2 { top: 12%; }
+  /* 上排三个座位（左 19% · 中 50% · 右 81%）在窄屏上横向排不下三个胶囊：
+     19% 与 50% 只隔 31% 的牌桌宽，而胶囊上限 30cqw。所以**纵向也要错开**
+     ——中间那个再抬高一点，两侧的再压低一点，让「中 vs 侧」这一对在纵向上
+     就已经不相交，横向挤不挤都无所谓。
+     8% 与 24% 相隔 16% 的牌桌高度，实测大于胶囊连同下方筹码堆的总高。 */
+  .slot-2 { top: 8%; }
   .slot-1,
-  .slot-3 { top: 19%; }
+  .slot-3 { top: 24%; }
   .slot-0,
-  .slot-4 { top: 67%; }
+  .slot-4 { top: 68%; }
 
   /* 绝对定位是为了把 `top` 从「按宽度」换成「按高度」，不是为了脱离文档流。
      left/right 归零让它仍然占满整宽，内部照旧居中。 */
@@ -2390,7 +2441,81 @@ body {
   }
   .board .card-lg .card-rank { font-size: calc(2.3 * var(--u)); }
   .board .card-lg .card-suit { font-size: calc(2.1 * var(--u)); }
-  .board .card-lg .card-rank-wide { font-size: calc(2 * var(--u)); }
+
+  /* ── 座位胶囊不许探出牌桌 ──
+
+     胶囊的宽度由内容撑（性格名 + 位置标签 + 筹码数），不跟 --u 缩放；而它的
+     中心锚在 left: 18% / 82%。于是"不溢出"的条件是**宽度不超过左边距的两倍**
+     ——18% × 2 = 36%，取 34cqw 留一点余量。cqw 问的是 .app-main（已经是
+     container-type: inline-size），也就是牌桌自己的宽度。
+
+     实测（改前）：胶囊 119px、锚在 16%，360px 屏上两侧各探出约 2px；320px 屏
+     上更糟——`--u` 有 7px 的下限（见 .app-main > * ），牌桌内部按 700px 的尺子
+     排版却塞在 320px 里，一次量到 38 个元素出界。
+
+     光加 max-width 不够：胶囊里每一段都是 nowrap，压不动。要让它真的能收窄，
+     得给 .seat-meta 开 min-width: 0（flex 子项默认 min-width: auto，不写这条
+     的话溢出而不是收缩），再让性格名以省略号截断。位置标签与筹码数不截断：
+     那两样是信息，名字只是标识。 */
+  .seat-info {
+    max-width: 30cqw;
+    /* 头像与文字之间、以及右侧的内边距都收窄。这不是为了好看，是为了让
+       30cqw 这个上限**不必真的触发截断**——胶囊原本要 119px，而 390px 屏上
+       30cqw 只有 117px，差 2px 就把「岩石」截成了「岩...」。
+       手机上 `--u` 被钉在 7px 的下限（见 .app-main > * 的 max(7px, …)），
+       牌桌再窄胶囊内部也不会自己缩，只能在这里显式收。 */
+    gap: calc(0.8 * var(--u));
+    padding: calc(0.6 * var(--u)) calc(1.1 * var(--u)) calc(0.6 * var(--u))
+      calc(0.6 * var(--u));
+  }
+  /* 头像方块小一号，省下的宽度全给名字 */
+  .seat-badge {
+    min-width: calc(3.7 * var(--u));
+    height: calc(3.7 * var(--u));
+    border-radius: calc(1.2 * var(--u));
+    font-size: calc(1.2 * var(--u));
+  }
+
+  /* 两侧座位再往里收一点，给上面那个 30cqw 留出余量 */
+  .slot-0 { left: 18%; }
+  .slot-1 { left: 19%; }
+  .slot-3 { left: 81%; }
+  .slot-4 { left: 82%; }
+
+  /* 庄家钮改挂在胶囊的**上缘正中**。
+     它默认是绝对定位到胶囊左上角外侧的一枚圆徽章；左侧那两个座位本来就贴着
+     屏幕左缘，再往左探一枚 2.89u 的圆片必然出界（实测 left = -8）。
+     试过改挂内侧（朝牌桌中心那一边），更糟：它会伸进邻座的胶囊里，实测
+     10×10px 的重叠，占那枚圆片的 23%。
+     挂上缘正中就都躲开了——横向永远不超出胶囊自身的宽度，所以既不会出界，
+     也不会撞到左右任何东西；纵向探进去的是胶囊上方的空台面。 */
+  .dealer-btn {
+    top: calc(-1.5 * var(--u));
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+  /* 摊牌时胶囊上方会多出两张底牌，而庄家钮正探在那里（实测 20×6px 的重叠）。
+     给底牌补一段下边距把位置让出来。写在 .seat-cards 上而不是 .seat 的 gap
+     上：底牌只在摊牌那一刻存在，加在 gap 上就变成每一手都平白多占的空高。 */
+  .seat-cards {
+    margin-bottom: calc(1.2 * var(--u));
+  }
+
+  /* 试过给椭圆加高度上限、让它更接近设计稿那种横向台面（.table 是 flex: 1，
+     顶栏合并、导航下移之后它多分到一大截高度，390px 屏上被抻成 366×435，
+     下半圈空着一片）。**没有采用**：88cqw 与 105cqw 两档都实测过，遮挡分别
+     回到 4/18/2/7/8 组与 9/0/1/1/7 组——压扁台面就是把五个座位在纵向上挤回
+     一起，而纵向错开正是上面那组 slot 坐标解决遮挡的全部办法。
+     台面偏长是取舍的代价，不是漏掉的一项。要同时拿到两者，得改的是座位
+     版式本身（比如两侧座位改成竖排头像 + 悬浮数字），那是另一次改版。 */
+
+  /* 下注筹码堆挂在胶囊下方，宽度由「筹码图形 + 金额」撑。它比胶囊窄，
+     但两侧座位靠得近时仍会探进邻座——限成与胶囊同宽，超出的部分让金额
+     自己换行前的截断处理掉。 */
+  .seat-bet {
+    max-width: 30cqw;
+  }
 }
 
 /* ───────── 设置页（③-D-3，规格 §10.6） ───────── */
