@@ -123,6 +123,19 @@ describe('滑块反映当前选中额度', () => {
     expect(sliderValue()).toBe(5);
   });
 
+  // 预设档位是按底池比例算的（1/3 池、1/2 池…），round2 之后常常不落在
+  // 步进网格（SMALL_BLIND = 0.5）上。原生 <input type="range"> 只能停在
+  // min + k*step 的格子上，这类金额永远够不到；换成 Radix 之后受控值原样
+  // 显示，只在用户拖动/按键时才吸附。这条测试钉的就是那个差别——注释里
+  // 声称了这件事，就得有东西撑着它
+  it('预设金额不落在步进网格上时，滑块照样精确停在那个数', async () => {
+    const model = raiseModel();
+    model.raise = { ...model.raise!, presets: [{ label: '1/3 池', amount: 4.33 }] };
+    render(<ActionBar model={model} onAction={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: '1/3 池' }));
+    expect(sliderValue()).toBe(4.33);
+  });
+
   it('区间变了就收回最小值，不残留一个已经非法的数字', async () => {
     const { rerender } = render(<ActionBar model={raiseModel()} onAction={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: '最大' }));

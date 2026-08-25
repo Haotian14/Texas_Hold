@@ -1,10 +1,22 @@
 import { useEffect, useState } from 'react';
-import type { CSSProperties } from 'react';
 import type { ActionInput } from '../../core/gameEngine';
 import type { ActionBarModel } from '../../session/actionBarModel';
 import { chipsGreater, round2 } from '../../core/chips';
 import { SMALL_BLIND } from '../../core/types';
 import { chips } from '../format';
+import { Button } from './ui/button';
+import { Slider } from './ui/slider';
+import { cn } from '../lib/utils';
+
+/**
+ * 动作条那三颗大按钮的共同尺寸。
+ *
+ * 全部按 --u（牌桌宽度的比例单位）推，不用 Button 自带的固定档：整条动作条
+ * 跟着牌桌缩放，写死像素会让它在手机上和牌桌脱节。原来这些值在 app.css 的
+ * .btn 里，规则随控件一起删掉了，数值原样搬过来。
+ */
+const BIG_BTN =
+  'min-h-[calc(6*var(--u))] rounded-[calc(1.44*var(--u))] text-[calc(1.56*var(--u))] font-semibold tracking-[-0.01em] tabular-nums';
 
 /**
  * 牌桌底部动作条。
@@ -82,80 +94,89 @@ export function ActionBar({
     <div className="actionbar">
       {model.raise && (
         <div className="raise-panel">
+          {/* 尺寸全部由 --u 推出来，不用组件自带的固定档。--u 是牌桌宽度的
+              比例单位（见 app.css 的 .app-main > *）——整条动作条跟着牌桌缩放，
+              换成固定像素会让它在手机上和牌桌脱节。tailwind-merge 保证这里
+              的 min-h/text/rounded 覆盖掉 Button 默认那三个，而不是叠上去 */}
           {[...model.raise.presets, { label: '全下', amount: model.raise.max }].map(p => (
-            <button
+            <Button
               key={p.label}
-              type="button"
-              className={chipsEqual(amount, p.amount) ? 'preset preset-on' : 'preset'}
+              size="sm"
+              variant={chipsEqual(amount, p.amount) ? 'outline' : 'ghost'}
+              aria-pressed={chipsEqual(amount, p.amount)}
+              className={cn(
+                'min-h-[calc(3.6*var(--u))] rounded-[calc(0.89*var(--u))] px-[calc(1.33*var(--u))] text-[calc(1.33*var(--u))] font-semibold tabular-nums',
+                chipsEqual(amount, p.amount)
+                  ? 'border-primary/45 bg-accent text-accent-foreground'
+                  : 'border border-input text-secondary-foreground',
+              )}
               onClick={() => setAmount(p.amount)}
             >
               {p.label}
-            </button>
+            </Button>
           ))}
 
-          {/* --fill 是滑块已走过的比例，给 CSS 画左半段的蓝色填充用。原生
-              <input type="range"> 没有"已填充轨道"这个概念（只有 Firefox 的
-              ::-moz-range-progress，Chrome 没有对应物），只能靠背景渐变自己
-              画，而渐变需要知道当前值——这个数必须从 React 传下去。
-              raiseMax === raiseMin 时（只剩一个合法额度）分母为 0，取 0 避免
-              NaN。 */}
-          <div
-            className="raise-slider"
-            style={
-              {
-                '--fill': `${
-                  raiseMax === raiseMin ? 0 : ((clamped - raiseMin) / (raiseMax - raiseMin)) * 100
-                }%`,
-              } as CSSProperties
-            }
-          >
-            <input
-              type="range"
-              min={raiseMin}
-              max={raiseMax}
-              // HTML range 的步进网格是从 min 开始按 step 累加的，不是从 0
-              // 开始，所以预设档位金额（不一定落在 min + k*step 上）以及
-              // max 本身，常常够不到滑块能停的格子——滑块永远只能落在网格
-              // 点上。这不是这里能修的：换成 SMALL_BLIND 只是让步进值有名
-              // 有姓，网格错位是 <input type="range"> 本身的行为。
-              step={SMALL_BLIND}
-              value={clamped}
-              onChange={e => setAmount(Number(e.target.value))}
-            />
-          </div>
+          {/* 原来这里有个 --fill 百分比变量，喂给 CSS 画左半段的蓝色填充：
+              原生 <input type="range"> 没有"已填充轨道"这个概念（只有
+              Firefox 的 ::-moz-range-progress，Chrome 没有对应物），只能靠
+              背景渐变自己画。Radix 给了真的 Range 元素，那个变量、那段渐变、
+              以及 raiseMax === raiseMin 时分母为 0 的那个 NaN 兜底，一起删掉了。
+
+              步进网格那条老限制也一并解决：原生 range 的可停点是从 min 开始
+              按 step 累加的，预设档位金额与 max 本身常常够不到格子；Radix 只
+              在用户拖动/按键时吸附，受控值原样显示，所以预设设进来的金额能
+              精确落上（下面 setAmount 的值不再被改写）。 */}
+          <Slider
+            className="min-w-[calc(6*var(--u))] flex-1"
+            min={raiseMin}
+            max={raiseMax}
+            step={SMALL_BLIND}
+            value={[clamped]}
+            onValueChange={([v]) => setAmount(v ?? raiseMin)}
+          />
 
           <div className="raise-amount-box">
             {/* 与主按钮印同一个数：两处一旦口径不同，用户没有办法判断该信哪个 */}
             <span className="raise-amount">{chips(isAllin ? clamped : raiseTo)}</span>
             <span className="raise-amount-sep" aria-hidden="true" />
-            <button
-              type="button"
-              className="raise-max"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-0 px-0 text-[calc(1.28*var(--u))] font-semibold text-primary hover:bg-transparent hover:underline"
               onClick={() => setAmount(model.raise!.max)}
             >
               最大
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       <div className="actionbar-row">
         {model.fold && (
-          <button className="btn btn-ghost" onClick={() => onAction({ type: 'fold' })}>
+          <Button variant="outline" className={cn(BIG_BTN, 'flex-1 bg-transparent text-muted-foreground')} onClick={() => onAction({ type: 'fold' })}>
             弃牌
-          </button>
+          </Button>
         )}
         {model.passive && (
-          <button className="btn" onClick={() => onAction({ type: model.passive!.type })}>
+          <Button variant="outline" className={cn(BIG_BTN, 'flex-1')} onClick={() => onAction({ type: model.passive!.type })}>
             {model.passive.type === 'check'
               ? '过牌'
               : `跟注 ${chips(model.passive.amount)}`}
-          </button>
+          </Button>
         )}
         {primaryLabel !== null && (
-          <button className="btn btn-primary" onClick={handlePrimary}>
+          <Button
+            className={cn(
+              BIG_BTN,
+              // 主动作是同屏唯一的实心蓝，设计稿里永远只有一个这样的按钮。
+              // flex-1.5 让它比另外两颗宽——最常按的那颗该最好按
+              'flex-[1.5] border-none text-[calc(1.61*var(--u))] text-primary-foreground',
+              'bg-[linear-gradient(180deg,#3d79ef,#2963e0)] shadow-[var(--sh-primary)] hover:brightness-[1.07]',
+            )}
+            onClick={handlePrimary}
+          >
             {primaryLabel}
-          </button>
+          </Button>
         )}
       </div>
     </div>

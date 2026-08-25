@@ -1,5 +1,6 @@
 import { SMALL_BLIND, BIG_BLIND, SEAT_COUNT } from '../../core/types';
 import { chips } from '../format';
+import { Badge } from './ui/badge';
 
 export interface TopBarProps {
   /** 已结算的手数（recordHandPlayed 在手牌结算那一刻就自增，见 handSession.ts advance） */
@@ -36,15 +37,17 @@ export function TopBar({ handsPlayed, inProgress, deepStack, storageOk }: TopBar
           更糟」，所以不渲染。净盈亏/买入/静音也不在这里——它们搬到了
           Nav 底部的「会话盈亏」区块，见 Nav.tsx。 */}
       <div className="topbar-flags">
+        {/* warn 这一档标的是"注意但不是错"：存储不可用与深筹码都不是用户打错了。
+            用琥珀不用红，免得和复盘里那个"你打错了"的红抢同一个语义 */}
         {!storageOk && (
-          <span className="topbar-item warn" title="本机存储不可用（隐私模式或配额已满），本次牌局不会被记录">
+          <Badge variant="warn" title="本机存储不可用（隐私模式或配额已满），本次牌局不会被记录">
             未记录
-          </span>
+          </Badge>
         )}
         {deepStack && (
-          <span className="topbar-item warn" title="筹码深度超过 150BB，复盘精度下降">
+          <Badge variant="warn" title="筹码深度超过 150BB，复盘精度下降">
             深筹码
-          </span>
+          </Badge>
         )}
       </div>
     </div>
