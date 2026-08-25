@@ -10,7 +10,12 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
-    "types": ["vitest/globals"]
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    // node 是给 vite.config.ts / vitest.config.ts 里的 node:url 用的
+    "types": ["vitest/globals", "node"]
   },
   "include": ["src", "vite.config.ts"]
 }
