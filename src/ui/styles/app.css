@@ -281,15 +281,6 @@ body {
   gap: 6px;
   align-items: center;
 }
-.topbar-item.warn {
-  color: var(--warn);
-  background: rgba(183, 121, 31, 0.09);
-  border: 1px solid rgba(183, 121, 31, 0.22);
-  border-radius: 5px;
-  padding: 1px 6px;
-  font-size: 10px;
-  letter-spacing: 0.05em;
-}
 
 .table {
   position: relative;
@@ -828,53 +819,16 @@ body {
   gap: calc(1.11 * var(--u));
 }
 
-.btn {
-  flex: 1;
-  min-height: calc(6 * var(--u));
-  border: 1px solid var(--line-2);
-  border-radius: calc(1.44 * var(--u));
-  font-family: var(--font);
-  font-size: calc(1.56 * var(--u));
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text);
-  background: var(--app);
-  box-shadow: var(--sh-1);
-  cursor: pointer;
-  font-variant-numeric: tabular-nums;
-  transition: background 120ms linear, filter 120ms linear;
-}
 /* 设计稿给三颗按钮各配了 hover：前两颗压一层 --soft，主按钮提亮。
    :not(.btn-primary) 不是装饰——`.btn:hover` 是 (0,2,0)，而 .btn-primary
    的蓝底只有 (0,1,0)，不排除的话 hover 时灰底会盖掉蓝底，而主按钮是白字，
    白字压在近白的 --soft 上等于整颗按钮消失（实测：文字完全看不见）。
    受影响的是全部三处 .btn-primary：动作条主按钮、补码的两颗、结算的
    「下一手」。 */
-.btn:not(.btn-primary):hover { background: var(--soft); }
-.btn-primary:hover { filter: brightness(1.07); }
+
 /* 主动作是页面上唯一的实心蓝：设计稿里同屏永远只有一个这样的按钮 */
-.btn-primary {
-  flex: 1.5;
-  border: none;
-  font-size: calc(1.61 * var(--u));
-  color: #fff;
-  background: linear-gradient(180deg, #3d79ef, #2963e0);
-  box-shadow: var(--sh-primary);
-}
-.btn-danger {
-  border-color: rgba(220, 76, 71, 0.3);
-  color: var(--danger);
-  background: rgba(220, 76, 71, 0.06);
-  box-shadow: none;
-}
+
 /* 弃牌是"什么都不做"，视觉上要最轻——透明底、灰字，不与另外两个抢 */
-.btn-ghost {
-  background: transparent;
-  border-color: var(--line-2);
-  color: var(--text-dim);
-  box-shadow: none;
-}
-.btn:active { transform: translateY(1px); }
 
 /* 预设档 + 滑块 + 金额框合成一整条浮起的卡片（设计稿的 raise 条），
    与下面的 Fold/Call/Raise 三键行**同屏常驻**，不是点「加注」才展开出来的
@@ -896,84 +850,14 @@ body {
 /* 五档预设（1/3池 · 1/2池 · 2/3池 · 池 · 全下）按内容自身宽度排布，
    不再各占一等份——它们与滑块是同一行里的平级兄弟，滑块才是吃剩余空间
    的那个（见 .raise-slider 的 flex:1）。 */
-.preset {
-  flex: none;
-  min-height: calc(3.6 * var(--u));
-  border: 1px solid var(--line-2);
-  border-radius: calc(0.89 * var(--u));
-  padding: calc(0.78 * var(--u)) calc(1.33 * var(--u));
-  background: transparent;
-  color: var(--text-2);
-  font-family: var(--font);
-  font-size: calc(1.33 * var(--u));
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.preset:hover { background: var(--soft); }
+
 /* 选中态是持久的（当前滑块值等于这一档），不是只在按下瞬间闪一下——
    :active 是原生的按压反馈，顺手复用同一组配色，两者不冲突。 */
 .preset:active,
-.preset.preset-on {
-  background: var(--blue-soft);
-  border-color: rgba(47, 111, 237, 0.35);
-  color: var(--blue);
-}
-.raise-slider {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: calc(6 * var(--u));
-}
-.raise-slider input {
-  flex: 1;
-  /* 原生滑块在浅色底上默认是灰轨 + 系统蓝钮，两处都不合调；
-     只重画轨与钮，不改行为（步进网格的问题见下方注释）。 */
-  -webkit-appearance: none;
-  appearance: none;
-  height: calc(2.9 * var(--u));
-  background: transparent;
-  cursor: pointer;
-}
+
 /* 已走过的部分填蓝：用一道硬边渐变而不是两个色标，--fill 处直接切换，
    不留过渡带。Chrome 与 Firefox 的轨道伪元素名字不同但画法一样。 */
-.raise-slider input::-webkit-slider-runnable-track {
-  height: calc(0.67 * var(--u));
-  border-radius: 99px;
-  background: linear-gradient(
-    to right,
-    var(--blue) 0 var(--fill, 0%),
-    var(--soft2) var(--fill, 0%) 100%
-  );
-}
-.raise-slider input::-moz-range-track {
-  height: calc(0.67 * var(--u));
-  border-radius: 99px;
-  background: linear-gradient(
-    to right,
-    var(--blue) 0 var(--fill, 0%),
-    var(--soft2) var(--fill, 0%) 100%
-  );
-}
-.raise-slider input::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: calc(2 * var(--u));
-  height: calc(2 * var(--u));
-  margin-top: calc(-0.67 * var(--u));
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(17, 20, 26, 0.26), 0 0 0 1px rgba(17, 20, 26, 0.06);
-}
-.raise-slider input::-moz-range-thumb {
-  width: calc(2 * var(--u));
-  height: calc(2 * var(--u));
-  border: none;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(17, 20, 26, 0.26), 0 0 0 1px rgba(17, 20, 26, 0.06);
-}
+
 /* 金额独立成一个描边小盒，与设计稿一致——它是这一条里唯一会变的数字，
    套个框才不会被两侧的按钮淹掉。盒内还嵌一条竖分隔线 + 「最大」文字链接
    （设计稿的 Max），点它等价于把滑块拖到头，与「全下」预设是同一个动作。 */
@@ -1003,18 +887,6 @@ body {
   background: var(--line-2);
   flex: none;
 }
-.raise-max {
-  border: none;
-  background: transparent;
-  color: var(--blue);
-  font-family: var(--font);
-  font-size: calc(1.28 * var(--u));
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-  white-space: nowrap;
-}
-.raise-max:hover { text-decoration: underline; }
 
 .summary { display: flex; flex-direction: column; gap: 8px; }
 .summary-line {
@@ -1702,23 +1574,6 @@ body {
    **不要叫 .chip** —— 那个类在本项目里已经是"筹码圆片"（width: 13px 的实心
    小圆，见 .chip-stack 那一组）。第一版就是这么撞的：排序按钮被 13px 的宽度
    压成一坨，文字全糊在一起，而 CSS 不会为类名撞车报任何错。 */
-.pill {
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  padding: 5px 10px;
-  background: var(--app);
-  color: var(--text-2);
-  font-family: var(--font);
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.pill-on {
-  background: var(--blue-soft);
-  border-color: rgba(47, 111, 237, 0.35);
-  color: var(--blue);
-}
 
 .hist-filters {
   display: flex;
@@ -2413,40 +2268,7 @@ body {
   padding-top: 12px;
   flex-wrap: wrap;
 }
-.rvp-btn {
-  height: 48px;
-  border-radius: 12px;
-  font-family: var(--font);
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.rvp-btn-ghost {
-  padding: 0 20px;
-  border: 1px solid var(--line-2);
-  color: var(--text-dim);
-  background: transparent;
-}
-/* 排除已标记态，理由同 .btn:not(.btn-primary):hover —— 这条是 (0,2,0)，
-   而下面 .rvp-dispute-on 的琥珀底只有 (0,1,0)，不排除的话鼠标一放上去
-   「已标记有异议」就变回未标记的样子，看起来像点了没生效。 */
-.rvp-btn-ghost:not(.rvp-dispute-on):hover {
-  background: var(--soft);
-  color: var(--text);
-}
-/* 「下一手」推到最右：设计稿把两颗按钮并排贴左，但本页多了「我不认同」
-   第三颗，三颗挤在一起时主按钮认不出来。 */
-.rvp-btn-primary {
-  margin-left: auto;
-  padding: 0 26px;
-  border: none;
-  color: #fff;
-  background: linear-gradient(180deg, #3d79ef, #2963e0);
-  box-shadow: var(--sh-primary);
-}
-.rvp-btn-primary:hover {
-  filter: brightness(1.07);
-}
+
 /* 已标记有异议：用琥珀而不是红。红在这套配色里专指"你打错了"，而"我不认同
    判定"说的是引擎可能错了——两件事不该同色。（原样搬自 ③-C 的 .rv-dispute-on） */
 .rvp-dispute-on {
@@ -2648,96 +2470,14 @@ body {
 
 /* 开关。原生 checkbox 用 appearance: none 剥掉默认外观后自己画，
    :checked 的样式因此不需要任何 JS 参与 */
-.set-switch {
-  appearance: none;
-  -webkit-appearance: none;
-  margin: 0 0 0 auto;
-  flex: none;
-  position: relative;
-  width: 42px;
-  height: 25px;
-  border-radius: 999px;
-  background: var(--soft2);
-  border: 1px solid var(--line-2);
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-.set-switch::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 19px;
-  height: 19px;
-  border-radius: 50%;
-  background: var(--app);
-  box-shadow: var(--sh-1);
-  transition: transform 0.15s ease;
-}
-.set-switch:checked {
-  background: var(--blue);
-  border-color: transparent;
-}
-.set-switch:checked::after {
-  transform: translateX(17px);
-}
-.set-switch:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: 2px;
-}
 
 /* 二选一的分段控件 */
-.set-seg {
-  display: inline-flex;
-  margin-left: auto;
-  flex: none;
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.set-seg-btn {
-  border: 0;
-  padding: 6px 11px;
-  background: var(--app);
-  color: var(--text-2);
-  font-family: var(--font);
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.set-seg-btn + .set-seg-btn {
-  border-left: 1px solid var(--line-2);
-}
-.set-seg-on {
-  background: var(--blue-soft);
-  color: var(--blue);
-}
 
 /* <input type=file> 自带的按钮样式没法改，藏起来，用外面的 <label> 当按钮。
    label 包着 input，点它等价于点 input，不需要任何 JS。 */
-.set-import {
-  position: relative;
-  overflow: hidden;
-  cursor: pointer;
-}
-.set-import input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-}
 
 /* 不可撤销的动作用红字而不是红底：红底按钮在一页设置里太吵，
    而这颗按钮的危险性来自它做的事，不来自它的面积 */
-.set-danger {
-  color: var(--danger);
-  border-color: rgba(220, 76, 71, 0.35);
-}
-.set-danger:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
 
 .set-notice {
   display: flex;

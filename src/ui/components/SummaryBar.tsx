@@ -1,5 +1,7 @@
 import { chipsGreater } from '../../core/chips';
 import { chips } from '../format';
+import { Button } from './ui/button';
+import { PRIMARY_BTN } from './ui/tableButton';
 
 export function SummaryBar({
   netBB,
@@ -21,9 +23,9 @@ export function SummaryBar({
         </span>
         <span className="summary-note">{showdown ? '摊牌' : '未摊牌'}</span>
       </div>
-      <button className="btn btn-primary" onClick={onNext}>
+      <Button className={PRIMARY_BTN} onClick={onNext}>
         下一手
-      </button>
+      </Button>
     </div>
   );
 }

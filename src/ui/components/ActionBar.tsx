@@ -7,16 +7,7 @@ import { chips } from '../format';
 import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import { cn } from '../lib/utils';
-
-/**
- * 动作条那三颗大按钮的共同尺寸。
- *
- * 全部按 --u（牌桌宽度的比例单位）推，不用 Button 自带的固定档：整条动作条
- * 跟着牌桌缩放，写死像素会让它在手机上和牌桌脱节。原来这些值在 app.css 的
- * .btn 里，规则随控件一起删掉了，数值原样搬过来。
- */
-const BIG_BTN =
-  'min-h-[calc(6*var(--u))] rounded-[calc(1.44*var(--u))] text-[calc(1.56*var(--u))] font-semibold tracking-[-0.01em] tabular-nums';
+import { PRIMARY_BTN, TABLE_BTN } from './ui/tableButton';
 
 /**
  * 牌桌底部动作条。
@@ -153,12 +144,12 @@ export function ActionBar({
 
       <div className="actionbar-row">
         {model.fold && (
-          <Button variant="outline" className={cn(BIG_BTN, 'flex-1 bg-transparent text-muted-foreground')} onClick={() => onAction({ type: 'fold' })}>
+          <Button variant="outline" className={cn(TABLE_BTN, 'flex-1 bg-transparent text-muted-foreground')} onClick={() => onAction({ type: 'fold' })}>
             弃牌
           </Button>
         )}
         {model.passive && (
-          <Button variant="outline" className={cn(BIG_BTN, 'flex-1')} onClick={() => onAction({ type: model.passive!.type })}>
+          <Button variant="outline" className={cn(TABLE_BTN, 'flex-1')} onClick={() => onAction({ type: model.passive!.type })}>
             {model.passive.type === 'check'
               ? '过牌'
               : `跟注 ${chips(model.passive.amount)}`}
@@ -166,13 +157,8 @@ export function ActionBar({
         )}
         {primaryLabel !== null && (
           <Button
-            className={cn(
-              BIG_BTN,
-              // 主动作是同屏唯一的实心蓝，设计稿里永远只有一个这样的按钮。
-              // flex-1.5 让它比另外两颗宽——最常按的那颗该最好按
-              'flex-[1.5] border-none text-[calc(1.61*var(--u))] text-primary-foreground',
-              'bg-[linear-gradient(180deg,#3d79ef,#2963e0)] shadow-[var(--sh-primary)] hover:brightness-[1.07]',
-            )}
+            // flex-[1.5] 让主按钮比另外两颗宽——最常按的那颗该最好按
+            className={cn(PRIMARY_BTN, 'flex-[1.5]')}
             onClick={handlePrimary}
           >
             {primaryLabel}
