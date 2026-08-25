@@ -4,11 +4,13 @@
 // TS 当成「全局脚本」而不是模块，可以在这里给一个不存在类型声明的内置
 // 模块声明一个全新的最小 ambient 类型（而不是「扩展」一个必须已存在的
 // 模块，那样会报 TS2664）。仅供架构防护测试（architecture.test.ts）读取
-// 源文件文本用，不给 core 代码本身使用。
+// 源文件文本用（pwa.test.ts 也读 vite.config.ts 与 index.html），
+// 不给 core 代码本身使用。
 declare module 'node:fs' {
   export function readFileSync(path: string, encoding: string): string;
   export function readdirSync(
     path: string,
     options: { recursive: boolean },
   ): string[];
+  export function existsSync(path: string): boolean;
 }

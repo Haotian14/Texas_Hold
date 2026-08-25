@@ -8,7 +8,7 @@ import { IconPercent, IconVolumeOff, IconVolumeOn } from './icons';
  * 它仍然是一个 PageId —— 页面切换只有这一套状态，为它另开一个布尔量会让
  * 「现在到底在哪一页」有两个来源。
  */
-export type PageId = 'table' | 'review' | 'history' | 'report';
+export type PageId = 'table' | 'review' | 'history' | 'report' | 'settings';
 
 /**
  * 主导航。
@@ -17,10 +17,14 @@ export type PageId = 'table' | 'review' | 'history' | 'report';
  * 控件（全部由 CSS 控制，见 app.css 的 .nav）。写成两套 DOM 再按屏宽二选一
  * 的话，两边的可访问性属性、选中态、键盘顺序都得各维护一遍。
  *
- * 三项：牌桌（正在打的这一手）、复盘（对应设计稿的 Hand Review 屏，显示
+ * 四项：牌桌（正在打的这一手）、复盘（对应设计稿的 Hand Review 屏，显示
  * 最近打完或从历史选中的那一手）、报表（规格 §10.5 的漏洞报表，对应设计稿
- * 的 Progress 屏）。历史列表（规格 §10.4）是复盘页的下一级，从那一页的
- * 「全部手牌」按钮进，所以在这里高亮的仍是「复盘」。
+ * 的 Progress 屏）、设置（规格 §10.6）。历史列表（规格 §10.4）是复盘页的
+ * 下一级，从那一页的「全部手牌」按钮进，所以在这里高亮的仍是「复盘」。
+ *
+ * 设计稿只画了三屏，没有设置入口——但那三屏也没画历史页。设置是规格里就有
+ * 的一页，且没有任何别的页面能自然承载它（数据导出/重置不属于牌桌，也不属于
+ * 复盘），所以它进导航，排在最后。
  *
  * 底部「会话盈亏」区块是设计稿三屏左栏共有的部分（不是牌桌专属），所以
  * 净盈亏/买入/静音这几个 prop 挂在这里而不是 TopBar——Nav 本来就是三个
@@ -30,6 +34,7 @@ const ITEMS: readonly { id: PageId; label: string }[] = [
   { id: 'table', label: '牌桌' },
   { id: 'review', label: '复盘' },
   { id: 'report', label: '报表' },
+  { id: 'settings', label: '设置' },
 ];
 
 export function Nav({
@@ -87,8 +92,9 @@ export function Nav({
         <div className="nav-session-head">
           <span className="nav-session-label">会话盈亏</span>
           {/* 胜率开关与静音并排：两者是同一类东西——纯显示偏好、随时可切、
-              存 localStorage、与对局状态无关。放在设置页更"正确"，但设置页
-              是 ③-D-3，而一个训练辅助开关埋进二级页面等于没有。 */}
+              存 localStorage、与对局状态无关。设置页现在有了，这两项也在
+              那边各有一行，但这两颗按钮留着：打牌途中要切的开关埋进二级
+              页面等于没有。两处读写的是同一个偏好，不会分叉。 */}
           <button
             type="button"
             className={showEquity ? 'nav-mute nav-toggle-on' : 'nav-mute'}

@@ -200,6 +200,11 @@ export function ReviewPage({
           </div>
         </section>
       </div>
+
+      {/* 规格 §12 要求把这条局限性说明摆在界面上，报表页印的是同一句。
+          这一页更需要它：报表给的是聚合趋势，而这里逐个决策点报「你这步亏了
+          X BB」，最容易被当成 solver 的精确输出。 */}
+      <p className="rvp-note">EV 数字为近似估算，非 solver 输出。</p>
     </div>
   );
 }
