@@ -19,9 +19,10 @@
 | ③-C 持久化 | IndexedDB · 历史页 · 导出导入 | ✅ 完成 |
 | ③-D-1 漏洞报表 | 每手摘要 · 窗口聚合 · 报表页 · 设计稿对齐 | ✅ 完成 |
 | ③-D-2 部署 | Cloudflare Workers · GitHub 自动构建 | ✅ 完成 |
-| ③-D-3 上线收尾 | 设置页 · PWA | 未开始 |
+| ③-D-3 上线收尾 | PWA（manifest · Service Worker · 离线可用） | ✅ 完成 |
+| ③-D-3 上线收尾 | 设置页 · 复盘页补免责声明 | 未开始 |
 
-共 858 个测试（855 通过，3 个如实跳过，见下）。
+共 866 个测试（863 通过，3 个如实跳过，见下）。
 
 给一份 `HandRecord`，`analyzeHand()` 现在能逐个决策点回答：**这一步错了吗、亏了多少 BB、属于哪类错误、为什么**。这是整个项目最初的目的。
 
@@ -29,7 +30,7 @@
 
 ②-B-2 让复盘复用了完全相同的链路：AI 用 `estimateEv` 决策，复盘用同一个 `estimateEv` 逐个决策点算出你亏了多少。这不是省事，是必须——否则会出现「复盘说该弃牌、AI 在同样局面从不弃」的割裂。
 
-③-A 起有了一个可玩的牌桌界面（`npm run dev`），③-B 加上复盘卡片，③-C 让每手自动落进 IndexedDB 并有了历史页，③-D-1 加上漏洞报表并把三个页面按设计稿重做了一遍，③-D-2 上线；设置页与 PWA 尚未开始。
+③-A 起有了一个可玩的牌桌界面（`npm run dev`），③-B 加上复盘卡片，③-C 让每手自动落进 IndexedDB 并有了历史页，③-D-1 加上漏洞报表并把三个页面按设计稿重做了一遍，③-D-2 上线，③-D-3 的 PWA 让它能装到主屏、断网也能打；设置页尚未开始。
 
 **线上地址：<https://texas-hold.luohaotian0616.workers.dev/>**
 
@@ -38,7 +39,7 @@
 ```bash
 npm install
 npm run dev       # 开发服务器，浏览器打开 http://localhost:5173
-npm test          # 858 个测试（855 通过，3 个如实跳过），约 70 秒（含两百手 AI 自对弈）
+npm test          # 866 个测试（863 通过，3 个如实跳过），约 70 秒（含两百手 AI 自对弈）
 npm run typecheck
 npm run build     # 静态产物到 dist/
 ```
@@ -50,6 +51,18 @@ npm run build     # 静态产物到 dist/
 `vite.config.ts` 的 `base` 用相对路径，产物因此能放在静态托管的任意子路径下，不绑定域名根。
 
 线上实测（2026-08-24）：应用正常挂载，`public/sounds/` 的音效与 favicon 均可达，IndexedDB 可用，且 `navigator.storage.persisted()` **返回 true**——持久化存储在这个源上拿到了，比 ③-C 记的「拿不到也照跑」的下限要好。控制台无报错。
+
+### PWA
+
+`vite-plugin-pwa`（generateSW）生成 Service Worker 与 manifest，构建产物 14 个文件全部预缓存（约 397KB，含四个音效——断网时牌桌不该是哑的）。装到主屏后可离线开局、复盘、看报表：所有逻辑本来就跑在浏览器里，数据在 IndexedDB，没有任何一步依赖网络。
+
+**更新策略是 `prompt` 而不是 `autoUpdate`，且 `skipWaiting: false`。** autoUpdate 一发现新版本就 `location.reload()`，而**进行中的那手牌只存在于 React state 里**（只有结算后的 `HandRecord` 进了 IndexedDB）——一次后台更新把用户打到一半的牌吞掉，比晚一次启动才用上新版本糟得多。代价是常驻不关的用户会在旧版本上多待一阵；要缩短这个窗口得给「有新版本，现在刷新？」做个界面，留给设置页那批活儿。
+
+图标是三张位图（192 / 512 / maskable 512）加一张 iOS 用的 180：iOS 不读 manifest 的 `icons`，只认 `<link rel="apple-touch-icon">` 且只认位图，所以 `favicon.svg` 那句「不必为 16/32/180 各导一张位图」在 PWA 这里不成立。maskable 单独一张是因为 Android 会把图标裁成系统形状，圆角方块那版会被切掉边角。
+
+`start_url` 与 `scope` 都是相对值 `'.'`，与 `base: './'` 同一个理由：写死 `/` 会把应用钉死在域名根上。
+
+离线行为在真浏览器里验证过（起 `vite preview`，注册 SW 后断网重载）：应用照常挂载，音效仍可取。这条不在测试套件里——它要一个真浏览器。`src/ui/pwa.test.ts` 守的是另一件事：配置本身自洽（图标文件存在、两处主题色不分叉、不会在打牌途中自动重载）。
 
 ## 设计要点
 
