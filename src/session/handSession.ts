@@ -30,6 +30,14 @@ export interface SessionConfig {
    * 界面层传 Date.now —— 真实时间戳是 ③-C 的历史页需要的。
    */
   now?: () => number;
+  /**
+   * 对手取样方式，透传给 assignPersonas。缺省为 'personas'（每手随机分配
+   * 六个性格原型之一），设置页可切成 'gto'（所有对手都用中性原型）。
+   *
+   * 只在 beginHand 时读，所以切换模式是**下一手生效**：一手牌打到一半换掉
+   * 对手的性格，会让这一手前半程的收窄范围与后半程的决策依据对不上。
+   */
+  aiMode?: 'personas' | 'gto';
 }
 
 export interface HandSessionState {
@@ -101,6 +109,7 @@ export function beginHand(
     game.seats.map(s => s.seat),
     createRng(`${cfg.seed}-persona-${handIndex}`),
     HERO_SEAT,
+    cfg.aiMode ?? 'personas',
   );
 
   const ranges = new Map<number, RangeSet>();

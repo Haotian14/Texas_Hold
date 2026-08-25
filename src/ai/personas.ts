@@ -51,16 +51,24 @@ export function getPersona(id: string): Persona {
   return p;
 }
 
+/** 对手的取样方式。设置页的「AI 模式」直接对应这两个值 */
+export type PersonaMode = 'personas' | 'gto';
+
 /**
  * 给每个座位分配一个性格原型。hero 的座位固定为 'hero'，
  * 因为 hero 由人操作，没有 AI 性格。
  *
  * 座位与原型的绑定在一手牌内保持不变 —— 调用方每手牌调用一次即可。
+ *
+ * mode 为 'gto' 时所有对手都取中性原型（spec §10.6 的「全 GTO 模式」）：
+ * 用来练「对手没有明显漏洞」的场面。这条路径不查 rng —— 调用方仍然要传，
+ * 因为模式是运行时的值，而参数列表不该随它变形。
  */
 export function assignPersonas(
   seats: readonly number[],
   rng: Rng,
   heroSeat: number,
+  mode: PersonaMode = 'personas',
 ): Map<number, string> {
   const out = new Map<number, string>();
   for (const seat of seats) {
@@ -68,7 +76,7 @@ export function assignPersonas(
       out.set(seat, 'hero');
       continue;
     }
-    out.set(seat, PERSONAS[rng.nextInt(PERSONAS.length)].id);
+    out.set(seat, mode === 'gto' ? GTO_PERSONA.id : PERSONAS[rng.nextInt(PERSONAS.length)].id);
   }
   return out;
 }
