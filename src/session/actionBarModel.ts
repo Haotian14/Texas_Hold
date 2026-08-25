@@ -32,7 +32,7 @@ const PRESET_FRACTIONS: readonly { label: string; f: number }[] = [
   { label: '1/3 池', f: 1 / 3 },
   { label: '1/2 池', f: 1 / 2 },
   { label: '2/3 池', f: 2 / 3 },
-  { label: '池', f: 1 },
+  { label: '满池', f: 1 },
 ];
 
 const DISABLED: ActionBarModel = {
@@ -71,7 +71,9 @@ export function actionBarModel(state: GameState): ActionBarModel {
 
   let raise: ActionBarModel['raise'] = null;
   if (raiseAction) {
-    // 「池」的通用口径是跟注后的底池：先把欠的跟平，再按比例往里加。
+    // 尺度的通用口径是跟注后的底池：先把欠的跟平，再按比例往里加。
+    // 所以「满池」不是「往池里放一个当前底池」——面对 $80 的开池、底池
+    // $140 时，满池档是 80 + (140+80) = $300，对手正好面对一个满池注。
     // toCall 为 0 时退化成「下注 X 倍底池」，与直觉一致。
     const potAfterCall = round2(currentPot(state) + toCall);
     const presets = PRESET_FRACTIONS.map(({ label, f }) => ({
