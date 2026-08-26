@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { ReportData, ReportWindow } from '../../storage/repo';
-import { loadReport, ensureSummaries, storageStatus } from '../../storage/repo';
+import { loadReport, ensureSummaries, reanalyzeStale, storageStatus } from '../../storage/repo';
+import { analyzeHand } from '../../review/analyzeHand';
+import { viewOf } from '../../review/view';
+import type { HandView } from '../../review/view';
+import type { HandRecord } from '../../core/types';
 import {
   kpisOf,
   curveOf,
@@ -240,6 +244,18 @@ function ReportBody({ data }: { data: ReportData }) {
   );
 }
 
+/**
+ * 重跑一手的分析。抛错按「这一手分析失败」处理（view 记 null），与 App.tsx
+ * 手牌结束后那段 try/catch 是同一套语义 —— 算不出来不该掀掉页面。
+ */
+function reanalyze(record: HandRecord): HandView | null {
+  try {
+    return viewOf(analyzeHand(record));
+  } catch {
+    return null;
+  }
+}
+
 export function ReportPage() {
   const [win, setWin] = useState<ReportWindow>(200);
   const [data, setData] = useState<ReportData | null>(null);
@@ -251,6 +267,12 @@ export function ReportPage() {
     let alive = true;
     setState('loading');
     void (async () => {
+      // 判定规则变过之后，库里的旧结论是按旧规则算出来的，直接聚合会把两套
+      // 规则的 evLoss 混进同一个数。重跑放在报表页而不是启动路径上，理由与
+      // ensureSummaries 相同：从不看报表的用户不该为这次全表扫描买单。
+      // 每手之间有一次 await（IndexedDB 写入），所以阻塞是一手一帧，
+      // 不是一次几十秒 —— 与 App.tsx 里"每手算一次复盘"的代价同量级。
+      await reanalyzeStale(reanalyze);
       const filled = await ensureSummaries();
       const out = await loadReport(win);
       if (!alive) return;

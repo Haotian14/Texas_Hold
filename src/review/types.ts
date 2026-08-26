@@ -78,4 +78,16 @@ export interface HandAnalysis {
   tags: MistakeTag[];
 }
 
-export const REVIEW_SCHEMA_VERSION = 1;
+/**
+ * 复盘结论的规则版本。
+ *
+ * 它标的不是 HandAnalysis 的**字段形状**，而是「这份结论是按哪一版判定规则
+ * 算出来的」——判定链路上任何会改变 evLoss / tag / severity 的改动都要 +1，
+ * 否则库里的旧结论会被 repo.reanalyzeStale 当成新鲜的留着不动，报表就会把
+ * 两套规则的损失聚合到同一个数里。
+ *
+ * 2：对手范围收窄改为翻前查范围表 + 机械式收窄加保留比例地板
+ *    （core/opponentRange.ts）。旧版把开池当成最强信号，对手范围被系统性
+ *    收得过窄，翻前的每个 evLoss 都受影响。
+ */
+export const REVIEW_SCHEMA_VERSION = 2;
