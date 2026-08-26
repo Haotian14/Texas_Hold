@@ -69,6 +69,19 @@ describe('getPersona', () => {
 });
 
 describe('assignPersonas', () => {
+  it('mode 为 gto 时所有对手都是中性原型，hero 仍是 hero', () => {
+    const m = assignPersonas([0, 1, 2, 3, 4, 5], createRng('assign-gto'), 0, 'gto');
+    expect(m.get(0)).toBe('hero');
+    for (const seat of [1, 2, 3, 4, 5]) expect(m.get(seat)).toBe(GTO_PERSONA.id);
+  });
+
+  it('mode 缺省时仍是随机原型池——默认行为不因为多了个参数而改变', () => {
+    const seats = [0, 1, 2, 3, 4, 5];
+    const withDefault = assignPersonas(seats, createRng('assign-same'), 0);
+    const explicit = assignPersonas(seats, createRng('assign-same'), 0, 'personas');
+    expect([...withDefault]).toEqual([...explicit]);
+  });
+
   it('每个座位都分到一个原型', () => {
     const m = assignPersonas([0, 1, 2, 3, 4, 5], createRng('assign-1'), 0);
     expect(m.size).toBe(6);

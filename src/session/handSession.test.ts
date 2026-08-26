@@ -335,3 +335,30 @@ describe('handSession across hands', () => {
     expect(isDeepStackHand(s)).toBe(true);
   });
 });
+
+describe('AI 模式（设置页的「全 GTO」）', () => {
+  it('cfg.aiMode 为 gto 时，桌上每个对手都是中性原型', () => {
+    const s = startSession({ ...CFG, aiMode: 'gto' });
+    for (const seat of s.game.seats) {
+      expect(s.personaIds.get(seat.seat)).toBe(seat.seat === HERO_SEAT ? 'hero' : 'gto');
+    }
+  });
+
+  it('缺省仍是原型池：同一个 seed 下两种模式分到的对手不同', () => {
+    const pool = startSession(CFG);
+    const gto = startSession({ ...CFG, aiMode: 'gto' });
+    const ids = (x: typeof pool) =>
+      x.game.seats.filter(s => s.seat !== HERO_SEAT).map(s => x.personaIds.get(s.seat));
+    // 原型池随机分配理论上可能碰巧全中性，那样这条断言会误报——但 CFG 的
+    // seed 是固定的，这里断言的是这个确定序列的实际结果，不是概率事件。
+    expect(ids(pool)).not.toEqual(ids(gto));
+  });
+
+  it('切模式是下一手生效：nextHand 之后才换，本手打到一半不换对手', () => {
+    let s = startSession(CFG);
+    const before = new Map(s.personaIds);
+    // 用带 gto 的 cfg 继续推进当前这一手——personaIds 不该被动过
+    s = runToHeroOrEnd(s, { ...CFG, aiMode: 'gto' });
+    expect([...s.personaIds]).toEqual([...before]);
+  });
+});

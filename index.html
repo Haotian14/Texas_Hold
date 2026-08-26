@@ -10,6 +10,15 @@
          移动端浏览器的地址栏和界面撞色 -->
     <meta name="theme-color" content="#f7f8fa" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- iOS 不读 manifest 里的 icons，主屏图标只认这一条，且只认位图。
+         manifest 与 <link rel="manifest"> 由 vite-plugin-pwa 在构建时注入，
+         这里不写。 -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- 全屏运行。iOS 16.4 起也认 manifest 的 display: standalone，
+         但更早的版本只认这条私有 meta，留着才能覆盖旧机器。 -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>德州扑克模拟训练器</title>
   </head>
   <body>

@@ -4,13 +4,32 @@ import type { MistakeTag } from '../../review/taxonomy';
 import { PREFLOP_TAGS, POSTFLOP_TAGS } from '../../review/taxonomy';
 import type { StoredHand } from '../../storage/schema';
 import type { HandFilter } from '../../storage/filter';
-import { listHands, storageStatus, allHands, importHands } from '../../storage/repo';
-import { buildTransfer, parseTransfer, transferFileName } from '../../storage/transfer';
+import { listHands, storageStatus } from '../../storage/repo';
 import { handGrade, TAG_TEXT } from '../reviewModel';
 import { chips, dateText } from '../format';
 import { chipsGreater } from '../../core/chips';
+import { Button } from '../components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 
 const PAGE_SIZE = 30;
+
+/**
+ * 「不筛这一项」的哨兵值。
+ *
+ * 不能用空串：Radix 的 Select 拿空串表示"没有选中任何项"，一个 value="" 的
+ * Item 会被它当成清空指令并直接报错。原来那四个筛选器的「全部位置/全部街道」
+ * 用的正是空串——换成自绘下拉时这是必须动的一处，不是风格问题。
+ *
+ * 这个值只活在界面里，`patch()` 会把它翻回 null，交给存储层的条件里永远
+ * 不会出现它。
+ */
+const ALL = '__all__';
 
 const POSITIONS: readonly Position[] = ['UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
 const STREETS: readonly { id: Street; label: string }[] = [
@@ -87,9 +106,6 @@ export function HistoryPage({
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [empty, setEmpty] = useState<Empty>('loading');
   const [loadingMore, setLoadingMore] = useState(false);
-  /** 导出/导入的一句话回执。成功也要说——静默完成让人不确定到底有没有发生 */
-  const [notice, setNotice] = useState<string | null>(null);
-
   // 排序或筛选一变就整列重取。用一个自增的 token 拦住过期请求：
   // 快速连点筛选时，先发的请求可能后到，把新条件的结果覆盖掉。
   const [token, setToken] = useState(0);
@@ -138,40 +154,6 @@ export function HistoryPage({
     });
   }
 
-  async function onExport() {
-    const rows = await allHands();
-    if (rows.length === 0) {
-      setNotice('还没有可导出的手牌。');
-      return;
-    }
-    const now = Date.now();
-    const text = JSON.stringify(buildTransfer(rows, now));
-    // Blob + 临时 <a download>：不经服务器，文件也不进内存两次以上。
-    // URL 用完立刻 revoke，否则每导一次就泄漏一个对象 URL，直到页面关闭。
-    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = transferFileName(now);
-    a.click();
-    URL.revokeObjectURL(url);
-    setNotice(`已导出 ${rows.length} 手。`);
-  }
-
-  async function onImportFile(file: File) {
-    const parsed = parseTransfer(await file.text());
-    if (!parsed.ok) {
-      setNotice(`导入失败：${parsed.error}`);
-      return;
-    }
-    const out = await importHands(parsed.hands);
-    const parts = [`已导入 ${out.imported} 手`];
-    // 跳过的条数必须说出来。静默丢数据比直接拒绝更糟——用户会以为全导进来了
-    if (parsed.skipped > 0) parts.push(`跳过 ${parsed.skipped} 条无法识别的记录`);
-    if (!out.ok) parts.push('部分写入失败，存储可能已满');
-    setNotice(parts.join('，') + '。');
-    reload();
-  }
-
   // 把被改过的那一手贴回列表。放在渲染里算而不是写进 rows，是为了让
   // rows 始终等于"库里读出来的那一页"，只有这一处知道有覆盖这回事。
   const shown =
@@ -182,112 +164,99 @@ export function HistoryPage({
       <header className="hist-head">
         <h2 className="hist-title">历史</h2>
         <div className="hist-sort">
-          <button
-            type="button"
-            className={sortBy === 'worstEvLoss' ? 'pill pill-on' : 'pill'}
-            onClick={() => setSortBy('worstEvLoss')}
-          >
-            按最大损失
-          </button>
-          <button
-            type="button"
-            className={sortBy === 'timestamp' ? 'pill pill-on' : 'pill'}
-            onClick={() => setSortBy('timestamp')}
-          >
-            按时间
-          </button>
+          {(
+            [
+              ['worstEvLoss', '按最大损失'],
+              ['timestamp', '按时间'],
+            ] as const
+          ).map(([id, text]) => (
+            <Button
+              key={id}
+              size="sm"
+              variant={sortBy === id ? 'outline' : 'ghost'}
+              className={sortBy === id ? 'bg-accent text-accent-foreground border-transparent' : ''}
+              aria-pressed={sortBy === id}
+              onClick={() => setSortBy(id)}
+            >
+              {text}
+            </Button>
+          ))}
         </div>
       </header>
 
       <div className="hist-filters">
-        <select
-          aria-label="按位置筛选"
-          value={filter.position ?? ''}
-          onChange={e => patch({ position: (e.target.value || null) as Position | null })}
+        <Select
+          value={filter.position ?? ALL}
+          onValueChange={v => patch({ position: v === ALL ? null : (v as Position) })}
         >
-          <option value="">全部位置</option>
-          {POSITIONS.map(p => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger aria-label="按位置筛选">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>全部位置</SelectItem>
+            {POSITIONS.map(p => (
+              <SelectItem key={p} value={p}>
+                {p}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-        <select
-          aria-label="按街道筛选"
-          value={filter.street ?? ''}
-          onChange={e => patch({ street: (e.target.value || null) as Street | null })}
+        <Select
+          value={filter.street ?? ALL}
+          onValueChange={v => patch({ street: v === ALL ? null : (v as Street) })}
         >
-          <option value="">全部街道</option>
-          {STREETS.map(s => (
-            <option key={s.id} value={s.id}>
-              {s.label}有失误
-            </option>
-          ))}
-        </select>
+          <SelectTrigger aria-label="按街道筛选">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>全部街道</SelectItem>
+            {STREETS.map(s => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.label}有失误
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-        <select
-          aria-label="按失误分类筛选"
-          value={filter.tag ?? ''}
-          onChange={e => patch({ tag: (e.target.value || null) as MistakeTag | null })}
+        <Select
+          value={filter.tag ?? ALL}
+          onValueChange={v => patch({ tag: v === ALL ? null : (v as MistakeTag) })}
         >
-          <option value="">全部分类</option>
-          {ALL_TAGS.map(t => (
-            <option key={t} value={t}>
-              {TAG_TEXT[t]}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger aria-label="按失误分类筛选">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>全部分类</SelectItem>
+            {ALL_TAGS.map(t => (
+              <SelectItem key={t} value={t}>
+                {TAG_TEXT[t]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-        <select
-          aria-label="按是否有异议筛选"
-          value={filter.disputed === undefined ? '' : String(filter.disputed)}
-          onChange={e =>
-            patch({ disputed: e.target.value === '' ? null : e.target.value === 'true' })
-          }
+        <Select
+          value={filter.disputed === undefined ? ALL : String(filter.disputed)}
+          onValueChange={v => patch({ disputed: v === ALL ? null : v === 'true' })}
         >
-          <option value="">不限异议</option>
-          <option value="true">只看有异议</option>
-          <option value="false">只看无异议</option>
-        </select>
+          <SelectTrigger aria-label="按是否有异议筛选">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>不限异议</SelectItem>
+            <SelectItem value="true">只看有异议</SelectItem>
+            <SelectItem value="false">只看无异议</SelectItem>
+          </SelectContent>
+        </Select>
 
         {Object.keys(filter).length > 0 && (
-          <button type="button" className="pill" onClick={() => setFilter({})}>
+          <Button variant="outline" size="sm" onClick={() => setFilter({})}>
             清除筛选
-          </button>
+          </Button>
         )}
-
-        {/* 导出/导入放在历史页，因为数据就在这里。规格 §10.6 把它们归在设置页，
-            那一页是 ③-D —— 到时候整体搬过去，接口不用改。 */}
-        <span className="hist-transfer">
-          <button type="button" className="pill" onClick={() => void onExport()}>
-            导出
-          </button>
-          <label className="pill hist-import">
-            导入
-            <input
-              type="file"
-              accept="application/json,.json"
-              onChange={e => {
-                const f = e.target.files?.[0];
-                // 立刻清空 value：不清的话，用户导入同一个文件第二次不会触发
-                // change 事件（值没变），看起来像点了没反应
-                e.target.value = '';
-                if (f) void onImportFile(f);
-              }}
-            />
-          </label>
-        </span>
       </div>
 
-      {notice !== null && (
-        <p className="hist-notice" role="status">
-          {notice}
-          <button type="button" className="pill" onClick={() => setNotice(null)}>
-            知道了
-          </button>
-        </p>
-      )}
 
       {shown.length > 0 ? (
         <>
@@ -297,9 +266,9 @@ export function HistoryPage({
             ))}
           </div>
           {nextOffset !== null && (
-            <button type="button" className="btn hist-more" onClick={loadMore} disabled={loadingMore}>
+            <Button variant="outline" className="hist-more" onClick={loadMore} disabled={loadingMore}>
               {loadingMore ? '加载中…' : '加载更多'}
-            </button>
+            </Button>
           )}
         </>
       ) : (
@@ -308,9 +277,9 @@ export function HistoryPage({
           {empty === 'unavailable' && (
             <>
               本机存储不可用（隐私模式或配额已满），历史无法读取。牌局不受影响。
-              <button type="button" className="pill hist-retry" onClick={reload}>
+              <Button variant="outline" size="sm" className="hist-retry" onClick={reload}>
                 重试
-              </button>
+              </Button>
             </>
           )}
           {empty === 'no-data' && '还没有记录。每打完一手就会自动存下来。'}

@@ -18,6 +18,8 @@ import {
   smoothPath,
 } from '../reportModel';
 import type { CurvePoint } from '../reportModel';
+import { Button } from '../components/ui/button';
+import { QuickToggles } from '../components/QuickToggles';
 
 /**
  * 报表页（规格 §10.5，对应设计稿 Progress 屏）。
@@ -256,7 +258,14 @@ function reanalyze(record: HandRecord): HandView | null {
   }
 }
 
-export function ReportPage() {
+export function ReportPage({
+  onSettings,
+  onHandRanks,
+}: {
+  onSettings: () => void;
+  /** 打开牌型大小对照 */
+  onHandRanks: () => void;
+}) {
   const [win, setWin] = useState<ReportWindow>(200);
   const [data, setData] = useState<ReportData | null>(null);
   const [state, setState] = useState<LoadState>('loading');
@@ -304,16 +313,25 @@ export function ReportPage() {
         <h2 className="rep-title">报表</h2>
         <div className="rep-win">
           {WINDOWS.map(w => (
-            <button
+            <Button
               key={String(w.id)}
-              type="button"
-              className={w.id === win ? 'pill pill-on' : 'pill'}
+              size="sm"
+              variant={w.id === win ? 'outline' : 'ghost'}
+              className={
+                w.id === win
+                  ? 'border-primary/30 bg-accent text-accent-foreground'
+                  : 'border border-input text-secondary-foreground'
+              }
+              aria-pressed={w.id === win}
               onClick={() => setWin(w.id)}
             >
               {w.label}
-            </button>
+            </Button>
           ))}
         </div>
+        {/* 设置不再有自己的导航项（收进了右上角齿轮），所以每一页的页头都要
+            有一个入口——只在牌桌页给的话，用户在这一页会找不到它 */}
+        <QuickToggles tableToggles={false} onSettings={onSettings} onHandRanks={onHandRanks} />
         {/* 库里一手都没有时已经在下面用「还没有记录」说清楚了，这里不重复 */}
         {data !== null && data.partial && !noHands && (
           <span className="rep-partial-note">库里共 {data.stats.hands} 手</span>

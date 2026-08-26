@@ -66,6 +66,21 @@ export interface EvOptions {
   impliedOdds?: boolean;
 }
 
+/**
+ * 下注尺度 → 本次投入额。**全项目唯一的尺度换算点**。
+ *
+ * `pot` 是跟平之前的底池（含对手这条街已下、尚未被跟的注），`toCall` 是
+ * 欠注额：先把欠的跟平，再按**跟平前**的底池下 fraction 倍。toCall 为 0
+ * 时退化成「下注 fraction 倍底池」。
+ *
+ * 动作条的快捷档位（session/actionBarModel.ts）必须走这里而不是自己再写
+ * 一遍公式：两处一旦分歧，用户点着写「满池」的按钮打出的却是复盘引擎
+ * 认不出的尺度，而复盘给出的 EV 描述的是他没打过的那手牌。
+ */
+export function betInvestment(pot: number, toCall: number, fraction: number): number {
+  return round2(pot * fraction + toCall);
+}
+
 /** 候选下注尺度，占底池的比例。spec §8.3 固定这五档，不做连续搜索。 */
 const BET_SIZES: Array<{ label: string; fraction: number }> = [
   { label: 'bet 1/3', fraction: 1 / 3 },
@@ -183,7 +198,7 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
   } else {
     const maxInvest = sit.heroStack;
     for (const size of BET_SIZES) {
-      const b = round2(sit.pot * size.fraction + sit.toCall);
+      const b = betInvestment(sit.pot, sit.toCall, size.fraction);
       if (!chipsGreater(maxInvest, b)) continue;   // 筹码不足以打出这个尺度
       candidates.push(
         makeBetCandidate(sit, size.label, b, rankedFoldable, iterations, rng, dead, widenedRange, degradeTracker),

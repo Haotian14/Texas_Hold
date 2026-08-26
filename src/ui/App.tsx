@@ -18,7 +18,14 @@ import { heroNet } from '../session/ledger';
 import { actionBarModel } from '../session/actionBarModel';
 import { heroEquityNow } from '../session/heroEquity';
 import type { HeroEquity } from '../session/heroEquity';
-import { showEquityPref, setShowEquityPref } from './prefs';
+import {
+  showEquityPref, setShowEquityPref,
+  fastModePref, setFastModePref,
+  vibratePref, setVibratePref,
+  autoReviewPref, setAutoReviewPref,
+  aiModePref, setAiModePref,
+} from './prefs';
+import type { AiMode } from './prefs';
 import { TopBar } from './components/TopBar';
 import { Table } from './components/Table';
 import { HeroHand } from './components/HeroHand';
@@ -37,6 +44,8 @@ import { Nav, type PageId } from './components/Nav';
 import { HistoryPage } from './pages/HistoryPage';
 import { ReviewPage } from './pages/ReviewPage';
 import { ReportPage } from './pages/ReportPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { HandRanksPage } from './pages/HandRanksPage';
 import type { StoredHand } from '../storage/schema';
 import type { HandRecord } from '../core/types';
 
@@ -56,14 +65,25 @@ const CFG: SessionConfig = {
   now: Date.now,
 };
 
-/** AI 思考延迟区间（毫秒）。极速模式在 ③-D 的设置里接通 */
+/** AI 思考延迟区间（毫秒）。设置页的「极速模式」把它整段跳过 */
 const THINK_MIN = 300;
 const THINK_MAX = 600;
 
+/** 「轮到我时震动」的时长（毫秒）。够察觉，不至于像来电 */
+const VIBRATE_MS = 30;
+
+/**
+ * cfg 随动作传进来，不由 reducer 从模块作用域里取。
+ *
+ * 设置页能改 SessionConfig 的一部分（AI 模式），而 reducer 必须是纯的——
+ * 让它去读一个会变的外部值，同一个 (state, action) 就不再对应同一个结果。
+ * 传进来的是 App 每次渲染算好的那份 cfg，纯度因此保住了。rebuy 不带 cfg：
+ * 补码只动筹码，不派生任何随机流。
+ */
 type Action =
-  | { kind: 'stepAi' }
-  | { kind: 'hero'; input: ActionInput }
-  | { kind: 'nextHand' }
+  | { kind: 'stepAi'; cfg: SessionConfig }
+  | { kind: 'hero'; input: ActionInput; cfg: SessionConfig }
+  | { kind: 'nextHand'; cfg: SessionConfig }
   | { kind: 'rebuy'; targetStack: number };
 
 function reducer(s: HandSessionState, a: Action): HandSessionState {
@@ -72,21 +92,35 @@ function reducer(s: HandSessionState, a: Action): HandSessionState {
       // StrictMode 下 effect 会双跑，这个守卫让第二次成为无操作。
       // stepAi 本身也是幂等的（派生 seed，不存有状态 Rng），
       // 两道保险都要有：守卫防的是状态被推进两步。
-      return s.phase === 'aiToAct' ? stepAi(s, CFG) : s;
+      return s.phase === 'aiToAct' ? stepAi(s, a.cfg) : s;
     case 'hero':
-      return s.phase === 'awaitingHero' ? applyHero(s, a.input, CFG) : s;
+      return s.phase === 'awaitingHero' ? applyHero(s, a.input, a.cfg) : s;
     case 'nextHand':
-      return s.phase === 'handOver' && !heroNeedsRebuy(s) ? nextHand(s, CFG) : s;
+      return s.phase === 'handOver' && !heroNeedsRebuy(s) ? nextHand(s, a.cfg) : s;
     case 'rebuy':
       return heroNeedsRebuy(s) ? rebuyHero(s, a.targetStack) : s;
   }
 }
 
 export function App() {
-  const [state, dispatch] = useReducer(reducer, CFG, startSession);
-
   const [muted, setMutedState] = useState(isMuted);
   const [showEquity, setShowEquityState] = useState(showEquityPref);
+  // 设置页的四项。都存 localStorage（见 prefs.ts），默认值即现状行为。
+  const [fastMode, setFastModeState] = useState(fastModePref);
+  const [vibrate, setVibrateState] = useState(vibratePref);
+  const [autoReview, setAutoReviewState] = useState(autoReviewPref);
+  const [aiMode, setAiModeState] = useState<AiMode>(aiModePref);
+
+  // 每次渲染算一份 cfg 交给 dispatch。aiMode 变了就是一份新的 cfg，
+  // 下一次 nextHand 才会用上——beginHand 是唯一读它的地方，所以切模式
+  // 天然是「下一手生效」，不会在一手打到一半时换掉对手的性格。
+  const cfg = useMemo<SessionConfig>(() => ({ ...CFG, aiMode }), [aiMode]);
+
+  // 初始化也吃 cfg，不能图省事传模块里那份 CFG：上次存下的 aiMode 要在
+  // **刷新后的第一手**就生效，传 CFG 的话第一手永远是随机原型池，只有从
+  // 第二手起才对——一个只在第一手错的 bug，正是最难被看见的那种。
+  // useReducer 的第二个参数只在首次渲染用，之后 cfg 再变也不会重新初始化。
+  const [state, dispatch] = useReducer(reducer, cfg, startSession);
   /**
    * 算好的胜率。与它属于哪一步绑在一起（handIndex + stepIndex）——不绑的话，
    * 上一步算出来的数会在新局面上多显示一帧，而那一帧里它是错的。
@@ -160,6 +194,44 @@ export function App() {
     });
   }, []);
 
+  // 设置页的开关走「设值」而不是「取反」：那一页显示的是当前值，用户点的是
+  // 一个明确的目标状态，取反语义会在两处状态不同步时给出反直觉的结果。
+  const onSetShowEquity = useCallback((v: boolean) => {
+    setShowEquityState(v);
+    setShowEquityPref(v);
+  }, []);
+  const onSetMuted = useCallback((v: boolean) => {
+    setMutedState(v);
+    setMuted(v);
+  }, []);
+  const onSetFastMode = useCallback((v: boolean) => {
+    setFastModeState(v);
+    setFastModePref(v);
+  }, []);
+  const onSetVibrate = useCallback((v: boolean) => {
+    setVibrateState(v);
+    setVibratePref(v);
+    // 打开时立刻震一下：这是唯一能让用户确认「这台设备真的会震」的反馈，
+    // 否则要等到下一次轮到自己才知道开关有没有用。
+    if (v) navigator.vibrate?.(VIBRATE_MS);
+  }, []);
+  const onSetAutoReview = useCallback((v: boolean) => {
+    setAutoReviewState(v);
+    setAutoReviewPref(v);
+  }, []);
+  const onSetAiMode = useCallback((v: AiMode) => {
+    setAiModeState(v);
+    setAiModePref(v);
+  }, []);
+
+  /** 重置数据之后：统计归零、存储状态重新问一次。当前这局照常继续 */
+  const onDataReset = useCallback(() => {
+    void loadStats().then(st => {
+      setStats(st);
+      setStorageOk(storageStatus() !== 'unavailable');
+    });
+  }, []);
+
   /**
    * 算胜率。与复盘那次分析走同一套路数：蒙特卡洛是同步的，直接在渲染里算
    * 会把「轮到你了」那一帧卡住，用 setTimeout 让出一帧再算。
@@ -222,9 +294,12 @@ export function App() {
     if (state.phase !== 'aiToAct') return;
     const span = THINK_MAX - THINK_MIN;
     const jitter = (state.handIndex * 7919 + state.stepIndex * 104729) % (span + 1);
-    const id = setTimeout(() => dispatch({ kind: 'stepAi' }), THINK_MIN + jitter);
+    // 极速模式把整段延迟跳过（0ms），而不是把 THINK_MIN 调小：这里要的是
+    // 「立刻」，留一个小延迟只会变成另一个需要解释的魔法数字。
+    const delay = fastMode ? 0 : THINK_MIN + jitter;
+    const id = setTimeout(() => dispatch({ kind: 'stepAi', cfg }), delay);
     return () => clearTimeout(id);
-  }, [state.phase, state.handIndex, state.stepIndex]);
+  }, [state.phase, state.handIndex, state.stepIndex, fastMode, cfg]);
 
   // hero 座位的筹码显示来源要按 phase 二选一，两个来源在不同阶段各只有
   // 一个是新鲜的：
@@ -288,6 +363,16 @@ export function App() {
     if (heroWon) playSound('pot-win');
   }, [heroWon]);
 
+  // 轮到 hero 行动时震一下。手机上应用常在后台或屏幕没在看，声音又可能
+  // 是关的——震动是唯一还能把人叫回来的信号。
+  // iOS Safari 没有 Vibration API，可选链在那里直接是无操作（设置页也不会
+  // 显示这一项，见 SettingsPage 的 canVibrate）。
+  useEffect(() => {
+    if (!vibrate || state.phase !== 'awaitingHero') return;
+    navigator.vibrate?.(VIBRATE_MS);
+  }, [vibrate, state.phase, state.handIndex, state.stepIndex]);
+
+
   // 手牌结束后算复盘。analyzeHand 每手约 25–200ms，够快，不需要 Worker，
   // 但仍会占住主线程 —— 用 setTimeout 让出**结算这一帧**再算。
   //
@@ -332,8 +417,25 @@ export function App() {
     };
   }, [recordId]);
 
-  const onHero = useCallback((input: ActionInput) => dispatch({ kind: 'hero', input }), []);
-  const onNext = useCallback(() => dispatch({ kind: 'nextHand' }), []);
+  // 结算后自动打开复盘。等的是**分析算完**（currentReview 非空）而不是
+  // phase 变成 handOver：后者一到就跳页，用户会先看到一个「正在分析」的
+  // 空壳，还错过了结算区的赢池动画。
+  // 只在牌桌页跳：用户此刻要是正在报表或设置页翻东西，把他拽走是抢方向盘。
+  useEffect(() => {
+    if (!autoReview || state.phase !== 'handOver') return;
+    if (page !== 'table') return;
+    if (review === null || review.record.id !== recordId) return;
+    setReviewTarget({ kind: 'live' });
+    setPage('review');
+    // review 整体不进依赖：它每手都是新对象，靠 recordId 判断「换手了没」。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoReview, state.phase, page, recordId, review !== null]);
+
+  const onHero = useCallback(
+    (input: ActionInput) => dispatch({ kind: 'hero', input, cfg }),
+    [cfg],
+  );
+  const onNext = useCallback(() => dispatch({ kind: 'nextHand', cfg }), [cfg]);
   const onRebuy = useCallback(
     (targetStack: number) => dispatch({ kind: 'rebuy', targetStack }),
     [],
@@ -377,6 +479,9 @@ export function App() {
   }, []);
   const onAllHands = useCallback(() => setPage('history'), []);
   const onBackToTable = useCallback(() => setPage('table'), []);
+  // 设置从导航项变成了右上角的齿轮（见 QuickToggles），入口挂在这里
+  const onOpenSettings = useCallback(() => setPage('settings'), []);
+  const onOpenHandRanks = useCallback(() => setPage('handRanks'), []);
 
   // 复盘页要显示的那一手。stored 优先——它是用户明确点开的
   const storedTarget = reviewTarget.kind === 'stored' ? reviewTarget.hand : null;
@@ -396,8 +501,8 @@ export function App() {
   const onPrimary = useCallback(() => {
     // 先回牌桌再推进：留在复盘页会立刻变成「还没有打完的手牌」的空态
     setPage('table');
-    if (canNext) dispatch({ kind: 'nextHand' });
-  }, [canNext]);
+    if (canNext) dispatch({ kind: 'nextHand', cfg });
+  }, [canNext, cfg]);
 
   // 只认属于**正在显示的那一手**的标记状态，与 currentReview 同一个口径
   const disputedForLive =
@@ -439,16 +544,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Nav
-        page={page}
-        onNav={setPage}
-        netBB={netBB}
-        totalBuyIn={state.ledger.totalBuyIn}
-        muted={muted}
-        onToggleMute={onToggleMute}
-        showEquity={showEquity}
-        onToggleEquity={onToggleEquity}
-      />
+      <Nav page={page} onNav={setPage} />
       <div className="app-main">
         {page === 'history' ? (
           <HistoryPage onOpen={onOpenHistoryHand} patched={patchedHand} />
@@ -461,9 +557,29 @@ export function App() {
             onAllHands={onAllHands}
             onPrimary={onPrimary}
             primaryLabel={canNext ? '下一手' : '回到牌桌'}
+            onSettings={onOpenSettings}
+            onHandRanks={onOpenHandRanks}
           />
         ) : page === 'report' ? (
-          <ReportPage />
+          <ReportPage onSettings={onOpenSettings} onHandRanks={onOpenHandRanks} />
+        ) : page === 'handRanks' ? (
+          <HandRanksPage onSettings={onOpenSettings} />
+        ) : page === 'settings' ? (
+          <SettingsPage
+            aiMode={aiMode}
+            onAiMode={onSetAiMode}
+            fastMode={fastMode}
+            onFastMode={onSetFastMode}
+            vibrate={vibrate}
+            onVibrate={onSetVibrate}
+            autoReview={autoReview}
+            onAutoReview={onSetAutoReview}
+            showEquity={showEquity}
+            onShowEquity={onSetShowEquity}
+            muted={muted}
+            onMuted={onSetMuted}
+            onDataReset={onDataReset}
+          />
         ) : (
           <>
             <TopBar
@@ -471,6 +587,13 @@ export function App() {
               inProgress={state.phase !== 'handOver'}
               deepStack={isDeepStackHand(state)}
               storageOk={storageOk}
+              netBB={netBB}
+              muted={muted}
+              onToggleMute={onToggleMute}
+              showEquity={showEquity}
+              onToggleEquity={onToggleEquity}
+              onSettings={onOpenSettings}
+              onHandRanks={onOpenHandRanks}
             />
             <Table
               game={state.game}
