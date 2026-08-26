@@ -478,6 +478,8 @@ export function App() {
   }, []);
   const onAllHands = useCallback(() => setPage('history'), []);
   const onBackToTable = useCallback(() => setPage('table'), []);
+  // 设置从导航项变成了右上角的齿轮（见 QuickToggles），入口挂在这里
+  const onOpenSettings = useCallback(() => setPage('settings'), []);
 
   // 复盘页要显示的那一手。stored 优先——它是用户明确点开的
   const storedTarget = reviewTarget.kind === 'stored' ? reviewTarget.hand : null;
@@ -540,16 +542,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Nav
-        page={page}
-        onNav={setPage}
-        netBB={netBB}
-        totalBuyIn={state.ledger.totalBuyIn}
-        muted={muted}
-        onToggleMute={onToggleMute}
-        showEquity={showEquity}
-        onToggleEquity={onToggleEquity}
-      />
+      <Nav page={page} onNav={setPage} />
       <div className="app-main">
         {page === 'history' ? (
           <HistoryPage onOpen={onOpenHistoryHand} patched={patchedHand} />
@@ -562,9 +555,10 @@ export function App() {
             onAllHands={onAllHands}
             onPrimary={onPrimary}
             primaryLabel={canNext ? '下一手' : '回到牌桌'}
+            onSettings={onOpenSettings}
           />
         ) : page === 'report' ? (
-          <ReportPage />
+          <ReportPage onSettings={onOpenSettings} />
         ) : page === 'settings' ? (
           <SettingsPage
             aiMode={aiMode}
@@ -588,6 +582,12 @@ export function App() {
               inProgress={state.phase !== 'handOver'}
               deepStack={isDeepStackHand(state)}
               storageOk={storageOk}
+              netBB={netBB}
+              muted={muted}
+              onToggleMute={onToggleMute}
+              showEquity={showEquity}
+              onToggleEquity={onToggleEquity}
+              onSettings={onOpenSettings}
             />
             <Table
               game={state.game}
