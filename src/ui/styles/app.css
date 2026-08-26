@@ -398,17 +398,22 @@ body {
   inset: 0;
   z-index: 1;
 }
+/* 座位按中心锚定。摊牌时底牌不进文档流（见下面 .seat-cards），所以这个盒子
+   的高度不随牌局状态变化，锚点也就不会漂。 */
 .opponent-slot {
   position: absolute;
   transform: translate(-50%, -50%);
 }
-/* 槽位坐标逐个抄自设计稿的 SEATS_DEF.webPos。
-   它不是一段均匀的圆弧——两侧各**竖排两个**（左右都在 11% / 89%），顶部只有
-   一个。改版前我摆的是扇形（26% / 50% / 74% 三个横排在上方），五个人挤在台面
-   上沿、两侧空着，与设计稿差得最明显的就是这里。 */
+/* 顶部中间那个座位例外：改按**上缘**锚定。
+   它贴在牌桌最上沿，中心锚定时盒子有半个身子在锚点之上——牌桌越矮，那半个
+   身子占的百分比越大，于是胶囊连同庄家钮一起戳进顶栏（1280×800 上实测胶囊
+   3px、庄家钮 7px，320×568 上 7px / 12px）。上缘锚定让盒子只能往下长。 */
+.slot-2 {
+  transform: translate(-50%, 0);
+}
 .slot-0 { left: 11%; top: 60%; }
 .slot-1 { left: 11%; top: 25%; }
-.slot-2 { left: 50%; top: 7%; }
+.slot-2 { left: 50%; top: 3%; }
 .slot-3 { left: 89%; top: 25%; }
 .slot-4 { left: 89%; top: 60%; }
 /* 窄牌桌上这几个 top 会被文件末尾那个 @container 块改掉，改坐标时记得一起看 */
@@ -420,6 +425,39 @@ body {
   align-items: center;
   gap: calc(0.56 * var(--u));
   transition: opacity 0.2s;
+  /* 摊牌时亮出的底牌的定位上下文 */
+  position: relative;
+}
+
+/* 底牌**不进文档流**。
+   它只在摊牌那一刻存在，若留在流里，座位整块会长高一个牌高；而座位是按中心
+   定位的，长高的后果是整块朝两个方向各摊开半个牌高，其中朝里的那半个正好伸
+   进公共牌。这是间歇性的——非摊牌状态一直干净，翻截图查不到，320×568 上三次
+   里撞一次。脱离文档流之后座位盒子的高度不随牌局状态变化，胶囊也就不会漂。
+
+   默认摆在胶囊上方（上排三个座位，往牌桌上沿方向长，那边是空地）；下排两个
+   翻到下方，见 .slot-0 / .slot-4 的覆盖——它们上方就是公共牌。 */
+.seat-cards {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: calc(0.33 * var(--u));
+  /* 上方要给庄家钮让位：窄桌上它挂在胶囊上缘正中、探出 1.5u（见下面的
+     容器查询），底牌压上去就把那枚圆片盖住了 */
+  margin-bottom: calc(2.2 * var(--u));
+}
+/* 下排两个座位与顶部那个：底牌翻到胶囊**下方**。
+   下排上方就是公共牌，顶部那个上方就是顶栏，两边都没有地方往上长。 */
+.slot-0 .seat-cards,
+.slot-2 .seat-cards,
+.slot-4 .seat-cards {
+  bottom: auto;
+  top: 100%;
+  margin-bottom: 0;
+  /* 比 .seat-bet 归零时滑出的 2.4u 再多留一点：那一路正好经过这里 */
+  margin-top: calc(3 * var(--u));
 }
 .seat-folded { opacity: 0.4; }
 /* 行动中的座位：蓝色描边 + 一圈淡外发光，静态，不做呼吸/闪烁——
@@ -429,10 +467,6 @@ body {
   box-shadow: var(--sh-seat-act);
 }
 
-.seat-cards {
-  display: flex;
-  gap: calc(0.33 * var(--u));
-}
 .seat-info {
   /* 定位上下文：庄家钮（.dealer-btn）绝对定位到胶囊外侧，锚点就是这一层 */
   position: relative;
@@ -998,11 +1032,13 @@ body {
   align-items: flex-end;
   vertical-align: middle;
 }
+/* 筹码图形同理：13px / -4px 是照桌面写死的，不跟牌桌缩放。
+   1.85u 在桌面上仍是约 13px，手机上跟着一起缩。 */
 .chip {
-  width: 13px;
-  height: 13px;
+  width: calc(1.85 * var(--u));
+  height: calc(1.85 * var(--u));
   border-radius: 50%;
-  margin-left: -4px;
+  margin-left: calc(-0.57 * var(--u));
   position: relative;
   box-shadow:
     0 1px 2px rgba(17, 20, 26, 0.28),
@@ -1022,10 +1058,16 @@ body {
 .chip-d500 { background: #1f8a55; }
 .chip-d1000 { background: #24272e; }
 
+/* 下注额跟着 --u 缩放。
+   原来 .seat-bet-amount 压根没写 font-size，于是继承 body 的 16px，**不随牌桌
+   缩放**——手机上牌桌缩到一半，这个数字还是桌面尺寸，整块筹码堆连数字一起
+   挂到牌桌外面去（360×688 上实测左边探出台面约 90px）。
+   旁边的 .hero-bet 一直是对的（calc(1.3 * var(--u))），这条是漏的。 */
 .seat-bet {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: calc(0.7 * var(--u));
+  font-size: calc(1.7 * var(--u));
 }
 .seat-bet-amount {
   color: var(--blue);
@@ -1044,9 +1086,14 @@ body {
     transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
     opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
+/* 归零时滑走并淡出。位移改成按 --u 缩放：26px 是照着桌面尺寸写死的，牌桌缩到
+   手机大小之后它相当于半个座位高，滑出去的那一路会穿过下面的底牌（摊牌时那两
+   张牌就摆在胶囊下方，见 .slot-0 / .slot-2 / .slot-4 的 .seat-cards）。
+   实测撞出来过：22 轮扫描里出现两次 31×12px 的重叠，且只在过渡的那 200ms 里
+   存在——静态截图永远看不到。 */
 .seat-bet[data-empty='true'] {
   opacity: 0;
-  transform: translateY(26px) scale(0.7);
+  transform: translateY(calc(2.4 * var(--u))) scale(0.7);
   pointer-events: none;
 }
 .hero-bet[data-empty='true'] {
@@ -1404,9 +1451,23 @@ body {
  * 结果：u 在 7px（手机）到 9px（桌面，牌桌 900px 封顶）之间，桌面渲染出来
  * 与设计稿逐像素一致。
  */
+/* 牌桌的比例尺 --u：**宽高都要看**。
+
+   原来只看宽度（`max(7px, 牌桌宽/100)`）。手机上宽度算出来通常不到 7px，
+   于是一律被下限顶成 7px——牌桌不管多矮，内部都按同一把尺子排版。后果是
+   矮屏上元素挤在一起：一台 360×801 的机器，浏览器可见区只有 360×688，
+   牌桌高 426px（61 个 u），而 390×844 上牌桌高 580px（83 个 u），元素却
+   一样大。公共牌因此压住两侧座位——用户在真机上报的就是这个，而我此前
+   整轮检测只扫宽度、把高度钉死在 844，整类问题一次都没走到。
+
+   0.9cqh 这个系数是从「已知不撞」的那一档反推的：390×844 上 --u 是 7px，
+   那时 .app-main 高约 780px，7/780 ≈ 0.9%。取两者的较小值，于是窄屏按宽度
+   收、矮屏按高度收，哪一维紧就跟哪一维。
+
+   5px 的下限只是兜底，防止极端小窗口把牌面缩到读不出点数。 */
 .app-main > * {
   --table-w: min(900px, 100cqw);
-  --u: max(7px, calc(var(--table-w) / 100));
+  --u: max(5px, min(calc(var(--table-w) / 100), 0.9cqh));
 }
 
 /*
@@ -1465,8 +1526,12 @@ body {
      牌桌页不受影响：它本来就靠 .table 的 flex: 1 自适应，从不溢出。 */
   min-height: 0;
   /* 尺寸容器。开在这里而不是 .table 上，因为 .hero 与 .bottom 是 .table 的
-     兄弟节点，它们要按同一把尺子缩放。 */
-  container-type: inline-size;
+     兄弟节点，它们要按同一把尺子缩放。
+     用 size 而不是 inline-size：上面的 --u 要读 cqh。.app-main 是
+     `flex: 1` + `min-height: 0` 的 flex 子项，高度由外层给定、不依赖内容，
+     所以 size containment 在这里是安全的（inline-size 时 cqh 无解，
+     min() 会整条失效，--u 会退回一个非预期值）。 */
+  container-type: size;
   /* 安全区的补偿从 .app 挪到这里：复盘卡片是绝对定位到 .app-main 的，
      包含块得是它。留在 .app 上的话，宽屏有了侧栏之后卡片会连导航一起盖住。 */
   padding-top: var(--safe-top);
@@ -1793,7 +1858,7 @@ body {
      屏幕 4px（实测）。这是**设计稿本来就有的两套坐标**，不是我另加的断点。 */
   .slot-0 { left: 16%; top: 60%; }
   .slot-1 { left: 17%; top: 24%; }
-  .slot-2 { left: 50%; top: 6%; }
+  .slot-2 { left: 50%; top: 3%; }
   .slot-3 { left: 83%; top: 24%; }
   .slot-4 { left: 84%; top: 60%; }
   /* top 另由文件末尾的 @container 块覆盖（公共牌遮挡），这里只管 left */
@@ -2417,11 +2482,16 @@ body {
      ——中间那个再抬高一点，两侧的再压低一点，让「中 vs 侧」这一对在纵向上
      就已经不相交，横向挤不挤都无所谓。
      8% 与 24% 相隔 16% 的牌桌高度，实测大于胶囊连同下方筹码堆的总高。 */
-  .slot-2 { top: 8%; }
+  .slot-2 { top: 4%; }
   .slot-1,
-  .slot-3 { top: 24%; }
+  .slot-3 { top: 23%; }
+  /* 下排两个座位压到 73%。留这么多余量是因为**摊牌时座位会长高**：
+     .opponent-slot 用 translate(-50%,-50%) 按中心定位，亮出的两张底牌让整块
+     变高，于是胶囊被朝牌桌中心方向拽走半个牌高。320×568 那一档上原来的 68%
+     余量刚好不够，实测 6px 的重叠——而且只在摊牌那一瞬间出现，非摊牌的状态
+     一直是干净的，靠翻截图查不到。 */
   .slot-0,
-  .slot-4 { top: 68%; }
+  .slot-4 { top: 73%; }
 
   /* 绝对定位是为了把 `top` 从「按宽度」换成「按高度」，不是为了脱离文档流。
      left/right 归零让它仍然占满整宽，内部照旧居中。 */
@@ -2495,13 +2565,6 @@ body {
     right: auto;
     transform: translateX(-50%);
   }
-  /* 摊牌时胶囊上方会多出两张底牌，而庄家钮正探在那里（实测 20×6px 的重叠）。
-     给底牌补一段下边距把位置让出来。写在 .seat-cards 上而不是 .seat 的 gap
-     上：底牌只在摊牌那一刻存在，加在 gap 上就变成每一手都平白多占的空高。 */
-  .seat-cards {
-    margin-bottom: calc(1.2 * var(--u));
-  }
-
   /* 试过给椭圆加高度上限、让它更接近设计稿那种横向台面（.table 是 flex: 1，
      顶栏合并、导航下移之后它多分到一大截高度，390px 屏上被抻成 366×435，
      下半圈空着一片）。**没有采用**：88cqw 与 105cqw 两档都实测过，遮挡分别
