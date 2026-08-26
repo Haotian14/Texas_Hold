@@ -3,7 +3,11 @@ import { chromium } from 'playwright';
 /**
  * 牌桌元素的遮挡检测。
  *
- * 用法：node tools/overlap-check.mjs [屏宽]
+ * 用法：node tools/overlap-check.mjs [宽x高]      例：360x688
+ *
+ * **高度和宽度一样要紧**。真机的可见高度远小于屏幕高度——地址栏与底部手势条
+ * 吃掉一大截（实测一台 360×801 的机器，浏览器里只剩 360×688）。牌桌的座位
+ * 靠纵向错开来避免碰撞，高度一压就全撞回去。只扫宽度会漏掉这一整类。
  *
  * 「不要相互遮挡」这件事靠看截图是查不干净的：牌桌上的元素随牌局状态出现和
  * 消失（动作徽章只在刚行动过时挂着、下注筹码堆随街清空、摊牌才亮底牌），
@@ -12,7 +16,7 @@ import { chromium } from 'playwright';
  *
  * 排除祖先-后代对：子元素落在父元素框内是正常的，不是遮挡。
  */
-const WIDTH = Number(process.argv[2] ?? 390);
+const [WIDTH, HEIGHT] = (process.argv[2] ?? '390x844').split('x').map(Number);
 const base = process.env.PREVIEW_URL ?? 'http://127.0.0.1:4173/';
 const exe = process.env.PLAYWRIGHT_CHROMIUM;
 
@@ -27,10 +31,13 @@ const exe = process.env.PLAYWRIGHT_CHROMIUM;
 const SELECTORS = [
   '.seat-info', '.bubble', '.seat-bet', '.dealer-btn', '.seat-cards',
   '.pot', '.board', '.hero-cards', '.hero-equity',
+  // 顶栏一并收进来：座位改成按下缘锚定之后，摊牌时底牌是往上长的，
+  // 长过头会压进顶栏——那也是遮挡，只是不在牌桌内部
+  '.topbar',
 ];
 
 const browser = await chromium.launch(exe ? { executablePath: exe } : {});
-const ctx = await browser.newContext({ viewport: { width: WIDTH, height: 844 } });
+const ctx = await browser.newContext({ viewport: { width: WIDTH, height: HEIGHT || 844 } });
 const page = await ctx.newPage();
 await page.goto(base, { waitUntil: 'networkidle' });
 await page.waitForSelector('.table', { timeout: 15000 });
@@ -125,7 +132,7 @@ for (let step = 0; step < 60; step++) {
 
 await browser.close();
 
-console.log(`\n屏宽 ${WIDTH}px，扫了 60 个牌局状态\n`);
+console.log(`\n视口 ${WIDTH}×${HEIGHT || 844}，扫了 60 个牌局状态\n`);
 if (allHits.length === 0) console.log('✅ 没有相互遮挡');
 else {
   console.log(`❌ ${allHits.length} 组遮挡：`);
