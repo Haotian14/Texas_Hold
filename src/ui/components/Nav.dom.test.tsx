@@ -28,6 +28,7 @@ function topBarProps(over: Partial<TopBarProps> = {}): TopBarProps {
     showEquity: false,
     onToggleEquity: vi.fn(),
     onSettings: vi.fn(),
+    onHandRanks: vi.fn(),
     ...over,
   };
 }
@@ -57,6 +58,11 @@ describe('主导航', () => {
   // 在设置页看不出自己身处应用的哪一块
   it('在设置页时高亮的是「牌桌」', () => {
     render(<Nav page="settings" onNav={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /牌桌/ })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('在牌型页时也高亮「牌桌」', () => {
+    render(<Nav page="handRanks" onNav={vi.fn()} />);
     expect(screen.getByRole('button', { name: /牌桌/ })).toHaveAttribute('aria-current', 'page');
   });
 
@@ -91,24 +97,33 @@ describe('右上角的开关', () => {
     );
   });
 
-  it('三颗按钮各自触发回调', async () => {
+  it('四颗按钮各自触发回调', async () => {
     const p = topBarProps();
     render(<TopBar {...p} />);
     await userEvent.click(screen.getByRole('button', { name: '静音' }));
     await userEvent.click(screen.getByRole('button', { name: '显示胜率' }));
+    await userEvent.click(screen.getByRole('button', { name: '牌型大小' }));
     await userEvent.click(screen.getByRole('button', { name: '设置' }));
     expect(p.onToggleMute).toHaveBeenCalledTimes(1);
     expect(p.onToggleEquity).toHaveBeenCalledTimes(1);
+    expect(p.onHandRanks).toHaveBeenCalledTimes(1);
     expect(p.onSettings).toHaveBeenCalledTimes(1);
   });
 
   // 复盘页与报表页的页头只挂齿轮：胜率读数画在牌桌上、音效是发牌的声音，
   // 两者在那两页都无从谈起
-  it('非牌桌页只渲染设置齿轮，不渲染胜率与音效', () => {
-    render(<QuickToggles tableToggles={false} onSettings={vi.fn()} />);
+  it('非牌桌页不渲染胜率与音效，但仍给牌型与设置的入口', () => {
+    render(<QuickToggles tableToggles={false} onSettings={vi.fn()} onHandRanks={vi.fn()} />);
     expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '牌型大小' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /胜率/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /静音/ })).not.toBeInTheDocument();
+  });
+
+  // 牌型页自己不该有一个指向自己的入口
+  it('不传 onHandRanks 时那颗按钮整个不渲染', () => {
+    render(<QuickToggles tableToggles={false} onSettings={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: '牌型大小' })).not.toBeInTheDocument();
   });
 });
 

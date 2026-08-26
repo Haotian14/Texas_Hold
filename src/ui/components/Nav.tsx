@@ -11,7 +11,7 @@ import { cn } from '../lib/utils';
  * 手机上底部导航一行放三项才够手指点——四项挤在 360px 宽上每项只有 90px，
  * 而设置是全项目里打开频率最低的一页，让它占一个常驻位置不划算。
  */
-export type PageId = 'table' | 'review' | 'history' | 'report' | 'settings';
+export type PageId = 'table' | 'review' | 'history' | 'report' | 'settings' | 'handRanks';
 
 /**
  * 主导航。
@@ -42,12 +42,12 @@ export function Nav({ page, onNav }: { page: PageId; onNav: (p: PageId) => void 
       <div className="nav-items">
         {ITEMS.map(({ id, label, Icon }) => {
           // 历史页高亮「复盘」：它是复盘的下一级，不高亮任何一项会让用户在
-          // 那一页看不出自己身处应用的哪一块。设置页同理挂在「牌桌」上——
-          // 它是从牌桌页的齿轮进去的，返回也回到那里。
+          // 那一页看不出自己身处应用的哪一块。设置页与牌型页同理挂在「牌桌」
+          // 上——它们是从牌桌页右上角进去的，返回也回到那里。
           const on =
             id === page ||
             (id === 'review' && page === 'history') ||
-            (id === 'table' && page === 'settings');
+            (id === 'table' && (page === 'settings' || page === 'handRanks'));
           return (
             <Button
               key={id}

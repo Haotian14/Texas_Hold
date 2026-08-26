@@ -25,6 +25,8 @@ export interface TopBarProps {
   showEquity: boolean;
   onToggleEquity: () => void;
   onSettings: () => void;
+  /** 打开牌型大小对照 */
+  onHandRanks: () => void;
 }
 
 /**
@@ -50,6 +52,7 @@ export function TopBar({
   showEquity,
   onToggleEquity,
   onSettings,
+  onHandRanks,
 }: TopBarProps) {
   // handsPlayed 在手牌结算时（advance 的 handOver 分支）就已经自增过了，
   // 所以结算后（含补码等待中）它本身就是当前手的序号，不能再 +1；
@@ -96,6 +99,7 @@ export function TopBar({
         showEquity={showEquity}
         onToggleEquity={onToggleEquity}
         onSettings={onSettings}
+        onHandRanks={onHandRanks}
       />
     </div>
   );

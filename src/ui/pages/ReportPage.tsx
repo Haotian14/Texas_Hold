@@ -242,7 +242,14 @@ function ReportBody({ data }: { data: ReportData }) {
   );
 }
 
-export function ReportPage({ onSettings }: { onSettings: () => void }) {
+export function ReportPage({
+  onSettings,
+  onHandRanks,
+}: {
+  onSettings: () => void;
+  /** 打开牌型大小对照 */
+  onHandRanks: () => void;
+}) {
   const [win, setWin] = useState<ReportWindow>(200);
   const [data, setData] = useState<ReportData | null>(null);
   const [state, setState] = useState<LoadState>('loading');
@@ -302,7 +309,7 @@ export function ReportPage({ onSettings }: { onSettings: () => void }) {
         </div>
         {/* 设置不再有自己的导航项（收进了右上角齿轮），所以每一页的页头都要
             有一个入口——只在牌桌页给的话，用户在这一页会找不到它 */}
-        <QuickToggles tableToggles={false} onSettings={onSettings} />
+        <QuickToggles tableToggles={false} onSettings={onSettings} onHandRanks={onHandRanks} />
         {/* 库里一手都没有时已经在下面用「还没有记录」说清楚了，这里不重复 */}
         {data !== null && data.partial && !noHands && (
           <span className="rep-partial-note">库里共 {data.stats.hands} 手</span>

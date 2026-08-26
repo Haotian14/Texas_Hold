@@ -45,6 +45,7 @@ import { HistoryPage } from './pages/HistoryPage';
 import { ReviewPage } from './pages/ReviewPage';
 import { ReportPage } from './pages/ReportPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { HandRanksPage } from './pages/HandRanksPage';
 import type { StoredHand } from '../storage/schema';
 import type { HandRecord } from '../core/types';
 
@@ -480,6 +481,7 @@ export function App() {
   const onBackToTable = useCallback(() => setPage('table'), []);
   // 设置从导航项变成了右上角的齿轮（见 QuickToggles），入口挂在这里
   const onOpenSettings = useCallback(() => setPage('settings'), []);
+  const onOpenHandRanks = useCallback(() => setPage('handRanks'), []);
 
   // 复盘页要显示的那一手。stored 优先——它是用户明确点开的
   const storedTarget = reviewTarget.kind === 'stored' ? reviewTarget.hand : null;
@@ -556,9 +558,12 @@ export function App() {
             onPrimary={onPrimary}
             primaryLabel={canNext ? '下一手' : '回到牌桌'}
             onSettings={onOpenSettings}
+            onHandRanks={onOpenHandRanks}
           />
         ) : page === 'report' ? (
-          <ReportPage onSettings={onOpenSettings} />
+          <ReportPage onSettings={onOpenSettings} onHandRanks={onOpenHandRanks} />
+        ) : page === 'handRanks' ? (
+          <HandRanksPage onSettings={onOpenSettings} />
         ) : page === 'settings' ? (
           <SettingsPage
             aiMode={aiMode}
@@ -588,6 +593,7 @@ export function App() {
               showEquity={showEquity}
               onToggleEquity={onToggleEquity}
               onSettings={onOpenSettings}
+              onHandRanks={onOpenHandRanks}
             />
             <Table
               game={state.game}
