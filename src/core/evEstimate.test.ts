@@ -47,12 +47,28 @@ describe('estimateEv 基本结构', () => {
     expect(r.candidates.find(c => c.actionType === 'fold')!.ev).toBe(0);
   });
 
-  it('恰好一个候选被标为推荐，且它的 EV 最高', () => {
+  it('恰好一个候选被标为推荐，且它是「可推荐」候选里 EV 最高的那个', () => {
     const r = estimateEv(sit({ toCall: 5 }), OPTS);
     expect(r.candidates.filter(c => c.isRecommended)).toHaveLength(1);
-    const best = Math.max(...r.candidates.map(c => c.ev));
+    // 比较的基准是 notRecommendable === undefined 的那些候选，不是全部候选：
+    // 深筹码全下（ALLIN_MAX_SPR）照常算 EV、也照常参与用户动作的匹配，但不参与
+    // 推荐的选取，所以它的 EV 完全可能高于推荐动作——那正是这条规则要表达的。
+    const eligible = r.candidates.filter(c => c.notRecommendable === undefined);
+    const best = Math.max(...eligible.map(c => c.ev));
     expect(r.recommended.ev).toBe(best);
     expect(r.recommended.isRecommended).toBe(true);
+    expect(r.recommended.notRecommendable).toBeUndefined();
+  });
+
+  it('深筹码时全下只算 EV、不参与推荐；浅筹码时照常参与', () => {
+    // pot 10、stack 95 => SPR 9.5 > ALLIN_MAX_SPR，全下被标记
+    const deep = estimateEv(sit({ toCall: 0, pot: 10, heroStack: 95 }), OPTS);
+    expect(deep.candidates.find(c => c.label === 'all-in')!.notRecommendable).toBe('deep-stack-allin');
+    expect(deep.recommended.label).not.toBe('all-in');
+
+    // pot 10、stack 15 => SPR 1.5 <= ALLIN_MAX_SPR，全下是一个正常尺度
+    const shallow = estimateEv(sit({ toCall: 0, pot: 10, heroStack: 15 }), OPTS);
+    expect(shallow.candidates.find(c => c.label === 'all-in')!.notRecommendable).toBeUndefined();
   });
 
   it('下注尺度覆盖 1/3、1/2、2/3、满池、all-in', () => {
@@ -575,20 +591,64 @@ describe('estimateEv degraded 标记', () => {
 });
 
 describe('estimateEv 弃牌率对上教科书常数', () => {
-  it('弃牌率对上教科书的 MDF 常数', () => {
-    // 单个对手、无需跟注时，投入 b 到底池 pot：
-    // MDF = pot/(pot+b)，弃牌率 Fe = 1 - MDF = b/(pot+b)
-    // 满池下注 => Fe = 1/2；半池下注 => Fe = 1/3
-    // 注意精度：EvCandidate.foldEquity 在生产代码里经 round4() 保留 4 位小数
-    // （见 evEstimate.ts 底部 "EV 保留 4 位小数，避免测试因浮点尾数抖动"）。
-    // 0.5 与 0.25 在二进制下可精确表示，round4 后仍与公式原始值重合，6 位精度
-    // 也能通过；1/3 = 0.333333... 不能精确表示，round4 会截到 0.3333，与未截断
-    // 的 1/3 相差 ~3.3e-5，6 位精度（阈值 5e-7）测不过——这是舍入截断，不是公式
-    // 分歧，故把精度改成 4 位以匹配 round4 的实际粒度，而不是放松要验证的常数本身。
+  it('平均范围、翻牌圈下的弃牌率贴近教科书的 MDF', () => {
+    // 单个对手、无需跟注时，投入 b 到底池 pot，教科书的 MDF = pot/(pot+b)，
+    // 对应弃牌率 Fe = b/(pot+b)：满池 => 1/2，半池 => 1/3，1/3 池 => 1/4。
+    //
+    // **这三个数现在是结果，不再是假设。** 旧实现把 MDF 直接当成对手的行为写死，
+    // Fe 因此恒等于这三个常数——对手范围是 {AA} 也一样弃 33%，这正是被修掉的缺陷
+    // （见 evEstimate.ts makeBetCandidate 里 continueFractions 处的长注释）。
+    // 现在弃牌率由「这个价格下对手范围里有多少牌跟得起」算出来，
+    // BETTOR_RANGE_STRENGTH 就是照着「平均范围要能复现这三个常数」标定的。
+    //
+    // 因此这里的断言从「逐位相等」放宽成「落在教科书值几个百分点内」：范围强弱
+    // 与牌面都会让真实弃牌率偏离 MDF，那是模型该有的行为，不是误差。容差 0.08
+    // 足以容纳这种偏离，又远小于旧模型在极端范围上的偏差量级（{AA} 面对全下，
+    // 旧模型 0.905、新模型 0）。
+    // 单块牌面会因为「这块面击中宽范围的比例」上下浮动若干个百分点，标定是对着
+    // 一批随机牌面做的，所以这里也取多块牌面的平均，容差 0.08。
+    const boards = ['Qh 7d 2c', 'Ts 9h 4d', 'Ah Kd 8s'];
+    const feOf = (label: string) =>
+      boards
+        .map(b => estimateEv(sit({
+          pot: 30, toCall: 0, heroStack: 200, street: 'flop', board: parseCards(b),
+          heroCards: parseCards('5c 5d') as [Card, Card],
+        }), OPTS).candidates.find(c => c.label === label)!.foldEquity!)
+        .reduce((a, x) => a + x, 0) / boards.length;
+
+    expect(Math.abs(feOf('bet pot') - 0.5)).toBeLessThan(0.08);
+    expect(Math.abs(feOf('bet 1/2') - 1 / 3)).toBeLessThan(0.08);
+    expect(Math.abs(feOf('bet 1/3') - 0.25)).toBeLessThan(0.08);
+  });
+
+  it('翻前的弃牌率高于 MDF —— 刻度不同，且翻前弃牌本来就不由即时赔率决定', () => {
+    // 翻前用的是 BETTOR_RANGE_STRENGTH.preflop（0.72），不是翻后那个 0.65，
+    // 理由见那个常量上的注释：翻前的牌力刻度被压扁（全范围 p10=0.377、
+    // p50=0.492、p75=0.573），且翻前弃牌靠的是翻后可玩性而不是即时赔率。
+    // 照 MDF 标定翻前会把对手建模得比任何真实牌桌都松——实测那样做时 AI
+    // 自对弈 60 手里只有 8 手在翻前结束（对手面对开池几乎从不弃牌）。
+    //
+    // 这条测试钉住方向：翻前的弃牌率应当**高于**教科书 MDF，而不是贴着它。
     const r = estimateEv(sit({ pot: 30, toCall: 0, heroStack: 200 }), OPTS);
-    expect(r.candidates.find(c => c.label === 'bet pot')!.foldEquity!).toBeCloseTo(0.5, 4);
-    expect(r.candidates.find(c => c.label === 'bet 1/2')!.foldEquity!).toBeCloseTo(1 / 3, 4);
-    expect(r.candidates.find(c => c.label === 'bet 1/3')!.foldEquity!).toBeCloseTo(0.25, 4);
+    const half = r.candidates.find(c => c.label === 'bet 1/2')!.foldEquity!;
+    const pot = r.candidates.find(c => c.label === 'bet pot')!.foldEquity!;
+    expect(half).toBeGreaterThan(1 / 3);
+    expect(pot).toBeGreaterThan(0.5);
+    // 但也不能高到「谁都不跟」：满池加注仍有相当一部分范围跟得起。
+    expect(pot).toBeLessThan(0.85);
+  });
+
+  it('弃牌率随对手范围强弱变化：{AA} 一手不弃，宽范围会弃', () => {
+    // 这条是新模型的核心性质，旧模型下不可能成立（Fe 与对手范围无关）。
+    const nutted = estimateEv(sit({
+      pot: 30, toCall: 0, heroStack: 200,
+      opponents: [{ seat: 1, position: 'BB' as const, stack: 200, range: new Map([['AA', 1]]) as RangeSet, personaId: 'nit', canFold: true }],
+    }), OPTS);
+    expect(nutted.candidates.find(c => c.label === 'bet pot')!.foldEquity).toBe(0);
+    expect(nutted.candidates.find(c => c.label === 'all-in')!.foldEquity).toBe(0);
+
+    const wide = estimateEv(sit({ pot: 30, toCall: 0, heroStack: 200 }), OPTS);
+    expect(wide.candidates.find(c => c.label === 'bet pot')!.foldEquity!).toBeGreaterThan(0.2);
   });
 });
 

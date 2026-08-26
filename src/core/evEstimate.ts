@@ -1,11 +1,11 @@
-import type { ActionType } from './types';
+import type { ActionType, Street } from './types';
 import type { Rng } from './rng';
 import { createRng } from './rng';
 import { round2, chipsGreater } from './chips';
 import type { Situation } from './situation';
 import type { Card } from './cards';
 import type { RangeSet } from './rangeSet';
-import { rangeCombos, fullRange } from './rangeSet';
+import { rangeCombos, fullRange, totalWeight } from './rangeSet';
 import { equityVsRanges, InfeasibleSamplingError } from './equity';
 import type { RankedCombo } from './rangeStrength';
 import { rankRange, topFraction } from './rangeStrength';
@@ -26,6 +26,17 @@ export interface EvCandidate {
   equityWhenCalled?: number;
   /** 仅跟注候选可能有：计入 ev 的隐含赔率修正额 */
   impliedOdds?: number;
+  /**
+   * 该候选的 EV 照常计算、照常参与「用户实际打的是哪一档」的匹配，但**不参与
+   * 推荐动作的选取**。目前只有一个取值 'deep-stack-allin'，原因见
+   * ALLIN_MAX_SPR 上的注释。
+   *
+   * 刻意做成「照算不推荐」而不是「干脆不产出这个候选」：候选一旦消失，
+   * 用户真的全下时 matchCandidate（review/judge.ts）会把这次全下就近配到
+   * 'bet pot' 上，拿一个小得多的尺度的 EV 去描述他没打过的那手牌——那正是
+   * judge.ts 顶部记着的那个「自愿全下被静默判成没问题」缺陷的另一种形态。
+   */
+  notRecommendable?: 'deep-stack-allin';
 }
 
 export interface EvResult {
@@ -80,6 +91,30 @@ export interface EvOptions {
 export function betInvestment(pot: number, toCall: number, fraction: number): number {
   return round2(pot * fraction + toCall);
 }
+
+/**
+ * 全下还能被**推荐**的最大 SPR（heroStack / pot）。超过这条线的全下照常算 EV，
+ * 但不参与推荐动作的选取。
+ *
+ * 理由是这个引擎的单步近似在深筹码全下上有一个结构性偏差，而且是**只偏一边**的：
+ * 全下之后没有后续街，`W' × calledPot − b` 恰好就是它真实的期望；而任何一个
+ * 正常尺度的下注之后其实还有两条街可打，模型却同样把它当成「这手牌到此为止、
+ * hero 按 W' 分走底池」来估——后续街能赚到的钱一分都没算进去。于是两边一比，
+ * 唯一被算准的那个动作（全下）系统性地压过每一个被算少的动作。筹码越深，
+ * 被漏掉的后续价值越多，偏差越大：实测 95BB 深度下，只要跟注范围前的胜率
+ * W' 过半，全下的 EV 就随筹码线性增长，60 个随机翻牌局面里有 20% 推荐把
+ * 95BB 全下进 10BB 底池。
+ *
+ * 取 2 的含义：全下的额度不超过两个满池下注。低于这条线时「全下」本来就是
+ * 一个正常尺度（短筹码、或者池子已经很大），单步模型对它的估计是可信的；
+ * 高于这条线时它是一个模型没有能力评价的动作，引擎的正确姿态是不给建议，
+ * 而不是给一个被结构性高估的建议。
+ *
+ * 注意这不是「深筹码不许全下」——用户真的全下时，这个候选的 EV 照样算、照样
+ * 拿来跟推荐动作比，亏了多少照样报（对手范围里没人会弃牌时，全下的 EV 会是
+ * 一个很大的负数，复盘会狠狠地标出来）。被关掉的只是「引擎主动劝你全下」。
+ */
+const ALLIN_MAX_SPR = 2;
 
 /** 候选下注尺度，占底池的比例。spec §8.3 固定这五档，不做连续搜索。 */
 const BET_SIZES: Array<{ label: string; fraction: number }> = [
@@ -205,15 +240,21 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
       );
     }
 
-    // all-in 永远是一个候选
-    candidates.push(
-      makeBetCandidate(sit, 'all-in', maxInvest, rankedFoldable, iterations, rng, dead, widenedRange, degradeTracker),
+    // all-in 永远是一个候选；深筹码时它只算 EV、不参与推荐（见 ALLIN_MAX_SPR）。
+    const allin = makeBetCandidate(
+      sit, 'all-in', maxInvest, rankedFoldable, iterations, rng, dead, widenedRange, degradeTracker,
     );
+    if (chipsGreater(sit.heroStack, ALLIN_MAX_SPR * sit.pot)) {
+      allin.notRecommendable = 'deep-stack-allin';
+    }
+    candidates.push(allin);
   }
 
-  // ── 选出推荐动作
-  let best = candidates[0];
-  for (const c of candidates) if (c.ev > best.ev) best = c;
+  // ── 选出推荐动作。跳过 notRecommendable 的候选（见 ALLIN_MAX_SPR）；
+  // fold / check 永远没有这个标记，所以 eligible 不可能为空。
+  const eligible = candidates.filter(c => c.notRecommendable === undefined);
+  let best = eligible[0];
+  for (const c of eligible) if (c.ev > best.ev) best = c;
   best.isRecommended = true;
 
   return {
@@ -280,25 +321,28 @@ function equityWithSelectiveWidening(
 /**
  * 继续范围的物理下限。
  *
- * MDF 在翻前全下这类场景会低到 1.5%，切出来只剩一个类别（通常是 AA，六个组合）。
- * 可牌桌上只有四张 A —— 几个对手不可能同时握着同一小撮组合，采样永远凑不出
- * 互不冲突的配置。按对手数把范围放宽到物理可行为止。
+ * 继续比例在面对巨大尺度时会低到个位数百分比，切出来只剩一个类别（通常是
+ * AA，六个组合）。可牌桌上只有四张 A —— 几个对手不可能同时握着同一小撮
+ * 组合，采样永远凑不出互不冲突的配置。按对手数把范围放宽到物理可行为止。
  *
- * 只影响 W'（对手跟注后 hero 的胜率）所对的范围。弃牌率 Fe 仍然按 MDF 算 ——
- * 那是教科书量，有测试钉着满池 1/2、半池 1/3、三分之一池 1/4，不能动。
- * 两者因此略有不一致，这是刻意的：Fe 回答「多少人会弃牌」，
- * 继续范围回答「跟下来的人可能拿着什么」，后者受牌堆里实际有多少张牌约束。
+ * 这个地板只是**采样兜底**，不是策略模型的一部分：它一旦生效，W' 对的就不再
+ * 是 continueFraction 切出来的那份范围，Fe 与 W' 会失去共同的范围基准。旧的
+ * MDF 弃牌率模型下它经常生效——MDF 在全下尺度上会掉到 1.5%，地板于是把 W'
+ * 托了起来，让超池全下凭空拿到「弃牌率接近 1、跟注后胜率还不低」的两头好处，
+ * 这正是「什么局面都推荐全下」那个缺陷的一半成因。改成价格模型后继续比例
+ * 有了物理下限（拿得动的牌不会因为尺度大就弃掉），地板在正常局面下不再生效，
+ * 但仍然保留：范围被上游收窄到只剩几个组合时，它是采样能不能跑起来的保证。
  */
 const MIN_COMBOS_PER_OPPONENT = 8;
 
 function continueRangeWithFloor(
   ranked: readonly RankedCombo[],
-  mdf: number,
+  continueFraction: number,
   opponentCount: number,
   dead: readonly Card[],
 ): RangeSet {
   const needed = MIN_COMBOS_PER_OPPONENT * Math.max(1, opponentCount);
-  let fraction = Math.min(1, mdf);
+  let fraction = Math.min(1, continueFraction);
   for (let i = 0; i < 12; i++) {
     const r = topFraction(ranked, fraction);
     if (rangeCombos(r, dead).length >= needed || fraction >= 1) return r;
@@ -308,10 +352,96 @@ function continueRangeWithFloor(
 }
 
 /**
+ * 一个「下注范围」对随机手的平均胜率。**弃牌率模型里唯一一个自由参数**，
+ * 调整松紧改这一个即可。
+ *
+ * 用途见 strengthThresholdForPrice：对手拿到的底池赔率给出的是「我需要多少
+ * 胜率**对着下注者的范围**」，而 rangeStrength.ts 给每个组合打的分是「对着一个
+ * **随机手**的胜率」，两个量纲不能直接比。这个常数是把前者换算成后者时对
+ * 「下注者的范围有多强」的估计。
+ *
+ * **翻前翻后取值不同，这不是拍脑袋，是牌力刻度本身在两边不一样。**
+ *
+ * 翻后（0.65）照着教科书的 MDF 标定：面对 1/3 池、1/2 池、2/3 池、满池，
+ * 防守方应当继续 75% / 67% / 60% / 50%。让一个「平均范围」（全范围、以及 BB
+ * 的防守范围，各取 25 个随机翻牌）跑本模型，S=0.65 实测继续 79% / 68% / 60%
+ * / 49%，四档全部落在教科书值几个百分点内。
+ *
+ * 于是有了新模型与旧模型的关键区别：**MDF 不再是输入，而是输出**。旧实现把
+ * MDF 当成对手的行为直接写死，于是对手拿 {AA} 也按尺度弃牌；新实现只问
+ * 「这个价格下这手牌跟不跟得起」，平均范围算出来的结果自然逼近 MDF，而范围
+ * 异常强（{AA}：继续 100%）或异常弱（收窄到只剩空气：继续接近 0）时，模型
+ * 会正确地偏离 MDF——那正是 MDF 作为「平均情形下的均衡量」本来就不该覆盖的
+ * 两端。
+ *
+ * 翻前（0.72）不能用同一个数，有两条独立的原因：
+ *
+ *   1）**刻度被压扁了**。rangeStrength 的牌力是「对随机手的胜率」，翻前这个量
+ *      挤在 0.38～0.86 之间（全范围实测 p10=0.377、p50=0.492、p75=0.573），
+ *      而翻牌圈会摊开到接近 0～1。同一个门槛在翻前扫过的组合比例因此陡得多：
+ *      S=0.65 时满池加注还有 55% 的人跟得起，S=0.78 时只剩 9%。
+ *   2）**翻前弃牌本来就不是由即时赔率决定的**。翻前弃 72o 不是因为它对开池
+ *      范围没有 25% 的胜率（它有），而是因为它翻后没法打——那是后续街的代价，
+ *      单步模型看不见（spec §12）。所以翻前照 MDF 标定反而是错的：MDF 会把
+ *      对手建模得比任何真实牌桌都松。
+ *
+ * 0.72 是照**行为**标定的：AI 自对弈 60 手里翻前结束的手数。真实 6-max 里
+ * 相当一部分手牌在翻前就收掉，S=0.65 时只剩 8/60（几乎每手都进翻牌，对手
+ * 面对开池几乎从不弃牌），0.72 把它带回 20 手上下的量级。对应的继续比例是
+ * 1/3 池 86%、1/2 池 62%、2/3 池 46%、满池 29%——满池加注打出约七成弃牌率，
+ * 这与真实牌桌上「开池后每个对手大概率弃牌」相符，而 MDF 说的 50% 不符。
+ */
+export const BETTOR_RANGE_STRENGTH = { preflop: 0.72, postflop: 0.65 } as const;
+
+/**
+ * 把「对手需要多少胜率才跟得起」换算成 rangeStrength 的牌力刻度。
+ *
+ * 对手的底池赔率 e = villainCall / calledPot 说的是「我对着下注者的范围要有
+ * e 的胜率」。而范围里每个组合身上带的 strength 是「对随机手的胜率」
+ * （见 core/rangeStrength.ts 的 RankedCombo）。两者用 Bradley–Terry 换算：
+ * 两个量都是对**同一个参照物**（随机手）的胜率时，头对头胜率的赔率比等于
+ * 各自赔率之比，即
+ *
+ *     e/(1−e) = [s/(1−s)] ÷ [S/(1−S)]     s = 对手这手牌的 strength
+ *                                          S = BETTOR_RANGE_STRENGTH 的对应档
+ *                                              （翻前 / 翻后，见那个常量的注释）
+ *
+ * 反解出门槛 s：strength 不低于它的组合跟得起这个价格，低于它的跟不起。
+ *
+ * 一个值得记住的性质：e = 0.5（对手要付的钱和跟注后底池的一半一样多，也就是
+ * 尺度无穷大的极限）时门槛恰好等于 S —— 「要跟这种尺度，你得跟下注者的范围
+ * 一样强」。弃牌率的平台正是由这条线切出来的，全下不会再拿到趋于 1 的弃牌率。
+ */
+function strengthThresholdForPrice(requiredEquity: number, street: Street): number {
+  const e = Math.min(0.999, Math.max(0, requiredEquity));
+  if (e <= 0) return 0;
+  const S = street === 'preflop' ? BETTOR_RANGE_STRENGTH.preflop : BETTOR_RANGE_STRENGTH.postflop;
+  const odds = (e / (1 - e)) * (S / (1 - S));
+  return odds / (1 + odds);
+}
+
+/**
+ * 范围里牌力不低于门槛的那部分占多少权重 —— 也就是「这个价格下对手会继续
+ * 的比例」。ranked 已按 strength 降序（rankRange 的后置条件），但这里仍然
+ * 整表扫一遍而不是二分：范围最多几百个组合，扫一遍的开销可以忽略，而依赖
+ * 排序做二分会在将来有人改动 rankRange 的排序约定时静默出错。
+ */
+function priceContinueFraction(ranked: readonly RankedCombo[], threshold: number): number {
+  const total = totalWeight(ranked);
+  if (total <= 0) return 0;
+  let cont = 0;
+  for (const c of ranked) {
+    if (c.strength >= threshold) cont += c.weight;
+  }
+  return cont / total;
+}
+
+/**
  * EV(投入 b) = Fe × 底池 + (1 − Fe) × [ W' × calledPot − b ]
  *
- * Fe        所有「还能弃牌」的对手都弃牌的概率；已全下的对手不会弃牌，
- *           不参与这个指数。若没有一个对手能弃牌，Fe 恒为 0。
+ * Fe        所有「还能弃牌」的对手都弃牌的概率 = ∏(1 − 各人的继续比例)；
+ *           已全下的对手不会弃牌，不参与这个连乘。若没有一个对手能弃牌，
+ *           Fe 恒为 0。继续比例怎么来的见下方 continueFractions 处的长注释。
  * W'        对手跟注后的胜率 —— 对能弃牌的对手必须用「继续范围」单独算
  *           （沿用 W 会系统性高估诈唬价值），已全下的对手无论如何都在池子里，
  *           要用他们的完整范围。
@@ -331,22 +461,54 @@ function makeBetCandidate(
 ): EvCandidate {
   const b = investment;
 
-  // 每个能弃牌的对手面对该尺度时理论上必须防守的比例（MDF）。
-  // 推导：诈唬（W'=0）时 hero 的 EV = (1-mdf)*sit.pot - mdf*b（calledPot 项的
-  // 系数是 W'，W'=0 时直接消掉），令其为 0 得 mdf = sit.pot/(sit.pot+b)。
-  // b 已经把 sit.toCall 算在内了（见下方调用处 b = pot*fraction + toCall），
-  // 所以这条公式对下注和加注都成立，不需要因为 toCall > 0 而改写。
-  const mdf = Math.min(1, sit.pot / (sit.pot + b));
-  const continueRanges: RangeSet[] = rankedFoldable.map(r =>
-    continueRangeWithFloor(r, mdf, rankedFoldable.length, dead),
+  // 对手跟注时还需再投入多少、跟注后真正的底池是多少 —— sit.pot 已经含有对手
+  // 此前未被跟的下注（toCall），所以对手的跟注额是 b − toCall，最终底池是
+  // sit.pot + b（hero 投入后）+ villainCall（对手再跟的部分），而不是 pot + 2b，
+  // 否则会把 toCall 对应的那部分底池算两遍。toCall === 0 时 villainCall === b，
+  // calledPot 精确退化为 pot + 2b，未加注下注的场景不受影响。
+  //
+  // 这两个量在下面的弃牌率模型里就要用到（对手面对的价格），不能再像以前那样
+  // 拖到最后算 EV 时才出现。
+  const villainCall = round2(b - sit.toCall);
+  const calledPot = round2(sit.pot + b + villainCall);
+
+  // ── 每个能弃牌的对手会继续多少：问他自己的问题——**这个价格下，我这手牌
+  // 跟得起吗**。requiredEquity = villainCall / calledPot 是他拿到的底池赔率，
+  // 范围里强到能满足这个赔率的部分继续，其余弃牌。
+  //
+  // 旧实现不是这么算的：它直接令继续比例 = MDF = pot/(pot+b)、弃牌率
+  // = (1 - MDF)^k。MDF 是「防守方至少要防这么多，否则诈唬无脑赚」的均衡量，
+  // 是用来让**诈唬方**无差异的，不是对手行为的预测。把它当预测用有两个后果，
+  // 这就是本轮修复的缺陷本体：
+  //   1）弃牌率与对手手上是什么牌完全无关——对手范围被收窄到只剩 {AA}，模型
+  //      照样认为他面对全下会弃 90%，还会把「对着 AA 全下」算成 +7.4BB 的最优解。
+  //      牌桌上辛苦建的松紧人格（ai/personaRange.ts）在 EV 这一层被整个抹掉。
+  //   2）MDF 随 b 单调趋于 0，于是 Fe 随尺度单调趋于 1，超池全下的 EV 趋于
+  //      2·pot·W'，压过一切正常尺度。实测 60 个随机翻牌局面里有 20% 直接推荐把
+  //      95BB 全下进 10BB 底池；而正常的半池持续下注有 72% 被复盘判成失误，
+  //      其中大半的标签是「下注太小」——用户看到的就是这个。
+  //
+  // 价格模型没有这两个后果：AA 满足任何价格，继续比例恒为 1、弃牌率恒为 0；
+  // 尺度再大也只能挤掉「跟不起的那部分」，Fe 收敛到一个由范围决定的平台而不是 1。
+  // 而对平均范围，它算出来的继续比例本身就逼近 MDF（见 BETTOR_RANGE_STRENGTH
+  // 的标定说明）——教科书结论从假设变成了结果。
+  const requiredEquity = calledPot > 0 ? Math.max(0, villainCall) / calledPot : 0;
+  const continueThreshold = strengthThresholdForPrice(requiredEquity, sit.street);
+  const continueFractions = rankedFoldable.map(r =>
+    Math.min(1, priceContinueFraction(r, continueThreshold)),
+  );
+  const continueRanges: RangeSet[] = rankedFoldable.map((r, i) =>
+    continueRangeWithFloor(r, continueFractions[i], rankedFoldable.length, dead),
   );
 
-  // 所有能弃牌的对手都弃牌的概率：每人独立以 (1 - mdf) 的概率弃牌。
-  // k = 0（没有一个对手能弃牌，比如单挑面对全下）时没有人会弃牌，
-  // Math.pow(1-mdf, 0) 恒等于 1，必须显式短路成 0，否则会凭空产生弃牌率。
+  // 所有能弃牌的对手都弃牌的概率：每人独立以 (1 - 自己的继续比例) 弃牌。
+  // 继续比例现在按对手逐个算（各人范围不同，面对同一个价格的继续比例也不同），
+  // 所以这里是连乘而不是旧实现的 Math.pow(1-mdf, k)。
+  // k = 0（没有一个对手能弃牌，比如单挑面对全下）时没有人会弃牌，空连乘的
+  // 结果是 1，必须显式短路成 0，否则会凭空产生弃牌率。
   // k 只取决于能弃牌的对手数，不受下面 W' 是否需要宽范围兜底影响。
   const k = continueRanges.length;
-  const foldEquity = k === 0 ? 0 : Math.pow(1 - mdf, k);
+  const foldEquity = k === 0 ? 0 : continueFractions.reduce((acc, cf) => acc * (1 - cf), 1);
 
   // W'：对手跟注后的胜率。对能弃牌的对手必须用「继续范围」单独算 ——
   // 沿用 W 会系统性高估诈唬价值，因为对手跟注时留下的是更强的那部分范围。
@@ -360,16 +522,18 @@ function makeBetCandidate(
   // 不预先猜测、不在没出问题时就替换掉真实的继续范围，也不会因为一个对手
   // 的问题连累其余健康的继续范围。
   //
-  // 放宽之后有个刻意保留的不对称：foldEquity 上面已经算完了，用的是这个
-  // 尺度真实的 mdf；这里 W' 一旦触发放宽，替换进来的宽范围来自
-  // widenedRange()（按 MIN_COMBOS_PER_OPPONENT 的物理下限放宽），已经不再
-  // 是这个尺度的 mdf 切出来的「继续范围」。也就是说 Fe 回答的是「这个具体
-  // 尺度下按教科书 MDF 会有多少人弃牌」，W' 在放宽发生后回答的是「按物理
-  // 下限能采到样的最窄范围，对手跟注后的胜率」，两个问题在放宽发生的那一刻
-  // 已经不再是同一个「继续范围」的两面。这与 continueRangeWithFloor 上文档
-  // 的不对称（Fe 用 mdf、继续范围用物理下限）同源，但是新的一层：那里是
-  // 「未放宽时」两者的物理下限差异，这里是「放宽发生后」两者干脆不共享
-  // 同一个范围对象了。EvResult.degraded 就是留给下游识别这种情况的标记。
+  // 放宽之后有个刻意保留的不对称：foldEquity 上面已经算完了，用的是各对手
+  // 真实的继续比例；这里 W' 一旦触发放宽，替换进来的宽范围来自 widenedRange()
+  // （按 MIN_COMBOS_PER_OPPONENT 的物理下限放宽），已经不再是那个继续比例
+  // 切出来的「继续范围」。也就是说 Fe 回答的是「这个价格下有多少人跟得起」，
+  // W' 在放宽发生后回答的是「按物理下限能采到样的最窄范围，对手跟注后的
+  // 胜率」，两个问题在放宽发生的那一刻不再是同一份范围的两面。
+  // EvResult.degraded 就是留给下游识别这种情况的标记。
+  //
+  // 注意这层不对称现在只在**放宽真的发生时**才出现。旧的 MDF 模型下还有一层
+  // 常驻的不对称（Fe 按 mdf 算、继续范围按 MIN_COMBOS 的地板切），价格模型
+  // 已经把它消掉了：continueFractions 同时喂给 Fe 和继续范围，正常局面下
+  // 两者共享同一份范围。
   const allInOpponents = sit.opponents.filter(o => !o.canFold);
   const rangesForCalled: RangeSet[] = [...continueRanges, ...allInOpponents.map(o => o.range)];
   const wResult = equityWithSelectiveWidening(
@@ -378,13 +542,6 @@ function makeBetCandidate(
   const wPrime = wResult.equity;
   degradeTracker.maxWidened = Math.max(degradeTracker.maxWidened, wResult.widenedCount);
 
-  // 对手跟注时还需再投入多少、跟注后真正的底池是多少 —— sit.pot 已经含有对手
-  // 此前未被跟的下注（toCall），所以对手的跟注额是 b − toCall，最终底池是
-  // sit.pot + b（hero 投入后）+ villainCall（对手再跟的部分），而不是 pot + 2b，
-  // 否则会把 toCall 对应的那部分底池算两遍。toCall === 0 时 villainCall === b，
-  // calledPot 精确退化为 pot + 2b，未加注下注的场景不受影响。
-  const villainCall = round2(b - sit.toCall);
-  const calledPot = round2(sit.pot + b + villainCall);
   const ev = foldEquity * sit.pot + (1 - foldEquity) * (wPrime * calledPot - b);
 
   return {
