@@ -4,7 +4,7 @@ import type { Action } from '../core/types';
 import type { Situation } from '../core/situation';
 import { parseCard } from '../core/cards';
 import { matchCandidate, judgePreflopFrequency, tagFor } from './judge';
-import type { PreflopNode } from './preflopNode';
+import type { PreflopNode } from '../core/preflopNode';
 import { VALUE_BET_EQUITY_FLOOR } from './taxonomy';
 
 function cand(

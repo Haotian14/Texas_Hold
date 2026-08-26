@@ -1,6 +1,6 @@
-import type { GameState, Position } from '../core/types';
-import { rfiKey, vsOpenKey, vs3betKey, hasNode } from '../core/ranges';
-import { chipsGreater } from '../core/chips';
+import type { GameState, Position } from './types';
+import { rfiKey, vsOpenKey, vs3betKey, hasNode } from './ranges';
+import { chipsGreater } from './chips';
 
 export interface PreflopNode {
   /** 范围表里的节点 key */

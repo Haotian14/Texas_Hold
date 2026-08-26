@@ -5,6 +5,7 @@ import { toHandRecord } from '../core/handRecord';
 import { createRng } from '../core/rng';
 import type { RangeSet } from '../core/rangeSet';
 import { narrowByAction } from '../core/opponentRange';
+import { preflopNodeFor } from '../core/preflopNode';
 import { assignPersonas, getPersona, GTO_PERSONA } from './personas';
 import { personaInitialRange } from './personaRange';
 import { decide } from './decide';
@@ -97,6 +98,9 @@ export function playAiHand(
       betSize: appliedAction.amount,
       strengthIterations: opts.strengthIterations ?? 20,
       rng,
+      // 翻前查表收窄要用**行动者**的节点：before.toAct 正是即将行动的这个人，
+      // 所以 preflopNodeFor(before) 拿到的是他自己的节点。翻后恒为 null。
+      preflopNode: preflopNodeFor(before),
     }));
   }
 

@@ -6,7 +6,7 @@ import { REVIEW_SCHEMA_VERSION } from './types';
 import type { MistakeTag } from './taxonomy';
 import { severityOf } from './taxonomy';
 import { heroDecisionPoints } from './situationFromRecord';
-import { preflopNodeFor } from './preflopNode';
+import { preflopNodeFor } from '../core/preflopNode';
 import { matchCandidate, judgePreflopFrequency, tagFor } from './judge';
 import { explain } from './explain';
 

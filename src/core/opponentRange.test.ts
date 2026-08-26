@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import type { Card } from './cards';
 import { parseCards } from './cards';
 import { createRng } from './rng';
 import { rangeFraction } from './rangeSet';
 import { parseRange } from './rangeNotation';
 import { initialRange, narrowByAction } from './opponentRange';
+import { rfiKey, vsOpenKey, rangeForAction } from './ranges';
+import { equityVsRanges } from './equity';
 import type { NarrowContext } from './opponentRange';
 
 const ctx = (over: Partial<NarrowContext> = {}): NarrowContext => ({
@@ -143,5 +146,101 @@ describe('narrowByAction 边界', () => {
     const a = narrowByAction(before, 'bet', ctx({ rng: createRng('same') }));
     const b = narrowByAction(before, 'bet', ctx({ rng: createRng('same') }));
     expect([...a.entries()].sort()).toEqual([...b.entries()].sort());
+  });
+});
+
+describe('narrowByAction 翻前查表收窄', () => {
+  const pfCtx = (over: Partial<NarrowContext> = {}): NarrowContext => ({
+    street: 'preflop',
+    board: [],
+    dead: [],
+    potBefore: 1.5,
+    betSize: 3,
+    strengthIterations: 20,
+    rng: createRng('narrow-preflop'),
+    ...over,
+  });
+
+  it('开池（rfi 节点）不收窄：RFI 范围本身就是这次加注的范围', () => {
+    for (const pos of ['UTG', 'HJ', 'CO', 'BTN', 'SB'] as const) {
+      const base = initialRange(pos);
+      const node = { key: rfiKey(pos), kind: 'rfi' as const, opener: null };
+      const after = narrowByAction(base, 'raise', pfCtx({ preflopNode: node }));
+      expect(rangeFraction(after)).toBeCloseTo(rangeFraction(base), 10);
+    }
+  });
+
+  it('面对开池 3bet：收成该节点表里的 3bet 范围', () => {
+    const bb = initialRange('BB');   // 大盲无 RFI 表，是全范围
+    const node = { key: vsOpenKey('BB', 'BTN'), kind: 'vs-open' as const, opener: 'BTN' as const };
+    const after = narrowByAction(bb, 'raise', pfCtx({ preflopNode: node }));
+    const table = rangeForAction(node.key, '3bet')!;
+    // 全范围 ∩ 表 = 表本身
+    expect(rangeFraction(after)).toBeCloseTo(rangeFraction(table), 10);
+    // 落在一个真实 3bet 范围该有的宽度里（约一成），而不是机械式按尺度
+    // 切出来的某个与 3bet 无关的比例
+    expect(rangeFraction(after)).toBeGreaterThan(0.05);
+    expect(rangeFraction(after)).toBeLessThan(0.15);
+  });
+
+  it('查表结果始终是行动者当前范围的子集，性格不会被表抹掉', () => {
+    // 只剩最强一小撮的「岩石式」范围，面对开池 3bet
+    const tight = parseRange('QQ+, AKs');
+    const node = { key: vsOpenKey('BB', 'BTN'), kind: 'vs-open' as const, opener: 'BTN' as const };
+    const after = narrowByAction(tight, 'raise', pfCtx({ preflopNode: node }));
+    for (const [hc, w] of after) {
+      expect(tight.get(hc) ?? 0).toBeGreaterThanOrEqual(w - 1e-9);
+    }
+  });
+
+  it('交集为空时回落机械式，绝不产出空范围', () => {
+    // 只打 72o 的范围与任何 3bet 表都不相交
+    const weird = parseRange('72o');
+    const node = { key: vsOpenKey('BB', 'BTN'), kind: 'vs-open' as const, opener: 'BTN' as const };
+    const after = narrowByAction(weird, 'raise', pfCtx({ preflopNode: node }));
+    expect(after.size).toBeGreaterThan(0);
+  });
+
+  it('不传节点时翻前仍走机械式（BB 位、4bet 以上没有表）', () => {
+    const base = initialRange('CO');
+    const withoutNode = narrowByAction(base, 'raise', pfCtx());
+    expect(rangeFraction(withoutNode)).toBeLessThan(rangeFraction(base));
+  });
+});
+
+describe('narrowByAction 保留比例的地板', () => {
+  it('极端尺度下进攻动作也不会把范围收到地板以下', () => {
+    const before = initialRange('BTN');
+    // 十倍底池：mdf ≈ 0.09，没有地板时加注会收到 5% 以下
+    const huge = ctx({ potBefore: 10, betSize: 100 });
+    const raise = narrowByAction(before, 'raise', huge);
+    const allin = narrowByAction(before, 'allin', huge);
+    expect(rangeFraction(raise) / rangeFraction(before)).toBeGreaterThan(0.3);
+    expect(rangeFraction(allin) / rangeFraction(before)).toBeGreaterThan(0.18);
+    // 地板之下仍要保住「全下不宽于加注」
+    expect(rangeFraction(allin)).toBeLessThanOrEqual(rangeFraction(raise));
+  });
+});
+
+describe('AKo 单挑面对开池的胜率（收窄口径的回归钉子）', () => {
+  const AKo: [Card, Card] = parseCards('Ah Kd') as [Card, Card];
+
+  it('面对任一位置的 3bb 开池，AKo 单挑胜率都不低于 55%', () => {
+    for (const pos of ['UTG', 'HJ', 'CO', 'BTN', 'SB'] as const) {
+      const base = initialRange(pos);
+      const after = narrowByAction(base, 'raise', {
+        street: 'preflop',
+        board: [],
+        dead: [...AKo],
+        potBefore: 1.5,
+        betSize: 3,
+        strengthIterations: 20,
+        rng: createRng('narrow-akq'),
+        preflopNode: { key: rfiKey(pos), kind: 'rfi', opener: null },
+      });
+      const equity = equityVsRanges(AKo, [], [after], 3000, createRng(`ak-${pos}`));
+      // 旧实现（把开池当最强信号）在 UTG/HJ/CO 三个位置分别是 39% / 41% / 44%
+      expect(equity).toBeGreaterThan(0.55);
+    }
   });
 });
