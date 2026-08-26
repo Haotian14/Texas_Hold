@@ -1,5 +1,6 @@
 import type { HandRecord } from '../core/types';
 import type { HandView } from '../review/view';
+import { REVIEW_SCHEMA_VERSION } from '../review/types';
 import { storedHandOf } from './schema';
 import type { StoredHand } from './schema';
 import { emptyStats, applyHand } from './stats';
@@ -324,6 +325,72 @@ export async function loadReport(w: ReportWindow): Promise<ReportData> {
     status = 'unavailable';
     return { stats: aggregate([]), partial: false };
   }
+}
+
+export interface ReanalyzeOutcome {
+  ok: boolean;
+  /** 扫到的陈旧手数（view 为空或 schemaVersion 过期的） */
+  stale: number;
+  /** 其中重跑成功、写回了新 view 的手数 */
+  updated: number;
+  stats: Stats;
+}
+
+/**
+ * 把 view 陈旧的历史手牌重跑一遍分析（规格 §9「规则升级后要能对历史手牌
+ * 批量重跑分析」）。
+ *
+ * 陈旧的定义有两种，都要重跑：
+ * 1. `view === null` —— 当时 analyzeHand 抛错，record 完整地留着就是为了
+ *    等规则修好（见 schema.ts 上 view 字段的注释）；
+ * 2. `view.schemaVersion !== REVIEW_SCHEMA_VERSION` —— 判定规则变过了。
+ *    这是关键的一条：改了收窄口径或阈值之后，旧结论仍是按旧规则算出来的，
+ *    留着不动会让报表把两套规则的 evLoss 聚合到同一个数里，错得没人看得出来。
+ *
+ * **`disputed` 一定要带过去。** 它是用户对这一手的标注而不是分析的产物，
+ * 重跑会整个换掉 view，若不显式传回去就会被 storedHandOf 的默认值 false
+ * 冲掉——而"我不认同这个判定"恰恰是用来改进规则的那份反馈。
+ *
+ * 分析器由调用方注入而不是在这里 import：这一层的职责是"把 db 与纯计算
+ * 接起来"，不该把整条 EV 估算链路拖进存储层，注入也让这个函数能用一个
+ * 假分析器测出来，不必真跑蒙特卡洛。回调抛错按「这一手分析失败」处理
+ * （view 写 null），与 ③-B 里 App.tsx 的 try/catch 是同一套语义。
+ */
+export function reanalyzeStale(
+  analyze: (record: HandRecord) => HandView | null,
+): Promise<ReanalyzeOutcome> {
+  return serialize(async () => {
+    let stale = 0;
+    let updated = 0;
+    try {
+      const all = await db.allHands();
+      const outdated = all.filter(
+        h => h.view === null || h.view.schemaVersion !== REVIEW_SCHEMA_VERSION,
+      );
+      stale = outdated.length;
+      for (const h of outdated) {
+        let view: HandView | null = null;
+        try {
+          view = analyze(h.record);
+        } catch {
+          view = null;
+        }
+        const next = storedHandOf(h.record, view, { disputed: h.disputed });
+        await db.putHand(next);
+        await db.putSummary(summaryOf(next));
+        if (view !== null) updated++;
+      }
+      status = 'ready';
+    } catch {
+      status = 'unavailable';
+      // 已经写回去的那些不回滚，理由与 importHands 相同：它们本身是完整的，
+      // 而"重跑了一半又被还原"对用户更糟。下面照样重算统计，让数字与库里对上。
+    }
+    // 重跑换掉了 view，worstEvLoss / mistakeTags / evLoss 全都变了，
+    // 统计必须全量重算而不是增量累加（stats.ts 第 69 行点名了这件事）。
+    const stats = await recomputeStatsInline();
+    return { ok: stale === updated, stale, updated, stats };
+  });
 }
 
 /** 本次会话是否已经回填过。回填是幂等的，但扫全表不便宜，不重复做 */

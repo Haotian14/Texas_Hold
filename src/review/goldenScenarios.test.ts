@@ -496,10 +496,14 @@ describe('金标准场景 —— 翻前扩展：面对开池节点（vs-open）'
     expect(d).toBeDefined();
     expect(d.tag).toBe('preflop_missed_3bet');
     expect(atLeast(d.severity, 'minor')).toBe(true);
-    // 实测 evLoss≈0.22 BB（口袋对的 impliedOddsBonus 会略微推高 call 候选的 EV，
+    // 实测 evLoss≈1.28 BB（口袋对的 impliedOddsBonus 会略微推高 call 候选的 EV，
     // 但 3bet 依然明显更优）；区间留足余量。
+    //
+    // 收窄口径改成翻前查表之后，这个数从 ≈0.22 涨到 ≈1.28：CO 开池后他的范围
+    // 不再被削成最强的 5%，而是原样保留 CO_rfi 的 23.7%——面对一个正常宽度的
+    // 开池范围，KK 3bet 拿到的价值本来就该比面对一个"只剩 77+/AK"的范围多得多。
     expect(d.evLoss).toBeGreaterThan(0.05);
-    expect(d.evLoss).toBeLessThan(1.2);
+    expect(d.evLoss).toBeLessThan(2.5);
   });
 
   it('场景 11：BB 拿 84o 面对 BTN 开池 3bet（SB 跟注保持存活）→ preflop_over_aggressive', () => {
@@ -525,10 +529,16 @@ describe('金标准场景 —— 翻前扩展：面对开池节点（vs-open）'
     const d = a.decisions.find(dd => dd.actionIndex === idx)!;
     expect(d).toBeDefined();
     expect(d.tag).toBe('preflop_over_aggressive');
-    expect(atLeast(d.severity, 'notable')).toBe(true);
-    // 实测 evLoss≈1.43 BB；区间留足余量。
-    expect(d.evLoss).toBeGreaterThan(0.5);
-    expect(d.evLoss).toBeLessThan(3.5);
+    // 实测 evLoss≈0.74 BB，severity 是 minor。
+    //
+    // 收窄口径改成翻前查表之后，这个数从 ≈1.43 降到 ≈0.74，severity 也从
+    // notable 掉到 minor：BTN 开池后他的范围不再被削成最强的 9%，而是原样
+    // 保留 BTN_rfi 的 42.1%——拿 84o 去 3bet 一个这么宽的开池范围，弃牌率
+    // 高得多，损失自然小。方向没变（仍然是"翻前过度激进"的失误），只是
+    // 幅度回到了合理量级，所以这里断言的是"至少 minor"而不是"至少 notable"。
+    expect(atLeast(d.severity, 'minor')).toBe(true);
+    expect(d.evLoss).toBeGreaterThan(0.3);
+    expect(d.evLoss).toBeLessThan(2);
   });
 
   it('场景 12：HJ 拿 92o 面对 UTG 开池 3bet（CO/BTN/SB/BB 均未行动）→ preflop_over_aggressive，severity 至少 notable', () => {
@@ -609,10 +619,16 @@ describe('金标准场景 —— 翻前扩展：面对 3bet 节点（vs-3bet）'
     expect(d).toBeDefined();
     expect(d.tag).toBe('preflop_fold_too_tight');
     expect(atLeast(d.severity, 'severe')).toBe(true);
-    // 实测 evLoss≈12.57 BB（EV 引擎推荐 all-in，把这个数字推得很高，但方向和
+    // 实测 evLoss≈4.50 BB（EV 引擎推荐 all-in，把这个数字推得偏高，但方向和
     // severity 不受影响，见已知局限 1）；区间留足余量。
-    expect(d.evLoss).toBeGreaterThan(6);
-    expect(d.evLoss).toBeLessThan(20);
+    //
+    // 收窄口径改成翻前查表之后，这个数从 ≈12.57 降到 ≈4.50，方向与场景 10/11
+    // 相反——因为 BB 没有 RFI 表、初始范围是全范围，旧的机械式按尺度只能把它
+    // 削到约两成，而 BB_vs_UTG_open 的 3bet 范围是 'QQ+, AKs, A5s, AKo:0.5'，
+    // 只有约 3%。面对一个真正紧的 3bet 范围，QQ 的处境比面对"两成的牌"差得多，
+    // 弃牌因此没有那么亏。收窄口径既会放宽范围也会收紧范围，这条就是收紧的例子。
+    expect(d.evLoss).toBeGreaterThan(3);
+    expect(d.evLoss).toBeLessThan(12);
   });
 });
 
@@ -930,14 +946,23 @@ describe('金标准场景 —— 翻后扩展：下注尺度（bet_size_too_smal
   });
 
   it('场景 19：UTG 拿 KK 超对，三人底池里全下 → bet_size_too_large，severity severe', () => {
-    // 种子 dry-7、buttonSeat=3（UTG=座位0=hero）：hero 发到 KdKs（KK），
-    // HJ、CO 都跟注进翻牌（三人底池），翻牌 9c 6d Th 干面，hero 超对先行动，
-    // 把全部 97 BB 一次性推入一个 10.5 BB 的底池。这条场景干净地示范了"过大"
-    // 的方向：面对两个仍能弃牌的对手，全下的弃牌率门槛（两人都要弃）远高于
-    // 单挑，EV 引擎推荐的是 2/3 池（约 7 BB）而不是全下——三人底池抑制了
-    // 单一对手场景下"全下=更赚"的偏置（对照下面 it.skip 场景 S4 一类的单对手
-    // 案例），这正是本文件顶部记录的已知局限 1 的另一面：不是每次都会推荐
-    // 超额下注，多个仍能弃牌的对手在场时，引擎依然能正确识别"下太大"。
+    // 种子 kk-758、buttonSeat=3（UTG=座位0=hero）：hero 发到 KK，HJ、CO 都跟注
+    // 进翻牌（三人底池），翻牌 9s Qc 5d 彩虹干面，hero 超对先行动，把全部
+    // 97 BB 一次性推入一个 10.5 BB 的底池。这条场景干净地示范了"过大"的方向：
+    // 面对两个仍能弃牌的对手，全下的弃牌率门槛（两人都要弃）远高于单挑，
+    // EV 引擎推荐的是一个正常尺度而不是全下——三人底池抑制了单一对手场景下
+    // "全下=更赚"的偏置（对照下面 it.skip 场景 S4 一类的单对手案例），这正是
+    // 本文件顶部记录的已知局限 1 的另一面：不是每次都会推荐超额下注，多个
+    // 仍能弃牌的对手在场时，引擎依然能正确识别"下太大"。
+    //
+    // 原来用的种子是 dry-7（翻牌 9c 6d Th）。收窄口径改成翻前查表之后，两个
+    // 跟注者的范围不再是"开池范围的中间那一段"，而是 HJ_vs_UTG_open /
+    // CO_vs_UTG_open 表里真正的跟注范围（JJ-77 / JJ-66、AQs-AJs、JTs、T9s
+    // 这一类）——这些牌把 9-6-T 这张面打得很透，KK 在那块面上只剩约 51% 胜率，
+    // 单步模型下过牌反而优于任何尺度的下注，tag 变成了 over_bluffing。
+    // 那不是判定错了，是那张面上 KK 本来就没有强到该下注；要示范"下太大"
+    // 就得换一张 KK 真正领先的面。kk-758 的 9s Qc 5d 就是：hero 胜率约 65%，
+    // 引擎推荐正常尺度下注，97 BB 的全下因此清楚地落在"过大"这一类。
     //
     // hero 这一步走真实的 legalActions 'allin' 类型（allInCur），不再借道
     // allInViaRaise：judge.ts::tagFor 里 bet_size_too_small/too_large 曾经只写
@@ -945,7 +970,7 @@ describe('金标准场景 —— 翻后扩展：下注尺度（bet_size_too_smal
     // 不匹配落到 `return null`，tag 变 null——这正是本次修复要覆盖的缺陷本体
     // （evLoss 算得对，但没有分类）。tagFor 现在通过 isAggressiveActual 判断
     // 「toCall=0 时的自愿 allin 是进攻类」，把它并入 bet/raise 同一族。
-    const record = buildRecord('golden-19-utg-kk-overbet-multiway', 'dry-7', BUTTON_FOR.UTG, s => {
+    const record = buildRecord('golden-19-utg-kk-overbet-multiway', 'kk-758', BUTTON_FOR.UTG, s => {
       s = actTo(s, 3); // hero UTG 开池
       s = foldUntil(s, seatOf(BUTTON_FOR.UTG, 'HJ')); // 无需弃牌，HJ 紧接着行动
       s = callCur(s); // HJ 跟注
@@ -963,8 +988,8 @@ describe('金标准场景 —— 翻后扩展：下注尺度（bet_size_too_smal
     expect(d).toBeDefined();
     expect(d.tag).toBe('bet_size_too_large');
     expect(atLeast(d.severity, 'notable')).toBe(true);
-    // 实测 evLoss≈7.45 BB；区间留足余量。
-    expect(d.evLoss).toBeGreaterThan(3);
+    // 实测 evLoss≈5.00 BB；区间留足余量。
+    expect(d.evLoss).toBeGreaterThan(2);
     expect(d.evLoss).toBeLessThan(13);
   });
 });

@@ -7,6 +7,7 @@ import { createRng } from '../core/rng';
 import { chipsGreater, isZeroChips, round2 } from '../core/chips';
 import type { RangeSet } from '../core/rangeSet';
 import { narrowByAction } from '../core/opponentRange';
+import { preflopNodeFor } from '../core/preflopNode';
 import { assignPersonas, getPersona, GTO_PERSONA } from '../ai/personas';
 import { personaInitialRange } from '../ai/personaRange';
 import { decide } from '../ai/decide';
@@ -180,6 +181,9 @@ function advance(
       betSize: applied.amount,
       strengthIterations: cfg.strengthIterations ?? 20,
       rng: createRng(`${cfg.seed}-h${s.handIndex}-narrow${s.stepIndex}`),
+      // 翻前查表收窄要用**行动者**的节点：before.toAct 正是即将行动的这个人，
+      // 所以 preflopNodeFor(before) 拿到的是他自己的节点。翻后恒为 null。
+      preflopNode: preflopNodeFor(before),
     }),
   );
 

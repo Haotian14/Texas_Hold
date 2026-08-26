@@ -6,6 +6,7 @@ import type { StoredHand } from './schema';
 import type { Stats } from './stats';
 import { heroNetOf } from './stats';
 import { summaryOf, SUMMARY_SCHEMA_VERSION } from './summary';
+import { REVIEW_SCHEMA_VERSION } from '../review/types';
 import type { HandSummary } from './summary';
 
 /**
@@ -125,9 +126,9 @@ function record(id: string, net: number, timestamp = 1700000000000): HandRecord 
   } as unknown as HandRecord;
 }
 
-function view(id: string): HandView {
+function view(id: string, schemaVersion = 1): HandView {
   return {
-    schemaVersion: 1,
+    schemaVersion,
     recordId: id,
     heroSeat: 0,
     decisions: [],
@@ -543,5 +544,89 @@ describe('importHands 维护摘要', () => {
     ]);
     expect(out.imported).toBe(2);
     expect(fake.summaries.size).toBe(2);
+  });
+});
+
+describe('reanalyzeStale 重跑陈旧的历史结论', () => {
+  /** 记下被重跑过的 id，并造一份带当前版本号的新 view */
+  function spyAnalyzer(seen: string[], fail: Set<string> = new Set()) {
+    return (record: HandRecord): HandView | null => {
+      seen.push(record.id);
+      if (fail.has(record.id)) return null;
+      // byTag 是从 decisions 聚合出来的，不是从 tags —— 要测摘要真的跟着刷新，
+      // 就得给一个带 tag 的决策点，只改 tags 是测不到 summaryOf 的
+      const decision = { street: 'flop', evLoss: 4.2, tag: 'missed_cbet' } as unknown as
+        HandView['decisions'][number];
+      return {
+        ...view(record.id, REVIEW_SCHEMA_VERSION),
+        decisions: [decision],
+        worstEvLoss: 4.2,
+        tags: ['missed_cbet'],
+      };
+    };
+  }
+
+  it('只重跑版本过期的那些，版本已是当前的不动', async () => {
+    fake.hands.set('old', storedHandOf(recordOf('old'), view('old', 1)));
+    fake.hands.set('new', storedHandOf(recordOf('new'), view('new', REVIEW_SCHEMA_VERSION)));
+    const seen: string[] = [];
+    const out = await repo.reanalyzeStale(spyAnalyzer(seen));
+    expect(seen).toEqual(['old']);
+    expect(out.stale).toBe(1);
+    expect(out.updated).toBe(1);
+  });
+
+  it('分析失败过的那一手（view 为 null）也会被重跑', async () => {
+    fake.hands.set('failed', storedHandOf(recordOf('failed'), null));
+    const seen: string[] = [];
+    await repo.reanalyzeStale(spyAnalyzer(seen));
+    expect(seen).toEqual(['failed']);
+    expect(fake.hands.get('failed')!.view).not.toBeNull();
+  });
+
+  it('重跑会同步刷新索引字段与摘要', async () => {
+    fake.hands.set('h', storedHandOf(recordOf('h'), view('h', 1)));
+    await repo.reanalyzeStale(spyAnalyzer([]));
+    const after = fake.hands.get('h')!;
+    expect(after.view!.schemaVersion).toBe(REVIEW_SCHEMA_VERSION);
+    expect(after.worstEvLoss).toBe(4.2);
+    expect(after.mistakeTags).toEqual(['missed_cbet']);
+    expect(fake.summaries.get('h')!.byTag.missed_cbet!.count).toBe(1);
+  });
+
+  it('disputed 是用户的标注，重跑不能把它冲掉', async () => {
+    fake.hands.set('d', storedHandOf(recordOf('d'), view('d', 1), { disputed: true }));
+    await repo.reanalyzeStale(spyAnalyzer([]));
+    expect(fake.hands.get('d')!.disputed).toBe(true);
+  });
+
+  it('分析器抛错按「这一手分析失败」处理，不掀掉整批', async () => {
+    fake.hands.set('boom', storedHandOf(recordOf('boom'), view('boom', 1)));
+    fake.hands.set('fine', storedHandOf(recordOf('fine'), view('fine', 1)));
+    const out = await repo.reanalyzeStale((record: HandRecord): HandView | null => {
+      if (record.id === 'boom') throw new Error('分析炸了');
+      return view(record.id, REVIEW_SCHEMA_VERSION);
+    });
+    expect(fake.hands.get('boom')!.view).toBeNull();
+    expect(fake.hands.get('fine')!.view!.schemaVersion).toBe(REVIEW_SCHEMA_VERSION);
+    expect(out.stale).toBe(2);
+    expect(out.updated).toBe(1);
+    expect(out.ok).toBe(false);
+  });
+
+  it('重跑之后统计是全量重算的，不是在旧数字上累加', async () => {
+    fake.hands.set('s1', storedHandOf(recordOf('s1', 1), view('s1', 1)));
+    fake.hands.set('s2', storedHandOf(recordOf('s2', 2), view('s2', 1)));
+    const out = await repo.reanalyzeStale(spyAnalyzer([]));
+    expect(out.stats.hands).toBe(2);
+  });
+
+  it('库里没有陈旧手牌时什么都不写', async () => {
+    fake.hands.set('n', storedHandOf(recordOf('n'), view('n', REVIEW_SCHEMA_VERSION)));
+    const seen: string[] = [];
+    const out = await repo.reanalyzeStale(spyAnalyzer(seen));
+    expect(seen).toEqual([]);
+    expect(out.stale).toBe(0);
+    expect(out.ok).toBe(true);
   });
 });

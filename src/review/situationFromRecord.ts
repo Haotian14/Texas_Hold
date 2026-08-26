@@ -4,6 +4,7 @@ import type { Situation } from '../core/situation';
 import { situationFromGameState } from '../core/situation';
 import type { RangeSet } from '../core/rangeSet';
 import { initialRange, narrowByAction } from '../core/opponentRange';
+import { preflopNodeFor } from '../core/preflopNode';
 import { createRng } from '../core/rng';
 
 export interface HeroDecisionPoint {
@@ -98,6 +99,9 @@ export function heroDecisionPoints(
         betSize: applied.amount,
         strengthIterations,
         rng,
+        // 翻前查表收窄要用**行动者**的节点：before.toAct 正是即将行动的这个人，
+        // 所以 preflopNodeFor(before) 拿到的是他自己的节点。翻后恒为 null。
+        preflopNode: preflopNodeFor(before),
       }),
     );
   });

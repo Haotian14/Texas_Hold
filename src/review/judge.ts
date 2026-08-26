@@ -6,8 +6,8 @@ import { actionFreqs } from '../core/ranges';
 import { chipsGreater } from '../core/chips';
 import type { MistakeTag } from './taxonomy';
 import { PREFLOP_OK_FREQ, VALUE_BET_EQUITY_FLOOR } from './taxonomy';
-import type { PreflopNode } from './preflopNode';
-import { isForcedShortStackAllin } from './preflopNode';
+import type { PreflopNode } from '../core/preflopNode';
+import { isForcedShortStackAllin } from '../core/preflopNode';
 
 /**
  * matchCandidate 里「进攻类」动作互相兼容的类型族。

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { startHand, applyAction, legalActions } from '../core/gameEngine';
-import { hasNode } from '../core/ranges';
+import { startHand, applyAction, legalActions } from './gameEngine';
+import { hasNode } from './ranges';
 import { preflopNodeFor } from './preflopNode';
 
 /** 循环上限：6 人桌翻前最多 6 次行动即可走完一整轮，留足余量防止真死循环挂起测试 */
