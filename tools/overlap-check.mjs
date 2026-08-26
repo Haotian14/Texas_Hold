@@ -34,6 +34,10 @@ const SELECTORS = [
   // 顶栏一并收进来：座位改成按下缘锚定之后，摊牌时底牌是往上长的，
   // 长过头会压进顶栏——那也是遮挡，只是不在牌桌内部
   '.topbar',
+  // 顶栏**内部**的三段也各自算一块。它们在窄屏上会互相挤：文字段一旦没有
+  // overflow: hidden，nowrap 的长文本会直接画到状态标记和右边那组图标上
+  // （320px 上实测过）。祖先-后代对已排除，所以 .topbar 与它们不会互报。
+  '.topbar-text', '.topbar-flags', '.quick-toggles',
 ];
 
 const browser = await chromium.launch(exe ? { executablePath: exe } : {});

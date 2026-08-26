@@ -70,6 +70,7 @@ export function ReviewPage({
   onPrimary,
   primaryLabel,
   onSettings,
+  onHandRanks,
 }: {
   /** 要复盘的那一手。null = 还没有任何一手打完（会话刚开始） */
   record: HandRecord | null;
@@ -80,6 +81,8 @@ export function ReviewPage({
   onToggleDisputed: () => void;
   /** 打开设置页。设置没有导航项了，每一页的页头各挂一个入口 */
   onSettings: () => void;
+  /** 打开牌型大小对照 */
+  onHandRanks: () => void;
   /** 右栏底部次要按钮：进历史列表（设计稿那颗 All hands） */
   onAllHands: () => void;
   onPrimary: () => void;
@@ -102,7 +105,7 @@ export function ReviewPage({
             <div className="rvp-sub">还没有打完的手牌</div>
           </div>
           {/* 设置的入口，理由见 ReportPage 里那条注释 */}
-          <QuickToggles tableToggles={false} onSettings={onSettings} />
+          <QuickToggles tableToggles={false} onSettings={onSettings} onHandRanks={onHandRanks} />
         </header>
         <p className="rvp-blank">
           打完一手之后，这里会显示那一手的逐街复盘。也可以从下面翻已经存下来的手牌。
@@ -139,7 +142,7 @@ export function ReviewPage({
           <span className="rvp-net-note"> · {endingText(record)}</span>
         </div>
         {/* 设置的入口，理由见 ReportPage 里那条注释 */}
-        <QuickToggles tableToggles={false} onSettings={onSettings} />
+        <QuickToggles tableToggles={false} onSettings={onSettings} onHandRanks={onHandRanks} />
       </header>
 
       <div className="rvp-cols">

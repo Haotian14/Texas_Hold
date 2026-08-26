@@ -273,26 +273,41 @@ body {
   font-size: 15px;
 }
 /* min-width: 0 让这一段在窄屏上能被压缩。flex 子项默认 min-width: auto，
-   不写这条的话它会把右边的开关顶出屏幕，而不是自己收窄。 */
+   不写这条的话它会把右边的开关顶出屏幕，而不是自己收窄。
+   `overflow: hidden` 与它是一组，**缺了就等于没压缩**：min-width 只让盒子变窄，
+   里面 nowrap 的文字照样画到盒子外面去，结果是「第 1,284 手 · 会话 -$128,400」
+   直接压在状态标记和右边四颗图标上（320px 实测，见截图那次）。
+   这一层是结构性的，不是调出来的数值——不论文字多长都溢不出去。 */
 .topbar-text {
   display: flex;
   flex-direction: column;
   gap: 1px;
   min-width: 0;
+  overflow: hidden;
+}
+/* 两行都以省略号截断。让位的顺序是有意的：右边那四颗图标随时要点，状态标记
+   （未记录/深筹码）是必须看见的警告，盲注与手数最后让位。
+   最坏情况实测（320px + 两个标记同时挂着 + 「第 1,284 手 · 会话 -$128,400」）：
+   标记 97px、四颗图标 134px、黑桃标 30px、间距 30px 合计 291px，这一段被压到
+   0 宽、整个消失。不好看，但四颗图标仍在视口内、警告仍然可读、且**没有任何
+   重叠**——在 320px 上这三样装不下，总得有一样让位。 */
+.topbar-game,
+.topbar-meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .topbar-game {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text);
   letter-spacing: -0.01em;
-  white-space: nowrap;
 }
 /* 第几手 · 会话盈亏 */
 .topbar-meta {
   font-size: 11.5px;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 .topbar-meta .pos { color: var(--positive); font-weight: 600; }
 .topbar-meta .neg { color: var(--danger); font-weight: 600; }
@@ -319,7 +334,8 @@ body {
    没有那一块；而且它们都是 flex-wrap: wrap，不推的话齿轮会跟着换行落到
    第二行的**左**端（报表页实测如此）。 */
 .rvp-head .quick-toggles,
-.rep-head .quick-toggles {
+.rep-head .quick-toggles,
+.hr-head .quick-toggles {
   margin-left: auto;
 }
 .quick-btn {
@@ -2607,7 +2623,11 @@ body {
 }
 
 /* 一组设置项。卡片外观与 .rep-card 一致 */
+/* flex: none 的理由同 .hr-list：.set 是 flex 列容器且自己滚，子项默认会被
+   压扁，而这张卡为了圆角开了 overflow: hidden，压扁就等于裁掉内容。
+   目前设置页的内容装得下，所以看不出来——但这是个只等内容变多就会犯的错。 */
 .set-group {
+  flex: none;
   background: var(--app);
   border: 1px solid var(--line);
   border-radius: 11px;
@@ -2678,4 +2698,124 @@ body {
   border: 1px solid rgba(47, 111, 237, 0.22);
   color: var(--text-2);
   font-size: 12px;
+}
+
+/* ───────── 牌型大小对照（新手速查） ───────── */
+
+/* 版式与设置页同一套：整页可滚、卡片化的分组、页头带一颗齿轮。
+   它是一张速查表，不是一个功能页——没有任何交互，翻开就看。 */
+.hr {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px calc(18px + var(--safe-bottom));
+}
+.hr-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.hr-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.hr-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* flex: none 是必须的，不是保险。
+   .hr 是 flex 列容器且自己开了 overflow-y: auto，子项默认 flex-shrink: 1——
+   内容一超高，这张卡就被**压扁**，而它为了圆角开了 overflow: hidden，于是
+   直接把后面几档牌型裁掉（实测 360×688 上九档只画出三档），外层反而没有
+   溢出可滚。让它保持自然高度，滚动才落到 .hr 身上。 */
+.hr-list {
+  flex: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+}
+.hr-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.hr-row + .hr-row {
+  border-top: 1px solid var(--line);
+}
+/* 序号只是"第几大"的视觉锚点，不带别的含义，所以做成一枚安静的灰色圆片。
+   它是 aria-hidden 的：读屏用户从 <ol> 的列表语义里已经知道这是第几项。 */
+.hr-seq {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--soft);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.hr-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.hr-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+/* 五张牌一排。窄屏上允许换行——牌面尺寸跟着 --u 走，360px 上五张 md 牌
+   约 155px，装得下；但点数位数与屏宽都会变，留一个换行的退路比裁掉强。 */
+.hr-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(0.4 * var(--u));
+}
+.hr-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.hr-tail {
+  flex: none;
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hr-tail-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.hr-tail-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
 }

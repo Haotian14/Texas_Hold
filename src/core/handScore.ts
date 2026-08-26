@@ -39,6 +39,11 @@ export function categoryOf(score: number): HandCategory {
   return Math.floor(score / 16 ** 5) as HandCategory;
 }
 
+/** 牌型的中文名。牌型名的唯一出处——界面要显示牌型名一律走这里，不另抄一份 */
+export function categoryName(c: HandCategory): string {
+  return CATEGORY_NAMES[c];
+}
+
 export function describeHand(score: number): string {
-  return CATEGORY_NAMES[categoryOf(score)];
+  return categoryName(categoryOf(score));
 }

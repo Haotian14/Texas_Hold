@@ -1,14 +1,17 @@
-import { Percent, Settings, Volume2, VolumeX } from 'lucide-react';
+import { ListOrdered, Percent, Settings, Volume2, VolumeX } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
 
 /**
- * 右上角那一组图标按钮：胜率读数 · 音效 · 设置。
+ * 右上角那一组图标按钮：胜率读数 · 音效 · 牌型 · 设置。
  *
- * 前两项是**牌桌专属**的显示偏好（胜率读数画在牌桌上、音效是发牌与下注的
- * 声音），所以它们只在牌桌页出现。设置是全局的，所以复盘页与报表页的页头
- * 也各挂一颗齿轮——导航从四项收成三项之后，设置不再有自己的导航项，
- * 一个只能从牌桌进的全局入口会让人在复盘页找不到它。
+ * 胜率与音效是**牌桌专属**的显示偏好（胜率读数画在牌桌上、音效是发牌与下注的
+ * 声音），所以它们只在牌桌页出现。牌型对照与设置是全局的，所以复盘页与报表页
+ * 的页头也各挂这两颗——导航只有三项，这两页没有自己的导航项，一个只能从牌桌
+ * 进的全局入口会让人在别的页面找不到它。
+ *
+ * 牌型对照放这里而不是进导航：它是新手在**牌桌上**打到一半会想翻一眼的东西，
+ * 埋进二级页面等于没有；而它又不值得占掉底部三个常驻位置之一。
  *
  * 值仍由 App 持有（见 SettingsPage 顶部那段：两处各读一次 localStorage
  * 会出现「设置页显示开着、牌桌行为是关着」的分叉）。
@@ -18,14 +21,17 @@ export function QuickToggles({
   onToggleMute,
   showEquity,
   onToggleEquity,
+  onHandRanks,
   onSettings,
-  /** false 时只渲染设置齿轮，用在复盘页与报表页的页头 */
+  /** false 时不渲染胜率与音效（它们是牌桌专属的），用在其他页面的页头 */
   tableToggles = true,
 }: {
   muted?: boolean;
   onToggleMute?: () => void;
   showEquity?: boolean;
   onToggleEquity?: () => void;
+  /** 不传则不渲染这颗——牌型页自己不需要一个指向自己的入口 */
+  onHandRanks?: () => void;
   onSettings: () => void;
   tableToggles?: boolean;
 }) {
@@ -58,6 +64,18 @@ export function QuickToggles({
             {muted ? <VolumeX className="size-[1em]" /> : <Volume2 className="size-[1em]" />}
           </Button>
         </>
+      )}
+      {onHandRanks !== undefined && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="quick-btn"
+          onClick={onHandRanks}
+          aria-label="牌型大小"
+          title="牌型大小"
+        >
+          <ListOrdered className="size-[1em]" />
+        </Button>
       )}
       <Button
         variant="ghost"
