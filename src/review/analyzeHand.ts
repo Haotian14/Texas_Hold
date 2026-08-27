@@ -4,7 +4,7 @@ import { createRng } from '../core/rng';
 import type { HandAnalysis, DecisionAnalysis } from './types';
 import { REVIEW_SCHEMA_VERSION } from './types';
 import type { MistakeTag } from './taxonomy';
-import { severityOf } from './taxonomy';
+import { severityOf, EV_NOISE_SIGMAS } from './taxonomy';
 import { heroDecisionPoints } from './situationFromRecord';
 import { preflopNodeFor } from '../core/preflopNode';
 import { matchCandidate, judgePreflopFrequency, tagFor } from './judge';
@@ -62,7 +62,16 @@ export function analyzeHand(record: HandRecord, opts: AnalyzeOptions = {}): Hand
 
     const skip = degraded || preflopOk || actualEv === null;
 
-    const evLoss = skip ? 0 : Math.max(0, round4(ev.recommended.ev - actualEv));
+    // 噪声闸门（taxonomy.ts 的 EV_NOISE_SIGMAS）：推荐与实际都是蒙特卡洛估计，
+    // 差值小于合成噪声带时，「推荐动作更好」这句话本身就不成立，按 0 处理。
+    // 带宽由这个决策点自己的两个标准误算出来，不是一个固定常数——底池越大、
+    // 尺度越大，同样的采样次数下越不确定，闸门自动放宽。
+    const noiseBand = EV_NOISE_SIGMAS * Math.hypot(
+      ev.recommended.evStdErr ?? 0,
+      actualCand?.evStdErr ?? 0,
+    );
+    const rawLoss = skip ? 0 : Math.max(0, round4(ev.recommended.ev - actualEv));
+    const evLoss = rawLoss > noiseBand ? rawLoss : 0;
     const severity = severityOf(evLoss);
     const tag: MistakeTag | null =
       skip || severity === 'ok' ? null : tagFor(p.situation, p.actual, actualCand, ev, node);

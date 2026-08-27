@@ -51,6 +51,15 @@ describe('decide 返回合法动作', () => {
   });
 });
 
+/**
+ * 这一组的两条对比用例各跑 80 次真实 decide（40 手 × 两个性格），每次都要走
+ * 完整的 EV 估算。它们的耗时压在 vitest 默认的 5 秒线附近，**同一份代码在
+ * 同一台机器上会因为并行负载不同而忽红忽绿**，断言本身（性格差异的方向）
+ * 从来没有失败过。因此显式给 30 秒——那对着的是"要是真死循环了要多久发现"，
+ * 不是"它该跑多快"；性能回归由 selfPlayAi.test.ts 的决策耗时用例负责盯。
+ */
+const PERSONA_COMPARE_TIMEOUT_MS = 30_000;
+
 describe('decide 反映性格差异', () => {
   it('跟注站比岩石更少弃牌', () => {
     let stationFolds = 0;
@@ -64,7 +73,7 @@ describe('decide 反映性格差异', () => {
       if (decide(s, opts('rock', `rk-${i}`)).action.type === 'fold') rockFolds++;
     }
     expect(stationFolds).toBeLessThan(rockFolds);
-  });
+  }, PERSONA_COMPARE_TIMEOUT_MS);
 
   it('疯子比岩石更常选进攻动作', () => {
     const aggressive = new Set(['bet', 'raise', 'allin']);
@@ -76,7 +85,7 @@ describe('decide 反映性格差异', () => {
       if (aggressive.has(decide(s, opts('rock', `rk2-${i}`)).action.type)) rockAgg++;
     }
     expect(maniacAgg).toBeGreaterThan(rockAgg);
-  });
+  }, PERSONA_COMPARE_TIMEOUT_MS);
 
   it('GTO 原型不叠加任何偏好，评分等于 EV 本身', () => {
     // GTO 的 aggression / callThresholdMul 都是 1，bluffFreq 为 0，
