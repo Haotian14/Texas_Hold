@@ -590,6 +590,61 @@ describe('estimateEv degraded 标记', () => {
   });
 });
 
+describe('estimateEv 候选 EV 的标准误', () => {
+  it('弃牌的标准误恒为 0，其余候选为正', () => {
+    const r = estimateEv(sit({ toCall: 5 }), OPTS);
+    const fold = r.candidates.find(c => c.actionType === 'fold')!;
+    expect(fold.evStdErr).toBe(0);   // EV 恒为 0，不含任何采样量
+    for (const c of r.candidates) {
+      if (c.actionType === 'fold') continue;
+      expect(c.evStdErr!).toBeGreaterThan(0);
+    }
+  });
+
+  it('标准误随迭代数按 1/√n 收缩', () => {
+    const base = { strengthIterations: 100, rng: createRng('se-test') };
+    const lo = estimateEv(sit({ toCall: 5 }), { ...base, iterations: 500, rng: createRng('se-test') });
+    const hi = estimateEv(sit({ toCall: 5 }), { ...base, iterations: 4500, rng: createRng('se-test') });
+    const seOf = (r: typeof lo) => r.candidates.find(c => c.actionType === 'call')!.evStdErr!;
+    // 迭代数 ×9 => 标准误应当约 ÷3。胜率本身也会随采样略变，留 25% 余量。
+    expect(seOf(lo) / seOf(hi)).toBeGreaterThan(3 * 0.75);
+    expect(seOf(lo) / seOf(hi)).toBeLessThan(3 * 1.25);
+  });
+
+  it('下注候选的标准误 = 不确定分支的赔付规模 × 胜率标准误', () => {
+    // EV = Fe×底池 + (1−Fe)×(W'×calledPot − b)。前一项是确定的（对手弃牌，
+    // 没有胜率可言），噪声全部来自「被跟注」那一支，系数是 (1−Fe)×calledPot。
+    //
+    // 这条测试顺便钉住一个反直觉的事实：噪声带跟的不是尺度大小。尺度变大时
+    // calledPot 涨、Fe 也涨，两者反向——实测这个局面里全下的标准误（0.11）
+    // 反而**小于** 1/3 池（0.15），因为全下的弃牌率高到「被跟注」很少发生。
+    const pot = 10;
+    const r = estimateEv(sit({ toCall: 0, pot, heroStack: 200 }), OPTS);
+    for (const c of r.candidates) {
+      if (c.foldEquity === undefined) continue;   // 只有下注/加注候选有这两个量
+      const b = c.investment;
+      const calledPot = pot + 2 * b;              // toCall = 0，对手跟注额就是 b
+      const w = c.equityWhenCalled!;
+      const seW = Math.sqrt((w * (1 - w)) / OPTS.iterations);
+      expect(c.evStdErr!).toBeCloseTo((1 - c.foldEquity) * calledPot * seW, 3);
+    }
+  });
+
+  it('推荐动作与最高 EV 的差不超过一个合成标准误', () => {
+    // 噪声内并列时取投入最小的那个（RECOMMEND_TIE_SIGMAS），所以推荐动作
+    // 未必是 EV 最高的那个——但它与最高分的差必须在噪声之内，否则就是选错了。
+    for (const over of [{ toCall: 5 }, { toCall: 0, pot: 12, heroStack: 100 }, { toCall: 0, pot: 40, heroStack: 60 }]) {
+      const r = estimateEv(sit(over), OPTS);
+      const eligible = r.candidates.filter(c => c.notRecommendable === undefined);
+      const top = eligible.reduce((a, b) => (b.ev > a.ev ? b : a));
+      const band = Math.hypot(top.evStdErr ?? 0, r.recommended.evStdErr ?? 0);
+      expect(top.ev - r.recommended.ev).toBeLessThanOrEqual(band + 1e-9);
+      // 并列时取的是投入更小的那个，绝不会反过来取更大的
+      if (r.recommended !== top) expect(r.recommended.investment).toBeLessThan(top.investment);
+    }
+  });
+});
+
 describe('estimateEv 弃牌率对上教科书常数', () => {
   it('平均范围、翻牌圈下的弃牌率贴近教科书的 MDF', () => {
     // 单个对手、无需跟注时，投入 b 到底池 pot，教科书的 MDF = pot/(pot+b)，

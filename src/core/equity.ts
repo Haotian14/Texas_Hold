@@ -2,8 +2,8 @@ import type { Card } from './cards';
 import { makeDeck, sameCard } from './cards';
 import { evaluate7 } from './handEval';
 import type { Rng } from './rng';
-import type { RangeSet, WeightedCombo } from './rangeSet';
-import { rangeCombos, totalWeight, sampleCombo } from './rangeSet';
+import type { RangeSet, ComboSampler } from './rangeSet';
+import { rangeCombos, prepareSampler, sampleCombo } from './rangeSet';
 
 /** 采样无解：几个对手的范围在物理上不可能同时成立（比如都只剩 AA，而牌桌只有四张 A）。 */
 export class InfeasibleSamplingError extends Error {}
@@ -161,9 +161,9 @@ export function equityVsRanges(
   const known = [...hero, ...board];
   const boardNeeded = 5 - board.length;
 
-  // 各对手的可用组合在整轮中固定，先展开一次
-  const combosPerOpp: WeightedCombo[][] = [];
-  const totalsPerOpp: number[] = [];
+  // 各对手的可用组合在整轮中固定，先展开一次；权重前缀和同样只算一次
+  // （见 rangeSet.ts 的 ComboSampler：内层循环里每次采样都重算等于白付一遍 O(n)）
+  const samplerPerOpp: ComboSampler[] = [];
   for (let i = 0; i < opponentRanges.length; i++) {
     const combos = rangeCombos(opponentRanges[i], known);
     if (combos.length === 0) {
@@ -175,8 +175,7 @@ export function equityVsRanges(
       // 原样重新抛出；裸 Error 会直接逃出 estimateEv。
       throw new InfeasibleSamplingError(`第 ${i} 个对手的范围在剔除死牌后为空`);
     }
-    combosPerOpp.push(combos);
-    totalsPerOpp.push(totalWeight(combos));
+    samplerPerOpp.push(prepareSampler(combos));
   }
 
   const pool = remainingDeck(known);
@@ -198,7 +197,7 @@ export function equityVsRanges(
     for (let o = 0; o < opponentRanges.length; o++) {
       let picked: [Card, Card] | null = null;
       for (let attempt = 0; attempt < 100; attempt++) {
-        const cand = sampleCombo(combosPerOpp[o], totalsPerOpp[o], rng);
+        const cand = sampleCombo(samplerPerOpp[o], rng);
         const clash = used.some(u => sameCard(u, cand[0]) || sameCard(u, cand[1]));
         if (!clash) { picked = cand; break; }
       }

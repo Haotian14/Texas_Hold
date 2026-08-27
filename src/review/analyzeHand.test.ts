@@ -6,6 +6,7 @@ import type { HandRecord } from '../core/types';
 import { analyzeHand } from './analyzeHand';
 import { REVIEW_SCHEMA_VERSION } from './types';
 import { chipsGreater } from '../core/chips';
+import { EV_NOISE_SIGMAS } from './taxonomy';
 
 // 注意：这个辅助函数照抄任务书原文，唯一的改动是非 hero、非翻前分支里
 // 加了一层"fold 是否合法"的判断（见下方注释）——原文对每个非 hero 玩家在
@@ -39,6 +40,37 @@ describe('analyzeHand', () => {
     expect(a.decisions).toHaveLength(rec.actions.filter(x => x.seat === rec.heroSeat).length);
     expect(a.recordId).toBe(rec.id);
     expect(a.schemaVersion).toBe(REVIEW_SCHEMA_VERSION);
+  });
+
+  it('噪声闸门：evLoss 要么是 0，要么确实超过了该决策点的噪声带', () => {
+    // 这是闸门的**不变式**，对任何一手牌都成立：损失落在噪声带以内时，
+    // 「推荐动作更好」这句话在统计上不成立，evLoss 必须是 0 而不是一个小数字。
+    // 用 iterations=200（本文件的 OPTS）跑，噪声带很宽，闸门频繁生效，
+    // 正好把这条不变式压在最容易出问题的一侧。
+    for (const seed of ['gate-1', 'gate-2', 'gate-3']) {
+      const a = analyzeHand(makeRecord(seed), OPTS);
+      for (const d of a.decisions) {
+        if (d.evLoss === 0) continue;
+        const band = EV_NOISE_SIGMAS * Math.hypot(
+          d.recommended?.evStdErr ?? 0,
+          d.candidates.find(c => c.label === d.actualLabel)?.evStdErr ?? 0,
+        );
+        expect(d.evLoss).toBeGreaterThan(band);
+      }
+    }
+  });
+
+  it('噪声闸门确实在生效：同一手牌，迭代数越少被判失误的越少', () => {
+    // 迭代数决定噪声带宽度（标准误 ∝ 1/√n）。同一手牌用两种迭代数跑，
+    // 低迭代那次的噪声带更宽，被判为失误的决策点不应该更多。
+    // 断言写成"不多于"而不是"严格更少"：一手牌里可能一个失误都没有，
+    // 也可能所有失误都大到两种迭代数下都过闸——那些情况下相等是对的。
+    const rec = makeRecord('gate-cmp');
+    const noisy = analyzeHand(rec, { iterations: 120, strengthIterations: 15 });
+    const cleaner = analyzeHand(rec, { iterations: 1200, strengthIterations: 15 });
+    const flagged = (a: ReturnType<typeof analyzeHand>) =>
+      a.decisions.filter(d => d.evLoss > 0).length;
+    expect(flagged(noisy)).toBeLessThanOrEqual(flagged(cleaner));
   });
 
   it('汇总字段与逐条一致', () => {

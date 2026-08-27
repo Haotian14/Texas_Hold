@@ -5,7 +5,7 @@ import { createRng } from './rng';
 import { classifyHand, comboCount } from './handClass';
 import { parseRange } from './rangeNotation';
 import {
-  rangeCombos, totalWeight, sampleCombo, fullRange, rangeFraction,
+  rangeCombos, totalWeight, prepareSampler, sampleCombo, fullRange, rangeFraction,
 } from './rangeSet';
 
 describe('rangeCombos', () => {
@@ -77,34 +77,31 @@ describe('totalWeight', () => {
 
 describe('sampleCombo', () => {
   it('采样结果一定来自范围内', () => {
-    const combos = rangeCombos(parseRange('AA, KK'), []);
-    const tw = totalWeight(combos);
+    const sampler = prepareSampler(rangeCombos(parseRange('AA, KK'), []));
     const rng = createRng('sample-1');
     for (let i = 0; i < 200; i++) {
-      const [a, b] = sampleCombo(combos, tw, rng);
+      const [a, b] = sampleCombo(sampler, rng);
       expect(['AA', 'KK']).toContain(classifyHand(a, b));
     }
   });
 
   it('相同 seed 采样序列相同', () => {
-    const combos = rangeCombos(parseRange('AA, KK, QQ'), []);
-    const tw = totalWeight(combos);
+    const sampler = prepareSampler(rangeCombos(parseRange('AA, KK, QQ'), []));
     const take = (seed: string) => {
       const rng = createRng(seed);
-      return Array.from({ length: 20 }, () => sampleCombo(combos, tw, rng).map(cardToString).join(''));
+      return Array.from({ length: 20 }, () => sampleCombo(sampler, rng).map(cardToString).join(''));
     };
     expect(take('same')).toEqual(take('same'));
   });
 
   it('权重影响采样比例', () => {
     // AA 权重 1、KK 权重 0.2，组合数都是 6，AA 应显著更常被采到
-    const combos = rangeCombos(parseRange('AA, KK:0.2'), []);
-    const tw = totalWeight(combos);
+    const sampler = prepareSampler(rangeCombos(parseRange('AA, KK:0.2'), []));
     const rng = createRng('weighted');
     let aa = 0;
     const N = 6000;
     for (let i = 0; i < N; i++) {
-      if (classifyHand(...sampleCombo(combos, tw, rng)) === 'AA') aa++;
+      if (classifyHand(...sampleCombo(sampler, rng)) === 'AA') aa++;
     }
     // 期望比例 6/(6+1.2) ≈ 0.833
     expect(aa / N).toBeGreaterThan(0.79);
@@ -112,7 +109,7 @@ describe('sampleCombo', () => {
   });
 
   it('空组合列表抛错', () => {
-    expect(() => sampleCombo([], 0, createRng('x'))).toThrow();
+    expect(() => sampleCombo(prepareSampler([]), createRng('x'))).toThrow();
   });
 });
 

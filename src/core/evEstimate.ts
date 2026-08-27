@@ -27,6 +27,25 @@ export interface EvCandidate {
   /** 仅跟注候选可能有：计入 ev 的隐含赔率修正额 */
   impliedOdds?: number;
   /**
+   * 本候选 EV 的**蒙特卡洛标准误**，单位与 ev 相同（BB）。
+   *
+   * 每个候选的 EV 都是某个采样胜率的线性函数，所以它的误差可以由胜率的
+   * 标准误按同一条线性关系推出来（见 evStdErrOf 的注释），不需要重复采样。
+   * fold 的 EV 恒为 0、不含任何采样量，标准误因此是 0。
+   *
+   * 下游拿它做两件事：
+   *   1）estimateEv 自己选推荐动作时，噪声内并列的候选取投入最小的那个
+   *      （RECOMMEND_TIE_SIGMAS），避免推荐动作随随机种子来回跳。
+   *   2）复盘判失误时，损失小于噪声带就不算失误（review/taxonomy.ts 的
+   *      EV_NOISE_SIGMAS）——「分辨不出来」和「没有差别」必须区别对待，
+   *      前者不该拿去指责用户。
+   *
+   * **只涵盖胜率采样这一层噪声**：牌力排序（rankRange，strengthIterations 次
+   * 采样）带来的抖动会让继续范围的切点移动，那部分不在这个数里。它是下界，
+   * 不是全部误差——用它做闸门时宁可保守一点（见 EV_NOISE_SIGMAS 取 2）。
+   */
+  evStdErr?: number;
+  /**
    * 该候选的 EV 照常计算、照常参与「用户实际打的是哪一档」的匹配，但**不参与
    * 推荐动作的选取**。目前只有一个取值 'deep-stack-allin'，原因见
    * ALLIN_MAX_SPR 上的注释。
@@ -90,6 +109,40 @@ export interface EvOptions {
  */
 export function betInvestment(pot: number, toCall: number, fraction: number): number {
   return round2(pot * fraction + toCall);
+}
+
+/**
+ * 推荐动作的「并列」判据：EV 与最高分相差不到这么多个标准误的候选，视为
+ * 统计上分不出高低，此时取**投入最小**的那个作为推荐。
+ *
+ * 为什么需要它：候选 EV 是蒙特卡洛估计，旧实现用裸的 `c.ev > best.ev` 选最大，
+ * 于是两个实质相同的候选谁排第一完全由随机种子决定。实测同一个局面（AhKh
+ * 花听面对半池）只换种子，推荐动作在「满池下注」和「全下」之间来回跳，
+ * 报给用户的损失额跟着摆动 0.6 BB——而复盘的严重度门槛是 0.2/1/3 BB，
+ * 这点摆动足以让同一个决定在两次运行里落进不同的档。
+ *
+ * 为什么并列时取投入最小的：这是唯一一个**不需要额外假设**的打破平局方式。
+ * 两个候选期望分不出高低时，投入更少的那个方差更小、也更不依赖模型对后续街
+ * 的那些看不见的假设；把它作为建议，模型说错话的代价更小。顺带压住了单步
+ * 近似「尺度越大越好」的残留偏置（尺度之间的差别本来就常常在噪声之内）。
+ *
+ * 取 1 个标准误而不是 2：这里只是打破平局，不是判定谁对谁错，宁可窄一点。
+ * 复盘那侧判「算不算失误」用的是更保守的 2 个标准误（review/taxonomy.ts
+ * 的 EV_NOISE_SIGMAS）——两个数字回答的是两个不同的问题，刻意不共用。
+ */
+const RECOMMEND_TIE_SIGMAS = 1;
+
+/**
+ * 蒙特卡洛胜率估计的标准误。
+ *
+ * 每轮试验的结果落在 {0, 0.5, 1}（负、平、胜），其方差不超过同均值伯努利
+ * 变量的 p(1−p)——平局把结果往中间挤，只会让方差更小。因此用二项式的
+ * sqrt(p(1−p)/n) 是一个**上界**，宁可把噪声估大一点也不要估小：这个数
+ * 最终会用来决定「要不要指责用户打错了」，低估的代价比高估大。
+ */
+function equityStdErr(p: number, iterations: number): number {
+  if (iterations <= 0) return 0;
+  return Math.sqrt(Math.max(0, p * (1 - p)) / iterations);
 }
 
 /**
@@ -189,9 +242,16 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
 
   const candidates: EvCandidate[] = [];
 
+  // hero 主胜率的标准误。下面每个不含弃牌率的候选，其 EV 都是 heroEquity 的
+  // 一次函数，标准误因此等于「系数 × 这个数」（见 evStdErr 字段的注释）。
+  const heroSe = equityStdErr(heroEquity, iterations);
+
   // ── 弃牌 / 过牌
   if (chipsGreater(sit.toCall, 0)) {
-    candidates.push({ label: 'fold', actionType: 'fold', investment: 0, ev: 0, isRecommended: false });
+    // 弃牌的 EV 恒为 0，不含任何采样量 —— 标准误也就恒为 0，不是「没算」。
+    candidates.push({
+      label: 'fold', actionType: 'fold', investment: 0, ev: 0, evStdErr: 0, isRecommended: false,
+    });
   } else {
     // 过牌：不投入、不弃权，期望等于「看到摊牌」的份额近似
     candidates.push({
@@ -199,6 +259,7 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
       actionType: 'check',
       investment: 0,
       ev: round4(heroEquity * sit.pot),
+      evStdErr: round4(sit.pot * heroSe),
       isRecommended: false,
     });
   }
@@ -212,6 +273,9 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
       actionType: 'call',
       investment: sit.toCall,
       ev: round4(ev),
+      // toCall 与 bonus 都是确定量（impliedOddsBonus 只看筹码与手牌类别，
+      // 不含采样），noise 全部来自 heroEquity 前面的系数。
+      evStdErr: round4((sit.pot + sit.toCall) * heroSe),
       isRecommended: false,
       impliedOdds: bonus > 0 ? round4(bonus) : undefined,
     });
@@ -228,6 +292,7 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
       actionType: 'allin',
       investment: invest,
       ev: round4(heroEquity * contested - invest),
+      evStdErr: round4(contested * heroSe),
       isRecommended: false,
     });
   } else {
@@ -253,8 +318,16 @@ export function estimateEv(sit: Situation, opts: EvOptions = {}): EvResult {
   // ── 选出推荐动作。跳过 notRecommendable 的候选（见 ALLIN_MAX_SPR）；
   // fold / check 永远没有这个标记，所以 eligible 不可能为空。
   const eligible = candidates.filter(c => c.notRecommendable === undefined);
-  let best = eligible[0];
-  for (const c of eligible) if (c.ev > best.ev) best = c;
+  let top = eligible[0];
+  for (const c of eligible) if (c.ev > top.ev) top = c;
+
+  // 与最高分统计上分不出高低的候选里，取投入最小的那个（见 RECOMMEND_TIE_SIGMAS）。
+  // 两个估计各自带噪声，比较的是差值，所以噪声带取两者标准误的平方和开根。
+  let best = top;
+  for (const c of eligible) {
+    const band = RECOMMEND_TIE_SIGMAS * Math.hypot(top.evStdErr ?? 0, c.evStdErr ?? 0);
+    if (top.ev - c.ev <= band && c.investment < best.investment) best = c;
+  }
   best.isRecommended = true;
 
   return {
@@ -549,6 +622,15 @@ function makeBetCandidate(
     actionType: chipsGreater(sit.toCall, 0) ? 'raise' : 'bet',
     investment: round2(b),
     ev: round4(ev),
+    // EV = Fe×底池 + (1−Fe)×(W'×calledPot − b)：Fe、calledPot、b 在这一层都是
+    // 确定量，唯一的采样量是 W'，系数是 (1−Fe)×calledPot。
+    //
+    // 所以噪声带跟的不是下注尺度本身，而是**不确定的那个分支有多大**：
+    // Fe×底池 那一项是确定的（对手弃牌，hero 拿走底池，没有胜率可言），
+    // 只有「被跟注」这一支带采样误差。尺度变大时 calledPot 涨、但 Fe 也涨，
+    // 两者反向——一个弃牌率很高的超额下注，其 EV 反而可能比小注更确定。
+    // 直觉上「押得越大越不确定」在这里是错的，别照那个直觉去调这行。
+    evStdErr: round4((1 - foldEquity) * calledPot * equityStdErr(wPrime, iterations)),
     isRecommended: false,
     foldEquity: round4(foldEquity),
     equityWhenCalled: round4(wPrime),
