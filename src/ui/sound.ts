@@ -71,6 +71,9 @@ export function setMuted(v: boolean): void {
   } catch {
     // 同上：存不下就算了，本次会话内仍然生效
   }
+  // 静音是总闸，背景音乐跟着走：用户按下静音要的是「安静」，
+  // 不是「音效没了但音乐还在响」。见文件末尾的 syncBgm。
+  syncBgm();
 }
 
 /**
@@ -81,11 +84,16 @@ export function setMuted(v: boolean): void {
 export function unlockAudio(): void {
   if (ctx) {
     void ctx.resume();
+    // 已有 ctx 也要同步一次：iOS 会在切回前台时把 ctx 挂起，
+    // 那之后音乐是停着的，resume 之后要把它接回来
+    syncBgm();
     return;
   }
   ctx = new AudioContext();
   void ctx.resume();
   void preload();
+  // 背景音乐从第一次用户手势开始——和音效受同一条自动播放策略约束
+  syncBgm();
 }
 
 /**
@@ -181,4 +189,170 @@ export function playSound(name: SoundName): void {
   src.buffer = buf;
   src.connect(ctx.destination);
   src.start();
+}
+
+/* ────────────────────────── 背景音乐 ────────────────────────── */
+
+const BGM_KEY = 'poker-trainer.bgm';
+
+/**
+ * 背景音乐是否开着。**默认开**——这是唯一一个默认开的偏好。
+ *
+ * 与 prefs.ts 里「所有开关默认关」不冲突：那条说的是「默认值即一直以来的
+ * 行为」，而背景音乐这件事本身就是新加的，加了却默认不响等于没加。它跟静音
+ * 键一样留在本模块（而不是搬去 prefs.ts）：播放路径要读它，搬过去还得绕回来。
+ *
+ * 存的是 '0'/'1'，但判定用 !== '0' 而不是 === '1'——键不存在（第一次打开、
+ * 或用户清过站点数据）时要落在「开」这一侧。
+ */
+let bgmOn = readBgmOn();
+
+function readBgmOn(): boolean {
+  try {
+    return localStorage.getItem(BGM_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function isBgmOn(): boolean {
+  return bgmOn;
+}
+
+export function setBgmOn(v: boolean): void {
+  bgmOn = v;
+  try {
+    localStorage.setItem(BGM_KEY, v ? '1' : '0');
+  } catch {
+    // 同 setMuted：存不下就算了，本次会话内仍然生效
+  }
+  syncBgm();
+}
+
+/** 一小节（一个和弦）的秒数 */
+const BGM_BAR_SECONDS = 4;
+
+/**
+ * 循环用的和弦走向（MIDI 音高），Am7 – Fmaj7 – Dm7 – E7。
+ *
+ * 每个和弦最低那个音是低八度的根音，垫住底；上面四个音靠在一起（都在 C4
+ * 附近），换和弦时多数声部不动，听感是「和声在变」而不是「旋律在跑」——
+ * 背景音乐不该有让人跟着哼的旋律线，那会抢掉注意力。
+ */
+const BGM_CHORDS: readonly (readonly number[])[] = [
+  [45, 57, 60, 64, 67], // Am7
+  [41, 57, 60, 64, 65], // Fmaj7
+  [38, 57, 60, 62, 65], // Dm7
+  [40, 56, 59, 62, 64], // E7
+];
+
+/**
+ * 循环缓冲区的采样率，故意远低于 AudioContext 的 48 kHz。
+ *
+ * 曲子里最高的分音是 E4 的八度（约 660 Hz），8 kHz 的奈奎斯特频率绰绰有余，
+ * 而 16 kHz 让这段 16 秒的循环从 3 MB 降到 1 MB、合成耗时降到三分之一——
+ * 它是在**用户第一次点击的那个事件里**算出来的，慢了会卡住那一下。
+ * 采样率与 AudioContext 不一致由浏览器重采样，这是 Web Audio 的既定行为。
+ */
+const BGM_SAMPLE_RATE = 16000;
+
+/** 背景音乐的音量。压得比任何一个音效都低——它是垫底的，不是来抢戏的 */
+const BGM_GAIN = 0.1;
+const BGM_FADE_IN = 1.5;
+const BGM_FADE_OUT = 0.4;
+
+function midiToFreq(m: number): number {
+  return 440 * Math.pow(2, (m - 69) / 12);
+}
+
+/**
+ * 把整段循环合成进 `data`。导出是为了能在没有 Web Audio 的 node 环境下测。
+ *
+ * 每小节的包络是一个半正弦窗（两端严格为 0），这同时办成两件事：小节之间
+ * 不会有咔哒声，且缓冲区首尾都是 0 —— `loop = true` 接回开头时是无缝的。
+ * 每小节的相位从 0 重新起算也因此不会被听见。
+ *
+ * 与合成音效那边一样，这里的数学与牌局的随机无关，不受 architecture.test.ts
+ * 那条「core/ai/review/session 禁用 Math.random」的约束（本函数根本没用到）。
+ */
+export function renderBgm(data: Float32Array, sampleRate: number): void {
+  const barLen = Math.floor(sampleRate * BGM_BAR_SECONDS);
+  for (let bar = 0; bar < BGM_CHORDS.length; bar++) {
+    const notes = BGM_CHORDS[bar];
+    const freqs = notes.map(midiToFreq);
+    for (let i = 0; i < barLen; i++) {
+      const at = bar * barLen + i;
+      if (at >= data.length) return;
+      const t = i / sampleRate;
+      // sin(πu) 的 1.5 次方：起落比纯正弦更慢，像一次呼吸
+      const env = Math.pow(Math.sin((Math.PI * i) / barLen), 1.5);
+      let s = 0;
+      for (const f of freqs) {
+        // 基频 + 一个弱八度分音。除以 1.35 让单个声部的峰值回到 1，
+        // 再除以声部数——整段的峰值因此不会越过下面那个 0.9
+        s += (Math.sin(2 * Math.PI * f * t) + 0.35 * Math.sin(4 * Math.PI * f * t)) / 1.35;
+      }
+      data[at] = (s / freqs.length) * env * 0.9;
+    }
+  }
+}
+
+let bgmBuffer: AudioBuffer | null = null;
+let bgmSource: AudioBufferSourceNode | null = null;
+let bgmGain: GainNode | null = null;
+
+function startBgm(): void {
+  const c = ctx;
+  // 已经在放就什么都不做：syncBgm 会被反复调用（解锁、切静音、切开关），
+  // 不守这一下就会叠出好几层同样的音乐
+  if (!c || bgmSource) return;
+  if (!bgmBuffer) {
+    const barLen = Math.floor(BGM_SAMPLE_RATE * BGM_BAR_SECONDS);
+    bgmBuffer = c.createBuffer(1, barLen * BGM_CHORDS.length, BGM_SAMPLE_RATE);
+    renderBgm(bgmBuffer.getChannelData(0), BGM_SAMPLE_RATE);
+  }
+  const src = c.createBufferSource();
+  src.buffer = bgmBuffer;
+  src.loop = true;
+  const gain = c.createGain();
+  const t = c.currentTime;
+  // 淡入一秒半，不要一开口就是满音量。指数曲线不能从 0 起算，所以从一个
+  // 听不见的小值开始——与音效那边收到 0.0001 是同一个限制的两面
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(BGM_GAIN, t + BGM_FADE_IN);
+  src.connect(gain);
+  gain.connect(c.destination);
+  src.start();
+  bgmSource = src;
+  bgmGain = gain;
+}
+
+function stopBgm(): void {
+  const c = ctx;
+  const src = bgmSource;
+  const gain = bgmGain;
+  // 先摘引用再淡出：淡出期间这段音乐已经不算"在放"，此时若用户又把开关
+  // 打开，startBgm 应该起一段新的，而不是被上面那个守卫挡掉
+  bgmSource = null;
+  bgmGain = null;
+  if (!c || !src || !gain) return;
+  const t = c.currentTime;
+  gain.gain.cancelScheduledValues(t);
+  // 淡入还没走完就被关掉时，从**当前**音量接着往下收，否则会跳一下
+  gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.0001), t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + BGM_FADE_OUT);
+  src.stop(t + BGM_FADE_OUT);
+}
+
+/**
+ * 让音乐跟上当前的两个开关。静音是总闸：静音键一关，音乐跟着停，
+ * 用户不必为了让整个应用安静下来去按两个开关。
+ *
+ * 音频未解锁（ctx 为 null）时是无操作——第一次用户手势里的 unlockAudio()
+ * 会再调一次，音乐从那时开始。
+ */
+function syncBgm(): void {
+  if (!ctx) return;
+  if (!muted && bgmOn) startBgm();
+  else stopBgm();
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import type { ActionInput } from '../core/gameEngine';
 import { HERO_SEAT } from '../core/types';
 import { chipsGreater, round2 } from '../core/chips';
-import { playSound, soundFor, isMuted, setMuted, unlockAudio } from './sound';
+import { playSound, soundFor, isMuted, setMuted, isBgmOn, setBgmOn, unlockAudio } from './sound';
 import {
   startSession,
   stepAi,
@@ -104,6 +104,9 @@ function reducer(s: HandSessionState, a: Action): HandSessionState {
 
 export function App() {
   const [muted, setMutedState] = useState(isMuted);
+  // 背景音乐。和静音一样存在 sound.ts 那边（播放路径要读它），这里只留一份
+  // 供设置页显示的镜像——两处各读一次会分叉，理由见 SettingsPage 顶部那段。
+  const [bgm, setBgmState] = useState(isBgmOn);
   const [showEquity, setShowEquityState] = useState(showEquityPref);
   // 设置页的四项。都存 localStorage（见 prefs.ts），默认值即现状行为。
   const [fastMode, setFastModeState] = useState(fastModePref);
@@ -203,6 +206,12 @@ export function App() {
   const onSetMuted = useCallback((v: boolean) => {
     setMutedState(v);
     setMuted(v);
+  }, []);
+  const onSetBgm = useCallback((v: boolean) => {
+    setBgmState(v);
+    // setBgmOn 自己会把音乐起来或收掉（静音时它什么都不放），
+    // 这里不需要、也不该再碰播放
+    setBgmOn(v);
   }, []);
   const onSetFastMode = useCallback((v: boolean) => {
     setFastModeState(v);
@@ -578,6 +587,8 @@ export function App() {
             onShowEquity={onSetShowEquity}
             muted={muted}
             onMuted={onSetMuted}
+            bgm={bgm}
+            onBgm={onSetBgm}
             onDataReset={onDataReset}
           />
         ) : (
