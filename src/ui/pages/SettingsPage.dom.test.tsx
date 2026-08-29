@@ -38,6 +38,8 @@ function props(over: Partial<SettingsPageProps> = {}): SettingsPageProps {
     onShowEquity: vi.fn(),
     muted: false,
     onMuted: vi.fn(),
+    bgm: true,
+    onBgm: vi.fn(),
     onDataReset: vi.fn(),
     ...over,
   };
@@ -77,6 +79,27 @@ describe('设置页的开关', () => {
     render(<SettingsPage {...p} />);
     await userEvent.click(screen.getByRole('switch', { name: /音效/ }));
     expect(p.onMuted).toHaveBeenCalledWith(true);
+  });
+});
+
+// 背景音乐挂在静音这个总闸下面。这里钉的是「静音时它显示成关着且点不动」——
+// 坏掉之后界面看起来一切正常，只是那个开关点了没有任何反应。
+describe('背景音乐项跟着静音走', () => {
+  it('没静音时按自己的值显示，并且可以点', async () => {
+    const p = props({ muted: false, bgm: true });
+    render(<SettingsPage {...p} />);
+    const sw = screen.getByRole('switch', { name: /背景音乐/ });
+    expect(sw).toBeChecked();
+    expect(sw).toBeEnabled();
+    await userEvent.click(sw);
+    expect(p.onBgm).toHaveBeenCalledWith(false);
+  });
+
+  it('静音时显示成关着且禁用，即便偏好本身还开着', () => {
+    render(<SettingsPage {...props({ muted: true, bgm: true })} />);
+    const sw = screen.getByRole('switch', { name: /背景音乐/ });
+    expect(sw).not.toBeChecked();
+    expect(sw).toBeDisabled();
   });
 });
 

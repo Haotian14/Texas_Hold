@@ -40,6 +40,8 @@ export interface SettingsPageProps {
   onShowEquity: (v: boolean) => void;
   muted: boolean;
   onMuted: (v: boolean) => void;
+  bgm: boolean;
+  onBgm: (v: boolean) => void;
   /** 重置成功后通知 App 把当前会话也归零 */
   onDataReset: () => void;
 }
@@ -49,11 +51,13 @@ function Toggle({
   label,
   hint,
   checked,
+  disabled,
   onChange,
 }: {
   label: string;
   hint?: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (v: boolean) => void;
 }) {
   // label 与控件用 htmlFor/id 关联，而不是把控件包在 label 里面：Radix 的
@@ -69,7 +73,13 @@ function Toggle({
       {/* ml-auto 把控件顶到行尾。.set-row 是 flex，.set-row-text 不撑开，
           原来这件事由 .set-switch 的 margin-left:auto 做，那条规则随控件
           一起删掉了 */}
-      <Switch id={id} className="ml-auto" checked={checked} onCheckedChange={onChange} />
+      <Switch
+        id={id}
+        className="ml-auto"
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onChange}
+      />
     </div>
   );
 }
@@ -213,6 +223,16 @@ export function SettingsPage(props: SettingsPageProps) {
           onChange={props.onShowEquity}
         />
         <Toggle label="音效" checked={!props.muted} onChange={v => props.onMuted(!v)} />
+        {/* 音乐这一行在静音时置灰：静音是总闸，此时它开着也不会响，
+            让开关看起来仍然「开着且有效」是在骗人。值本身不动——解除静音
+            之后用户原来的选择要原样回来，不能被静音顺手改掉 */}
+        <Toggle
+          label="背景音乐"
+          hint={props.muted ? '已被静音关掉' : '牌桌上的循环环境音，音量压得很低'}
+          checked={props.bgm && !props.muted}
+          disabled={props.muted}
+          onChange={props.onBgm}
+        />
         {canVibrate && (
           <Toggle
             label="轮到我时震动"
