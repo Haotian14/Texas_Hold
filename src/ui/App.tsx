@@ -39,6 +39,7 @@ import { saveHand, loadStats, storageStatus, setDisputed } from '../storage/repo
 import { requestPersistence } from '../storage/db';
 import type { Stats } from '../storage/stats';
 import { handGrade } from './reviewModel';
+import { opponentsRevealed } from './tableModel';
 import { ReviewTrigger, type ReviewStatus } from './components/ReviewTrigger';
 import { Nav, type PageId } from './components/Nav';
 import { HistoryPage } from './pages/HistoryPage';
@@ -327,9 +328,8 @@ export function App() {
     () => heroNet(state.ledger, state.stacks[HERO_SEAT]),
     [state.ledger, state.stacks],
   );
-  const revealed =
-    state.phase === 'handOver' &&
-    (state.record?.results.some(r => r.showdown) ?? false);
+  // 何时亮对手底牌（hero 弃牌后 / 摊牌后）的规则在 tableModel，那边有用例。
+  const revealed = opponentsRevealed(state);
 
   // 本手已结束且 hero 净盈亏为正 —— 触发底池的赢池脉冲
   const heroWon =
