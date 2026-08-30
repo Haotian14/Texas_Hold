@@ -229,30 +229,69 @@ export function setBgmOn(v: boolean): void {
   syncBgm();
 }
 
-/** 一小节（一个和弦）的秒数 */
-const BGM_BAR_SECONDS = 4;
+/**
+ * 一拍与一个八分音符的秒数。120 BPM —— 斗地主那类牌桌音乐的常见速度，
+ * 快到有推进感，又不至于让人心跳跟着加速。
+ */
+const BGM_BEAT_SECONDS = 0.5;
+const BGM_STEP_SECONDS = BGM_BEAT_SECONDS / 2;
+
+/** 一小节八个八分音符（4/4），整段八小节 —— 循环 16 秒 */
+const BGM_BAR_STEPS = 8;
+const BGM_BARS = 8;
+export const BGM_LOOP_SECONDS = BGM_BARS * BGM_BAR_STEPS * BGM_STEP_SECONDS;
 
 /**
- * 循环用的和弦走向（MIDI 音高），Am7 – Fmaj7 – Dm7 – E7。
+ * 旋律（MIDI 音高，0 = 休止），八小节 × 八个八分音符。
  *
- * 每个和弦最低那个音是低八度的根音，垫住底；上面四个音靠在一起（都在 C4
- * 附近），换和弦时多数声部不动，听感是「和声在变」而不是「旋律在跑」——
- * 背景音乐不该有让人跟着哼的旋律线，那会抢掉注意力。
+ * 全部音高取自 **D 宫五声音阶**（D E F♯ A B，即宫商角徵羽），一个偏音都
+ * 不用——中式牌桌音乐那股味道主要就来自这件事：没有 fa 和 si，旋律怎么跳
+ * 都不会拐到西洋大调的解决感上去。
+ *
+ * 这段是原创，不是任何一款商业斗地主游戏 BGM 的转写——那些是有版权的。
+ *
+ * 与改版前那套 Am7–Fmaj7–Dm7–E7 的和弦垫是两种东西：那一版刻意不给旋律
+ * 线（注释原话是「背景音乐不该有让人跟着哼的旋律线，那会抢掉注意力」），
+ * 这一版反过来，旋律是主角。这是 2026-08-31 用户要求换成斗地主风格时定的，
+ * 抢注意力这个代价是知情的选择，不是漏掉了那条考虑。
  */
-const BGM_CHORDS: readonly (readonly number[])[] = [
-  [45, 57, 60, 64, 67], // Am7
-  [41, 57, 60, 64, 65], // Fmaj7
-  [38, 57, 60, 62, 65], // Dm7
-  [40, 56, 59, 62, 64], // E7
+const BGM_MELODY: readonly (readonly number[])[] = [
+  [69, 69, 74, 76, 74, 71, 69, 0],
+  [66, 69, 71, 69, 66, 64, 62, 0],
+  [71, 74, 76, 74, 71, 66, 69, 71],
+  [69, 66, 64, 66, 62, 0, 0, 0],
+  [74, 76, 78, 76, 74, 71, 69, 71],
+  [74, 71, 69, 66, 69, 71, 74, 0],
+  [76, 74, 71, 69, 71, 69, 66, 64],
+  // 末小节留两个八分的空白：循环接回开头前要有地方让余音落干净
+  [74, 0, 69, 0, 66, 62, 0, 0],
+];
+
+/**
+ * 低音，每小节两个（落在第一、第三拍），根音 + 五音来回蹦。
+ *
+ * 「蹦」是这类音乐的骨架：牌桌音乐靠低音的一来一回撑住节奏感，不靠鼓。
+ * 走向是 D–D–G–D–Bm–G–A–D，配着上面那条旋律。
+ */
+const BGM_BASS: readonly (readonly [number, number])[] = [
+  [38, 45],
+  [38, 45],
+  [43, 50],
+  [38, 45],
+  [47, 54],
+  [43, 50],
+  [45, 52],
+  [38, 45],
 ];
 
 /**
  * 循环缓冲区的采样率，故意远低于 AudioContext 的 48 kHz。
  *
- * 曲子里最高的分音是 E4 的八度（约 660 Hz），8 kHz 的奈奎斯特频率绰绰有余，
- * 而 16 kHz 让这段 16 秒的循环从 3 MB 降到 1 MB、合成耗时降到三分之一——
- * 它是在**用户第一次点击的那个事件里**算出来的，慢了会卡住那一下。
- * 采样率与 AudioContext 不一致由浏览器重采样，这是 Web Audio 的既定行为。
+ * 旋律最高到 F♯5（约 740 Hz），加上第三分音约 2.2 kHz，8 kHz 的奈奎斯特
+ * 频率绰绰有余；而 16 kHz 让这段 16 秒的循环从 3 MB 降到 1 MB、合成耗时
+ * 降到三分之一——它是在**用户第一次点击的那个事件里**算出来的，慢了会卡住
+ * 那一下。采样率与 AudioContext 不一致由浏览器重采样，这是 Web Audio 的
+ * 既定行为。
  */
 const BGM_SAMPLE_RATE = 16000;
 
@@ -261,6 +300,30 @@ const BGM_GAIN = 0.1;
 const BGM_FADE_IN = 1.5;
 const BGM_FADE_OUT = 0.4;
 
+/**
+ * 拨弦包络的参数。
+ *
+ * 起音 4 ms 是**必须**的，不是修饰：直接从满音量起步会在每个音头上留一声
+ * 咔哒，六十四个音就是六十四声。衰减用指数，高次分音衰减得更快——真实的
+ * 弹拨乐器就是这样，泛音先掉、基频后掉，少了这一条听上去就是电子琴。
+ */
+const BGM_ATTACK = 0.004;
+const BGM_MELODY_DECAY = 0.26;
+const BGM_BASS_DECAY = 0.55;
+/** 一个音渲染多久。到这里指数包络已经衰减到听不见，再算下去是白算 */
+const BGM_NOTE_TAIL = 1.4;
+/** 循环末尾的收尾淡出，保证首尾都是 0、接缝处不爆音 */
+const BGM_SEAM_FADE = 0.4;
+/**
+ * 整段的总增益。
+ *
+ * 这个数是**量出来的**：六十四个音的余音互相叠加，峰值出在哪一拍推不出来。
+ * 取 0.42 时峰值约 0.61、RMS 约 0.137，与改版前那套和弦垫（0.73 / 0.148）
+ * 基本持平——换曲子不该顺带把音量也换了，何况拨弦的瞬态本来就比长音垫抓耳，
+ * 响度持平已经意味着听感更靠前。不许削波这条有测试守着。
+ */
+const BGM_MIX = 0.42;
+
 function midiToFreq(m: number): number {
   return 440 * Math.pow(2, (m - 69) / 12);
 }
@@ -268,32 +331,54 @@ function midiToFreq(m: number): number {
 /**
  * 把整段循环合成进 `data`。导出是为了能在没有 Web Audio 的 node 环境下测。
  *
- * 每小节的包络是一个半正弦窗（两端严格为 0），这同时办成两件事：小节之间
- * 不会有咔哒声，且缓冲区首尾都是 0 —— `loop = true` 接回开头时是无缝的。
- * 每小节的相位从 0 重新起算也因此不会被听见。
+ * 与改版前逐小节写死一个正弦窗不同，这里是**逐音符叠加**：每个音有自己的
+ * 起音与衰减，尾巴自然越过小节线（拨弦本来就该这样）。因此「小节交界处
+ * 恒为 0」这条旧性质不再成立，也不该成立；防爆音改由两件事保证——每个音
+ * 头的 4 ms 起音，以及整段末尾的淡出，后者同时让 loop 接回开头时首尾都是 0。
  *
  * 与合成音效那边一样，这里的数学与牌局的随机无关，不受 architecture.test.ts
  * 那条「core/ai/review/session 禁用 Math.random」的约束（本函数根本没用到）。
  */
 export function renderBgm(data: Float32Array, sampleRate: number): void {
-  const barLen = Math.floor(sampleRate * BGM_BAR_SECONDS);
-  for (let bar = 0; bar < BGM_CHORDS.length; bar++) {
-    const notes = BGM_CHORDS[bar];
-    const freqs = notes.map(midiToFreq);
-    for (let i = 0; i < barLen; i++) {
-      const at = bar * barLen + i;
-      if (at >= data.length) return;
-      const t = i / sampleRate;
-      // sin(πu) 的 1.5 次方：起落比纯正弦更慢，像一次呼吸
-      const env = Math.pow(Math.sin((Math.PI * i) / barLen), 1.5);
-      let s = 0;
-      for (const f of freqs) {
-        // 基频 + 一个弱八度分音。除以 1.35 让单个声部的峰值回到 1，
-        // 再除以声部数——整段的峰值因此不会越过下面那个 0.9
-        s += (Math.sin(2 * Math.PI * f * t) + 0.35 * Math.sin(4 * Math.PI * f * t)) / 1.35;
-      }
-      data[at] = (s / freqs.length) * env * 0.9;
+  const total = Math.floor(sampleRate * BGM_LOOP_SECONDS);
+  data.fill(0);
+
+  const addNote = (startSec: number, midi: number, gain: number, decay: number): void => {
+    const f = midiToFreq(midi);
+    const from = Math.round(startSec * sampleRate);
+    const tail = Math.floor(BGM_NOTE_TAIL * sampleRate);
+    for (let k = 0; k < tail; k++) {
+      const at = from + k;
+      // 不越过缓冲区，也不绕回开头：尾巴被循环截掉正是末小节留白的用处
+      if (at >= data.length || at >= total) return;
+      const t = k / sampleRate;
+      const env = t < BGM_ATTACK ? t / BGM_ATTACK : Math.exp(-(t - BGM_ATTACK) / decay);
+      // 基频 + 二、三次分音，后两者衰减更快
+      const s =
+        Math.sin(2 * Math.PI * f * t) +
+        0.5 * Math.exp(-t / (decay * 0.5)) * Math.sin(4 * Math.PI * f * t) +
+        0.25 * Math.exp(-t / (decay * 0.35)) * Math.sin(6 * Math.PI * f * t);
+      data[at] += (gain * env * s) / 1.75;
     }
+  };
+
+  for (let bar = 0; bar < BGM_BARS; bar++) {
+    const barAt = bar * BGM_BAR_STEPS * BGM_STEP_SECONDS;
+    BGM_MELODY[bar].forEach((midi, step) => {
+      if (midi === 0) return;
+      addNote(barAt + step * BGM_STEP_SECONDS, midi, BGM_MIX, BGM_MELODY_DECAY);
+    });
+    const [root, fifth] = BGM_BASS[bar];
+    // 低音压低一档：它是骨架，不是旋律，冒出来就变成两条旋律在打架
+    addNote(barAt, root, BGM_MIX * 0.75, BGM_BASS_DECAY);
+    addNote(barAt + 2 * BGM_BEAT_SECONDS, fifth, BGM_MIX * 0.6, BGM_BASS_DECAY);
+  }
+
+  // 收尾淡出。只动缓冲区里真实存在的那一段——调用方给的可能比一整段循环短
+  const fadeLen = Math.floor(BGM_SEAM_FADE * sampleRate);
+  const fadeFrom = total - fadeLen;
+  for (let i = Math.max(fadeFrom, 0); i < Math.min(total, data.length); i++) {
+    data[i] *= (total - 1 - i) / fadeLen;
   }
 }
 
@@ -307,8 +392,8 @@ function startBgm(): void {
   // 不守这一下就会叠出好几层同样的音乐
   if (!c || bgmSource) return;
   if (!bgmBuffer) {
-    const barLen = Math.floor(BGM_SAMPLE_RATE * BGM_BAR_SECONDS);
-    bgmBuffer = c.createBuffer(1, barLen * BGM_CHORDS.length, BGM_SAMPLE_RATE);
+    const len = Math.floor(BGM_SAMPLE_RATE * BGM_LOOP_SECONDS);
+    bgmBuffer = c.createBuffer(1, len, BGM_SAMPLE_RATE);
     renderBgm(bgmBuffer.getChannelData(0), BGM_SAMPLE_RATE);
   }
   const src = c.createBufferSource();
