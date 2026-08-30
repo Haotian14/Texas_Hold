@@ -14,7 +14,7 @@ import {
 } from '../reviewModel';
 import { ACTION_TEXT } from '../format';
 import { ReviewDecision } from '../components/ReviewDecision';
-import { OpponentCards } from '../components/OpponentCards';
+import { HandCards } from '../components/HandCards';
 import { Button } from '../components/ui/button';
 import { QuickToggles } from '../components/QuickToggles';
 import { cn } from '../lib/utils';
@@ -203,10 +203,11 @@ export function ReviewPage({
               ))
             )}
 
-            {/* 对手底牌只在这里**展示**，不参与任何判定（见 review 的红线）。
-                放在正文末尾而不是右栏顶部：它是「看完结论之后再对答案」的东西，
-                摆在结论之前会诱导人用底牌反推该怎么打。 */}
-            <OpponentCards record={record} />
+            {/* 本手牌面（公共牌 + 所有人的底牌）只在这里**展示**，不参与任何
+                判定（见 review 的红线）。放在正文末尾而不是右栏顶部：它是
+                「看完结论之后再对答案」的东西，摆在结论之前会诱导人用底牌
+                反推该怎么打。 */}
+            <HandCards record={record} />
           </div>
 
           <div className="rvp-actions">

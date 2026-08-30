@@ -1283,41 +1283,69 @@ body {
   border-color: rgba(24, 148, 90, 0.22);
 }
 
-.opp-cards {
+/* 复盘页的「本手牌面」（.hc-*）。前身是只画对手两张牌的 .opp-*，
+   加进公共牌与 hero 之后那套名字就不成立了，整组一起改掉，不留死规则。 */
+.hc {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 
-.opp-cards-title {
+.hc-title {
   font-size: 11px;
   color: var(--text-dim);
   margin-bottom: 8px;
 }
 
-.opp-row {
+.hc-row {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 3px 0;
 }
 
-.opp-pos {
+/* 位置列定宽，五行加公共牌那行的牌**竖着对齐**——这一页是拿来横向比牌的，
+   对不齐就得一行行找起点。「公共牌」三个字是这一列里最宽的内容，宽度按它定。 */
+.hc-pos {
   font-size: 10.5px;
   color: var(--text-dim);
-  width: 36px;
+  width: 42px;
+  flex: none;
 }
 
-.opp-hand {
+.hc-hand {
   display: flex;
   gap: 3px;
 }
 
-.opp-folded {
+/* 公共牌与下面五行之间划一道线：它不是第六个人，是这五手牌共用的牌面 */
+.hc-board {
+  padding-bottom: 7px;
+  margin-bottom: 4px;
+  border-bottom: 1px dashed var(--line);
+}
+
+/* hero 那一行淡淡地垫一层底。在一列位置标记里找「哪个是我」不该要读一遍 */
+.hc-hero {
+  background: color-mix(in srgb, var(--accent-foreground) 6%, transparent);
+  border-radius: 6px;
+  padding-left: 4px;
+  margin-left: -4px;
+}
+
+.hc-you {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-foreground);
+  letter-spacing: 0.02em;
+}
+
+/* 弃牌的行整体退后一层，牌本身仍在——复盘要看的正是「他拿这手牌为什么弃」 */
+.hc-folded {
   opacity: 0.45;
 }
 
-.opp-note {
+.hc-note {
   font-size: 10.5px;
   color: var(--text-dim);
 }
