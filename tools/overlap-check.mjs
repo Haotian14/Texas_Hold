@@ -38,7 +38,26 @@ const SELECTORS = [
   // overflow: hidden，nowrap 的长文本会直接画到状态标记和右边那组图标上
   // （320px 上实测过）。祖先-后代对已排除，所以 .topbar 与它们不会互报。
   '.topbar-text', '.topbar-flags', '.quick-toggles',
+  // 座位胶囊**内部**的几块。庄家钮是 .seat-info 的子元素，而祖先-后代对被
+  // 排除，所以它压住胶囊里的名字/位置标签时一直查不出来——放大庄家钮之后
+  // 它盖住了 hero 的 BTN 标签 8px，是靠肉眼看截图才发现的。
+  '.seat-badge', '.seat-name', '.seat-pos', '.seat-stack',
+  // 动作条内部。预设 + 滑块 + 金额框在窄屏上会互相顶，金额框曾被顶出面板
+  // 30px 再被视口切掉（屏幕上是「$120 | 最」）。
+  '.preset', '.raise-amount-box',
 ];
+
+/**
+ * 有意的层叠，不算遮挡。
+ *
+ * 只有一对：庄家钮搭在头像方块上。设计稿里那枚圆徽章就是「脱开胶囊、浮在
+ * 外侧」的，和头像叠一角正是它的层次感来源。头像是纯装饰的色块（首字那个
+ * 字母另有 aria 名字在胶囊上），盖住一角不丢信息。
+ *
+ * **这个清单只放这一类：盖住装饰可以，盖住文字不行。** 任何一条想加进来的
+ * 新规则，先问它盖住的是不是文字——是的话那就是缺陷，不是例外。
+ */
+const ALLOWED = [['.dealer-btn', '.seat-badge']];
 
 const browser = await chromium.launch(exe ? { executablePath: exe } : {});
 const ctx = await browser.newContext({ viewport: { width: WIDTH, height: HEIGHT || 844 } });
@@ -51,7 +70,7 @@ const eq = page.getByRole('button', { name: '显示胜率' });
 if (await eq.count()) await eq.first().click();
 
 async function measure(label) {
-  return page.evaluate(({ SELECTORS, label }) => {
+  return page.evaluate(({ SELECTORS, label, ALLOWED }) => {
     const nodes = [];
     for (const sel of SELECTORS) {
       for (const el of document.querySelectorAll(sel)) {
@@ -69,6 +88,9 @@ async function measure(label) {
         const a = nodes[i], b = nodes[j];
         // 祖先-后代不算遮挡
         if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
+        // 有意的层叠跳过（见 ALLOWED 的说明）
+        if (ALLOWED.some(([x, y]) =>
+          (a.sel === x && b.sel === y) || (a.sel === y && b.sel === x))) continue;
         const x = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left);
         const y = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
         if (x <= 0.5 || y <= 0.5) continue;
@@ -84,7 +106,7 @@ async function measure(label) {
       }
     }
     return hits;
-  }, { SELECTORS, label });
+  }, { SELECTORS, label, ALLOWED });
 }
 
 /** 也检查有没有元素被挤出视口 */
