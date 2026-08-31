@@ -37,7 +37,7 @@ interface RunResult {
   multiPotHands: number;
   /** 断言 6（动作条模型对照）实际执行过的 hero 行动次数 */
   heroActionCount: number;
-  /** 断言 6 补充（raise 金额 min/max/presets dry run）实际执行过的次数 */
+  /** 断言 6 补充（raise 金额 min/max/中间点 dry run）实际执行过的次数 */
   raiseAmountChecks: number;
   final: HandSessionState;
 }
@@ -91,14 +91,25 @@ function run(cfg: SessionConfig, hands: number, rebuyTarget: number): RunResult 
         expect(model.raise !== null).toBe(legalTypes.has('bet') || legalTypes.has('raise'));
         expect(model.allin !== null).toBe(legalTypes.has('allin'));
 
-        // 断言 6 补充：UI 真正提交的是 model.raise 里的金额（min/max/预设档），
-        // 不是动作类型。这里把这些金额真的走一遍 applyHero，而不只是确认
-        // 「raise 类型可用」。用 s（当前状态，此时还未被脚本的真实动作推进）
-        // 起一次性 dry run：applyHero/advance 都是纯函数，不会修改传入的
-        // state，也不会影响下面 s = applyHero(s, action, cfg) 的主轨迹。
+        // 断言 6 补充：UI 真正提交的是一个**金额**，不是动作类型。这里把动作
+        // 条能提交的金额真的走一遍 applyHero，而不只是确认「raise 类型可用」。
+        // 用 s（当前状态，此时还未被脚本的真实动作推进）起一次性 dry run：
+        // applyHero/advance 都是纯函数，不会修改传入的 state，也不会影响下面
+        // s = applyHero(s, action, cfg) 的主轨迹。
+        //
+        // 取样点是 min、max 与区间四等分的三个内点：动作条的加价步进器
+        // （+$40 / +$100 / …，见 ui/components/ActionBar.tsx）每一步都夹回
+        // [min, max]，所以它能提交的金额是这个闭区间的一个子集——对整个区间
+        // 取样是比枚举按钮更强的断言，而且不会随按钮档位改动而失效。
+        // 内点刻意不落在 0.5 的整数倍网格上（round2 之后仍是零散小数），
+        // 引擎必须原样接受，不能只认整档金额。
         if (model.raise) {
-          const { type: raiseType, min, max, presets } = model.raise;
-          const amounts = [min, max, ...presets.map(p => p.amount)];
+          const { type: raiseType, min, max } = model.raise;
+          const span = max - min;
+          const interior = [0.25, 0.5, 0.75]
+            .map(f => round2(min + span * f))
+            .filter(v => !chipsGreater(min, v) && !chipsGreater(v, max));
+          const amounts = [min, max, ...interior];
           for (const amount of amounts) {
             expect(
               () => applyHero(s, { type: raiseType, amount }, cfg),

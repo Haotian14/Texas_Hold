@@ -1,15 +1,12 @@
 import type { GameState } from '../core/types';
 import { HERO_SEAT } from '../core/types';
-import { legalActions, currentPot, round2, chipsGreater } from '../core/gameEngine';
-import { betInvestment } from '../core/evEstimate';
+import { legalActions, round2 } from '../core/gameEngine';
 
 export interface RaiseModel {
   /** 最小投入额，直接取自 legalActions */
   min: number;
   /** 最大投入额，直接取自 legalActions（等于 hero 剩余筹码） */
   max: number;
-  /** 快捷尺度。超出 [min,max] 的档位不会出现在这里 */
-  presets: { label: string; amount: number }[];
   /**
    * hero 本街已投入额。上面三个字段全是**本次投入额**（引擎的口径，见
    * gameEngine 的 ActionInput 注释），而动作条上写的是「加注到 X」——两者
@@ -25,16 +22,9 @@ export interface ActionBarModel {
   fold: boolean;
   passive: { type: 'check' } | { type: 'call'; amount: number } | null;
   raise: ({ type: 'bet' | 'raise' } & RaiseModel) | null;
-  /** 全下是独立字段而不是 presets 的一档：它需要二次确认，其他档位不需要 */
+  /** 全下是独立字段而不是加注区间的一个端点：它需要二次确认，其他额度不需要 */
   allin: { amount: number } | null;
 }
-
-const PRESET_FRACTIONS: readonly { label: string; f: number }[] = [
-  { label: '1/3 池', f: 1 / 3 },
-  { label: '1/2 池', f: 1 / 2 },
-  { label: '2/3 池', f: 2 / 3 },
-  { label: '满池', f: 1 },
-];
 
 const DISABLED: ActionBarModel = {
   enabled: false,
@@ -70,32 +60,18 @@ export function actionBarModel(state: GameState): ActionBarModel {
   if (checkAction) passive = { type: 'check' };
   else if (callAction) passive = { type: 'call', amount: callAction.min };
 
-  let raise: ActionBarModel['raise'] = null;
-  if (raiseAction) {
-    // 尺度换算走 core 的 betInvestment，不在这里另写一遍公式——它同时是
-    // EV 引擎候选尺度、AI 出牌尺度与复盘判定（bet_size_too_small /
-    // _too_large 按 investment 就近匹配候选档）的口径。这里曾经按「跟注后
-    // 的底池」算，比引擎多算一个 toCall：底池 $140、面对 $80 开池时按钮
-    // 给 $300 而引擎的「满池」是 $220，点着满池打出的是复盘引擎认不出的
-    // 尺度。同一个名字必须是同一个数。
-    const pot = currentPot(state);
-    const presets = PRESET_FRACTIONS.map(({ label, f }) => ({
-      label,
-      amount: betInvestment(pot, toCall, f),
-    })).filter(
-      // 落在界外的档位直接不出现，而不是夹到边界上：夹到 max 会变成一个
-      // 伪装成「1/2 池」的全下，而全下需要二次确认。宁可少给一个按钮。
-      p => !chipsGreater(raiseAction.min, p.amount) && !chipsGreater(p.amount, raiseAction.max),
-    );
-
-    raise = {
-      type: raiseAction.type as 'bet' | 'raise',
-      min: raiseAction.min,
-      max: raiseAction.max,
-      presets,
-      committed: seat.streetContribution,
-    };
-  }
+  // 这里曾经额外算一组底池比例档（1/3 池、1/2 池…）喂给动作条的预设按钮。
+  // 动作条换成加价步进器（+$40 / +$100 / …，见 ActionBar.tsx）之后没有消费
+  // 者了，连同 betInvestment 的调用一起删除——底池比例仍然是 EV 引擎候选
+  // 尺度与复盘判定的口径，那些在 core/evEstimate 里，不受这次改动影响。
+  const raise: ActionBarModel['raise'] = raiseAction
+    ? {
+        type: raiseAction.type as 'bet' | 'raise',
+        min: raiseAction.min,
+        max: raiseAction.max,
+        committed: seat.streetContribution,
+      }
+    : null;
 
   return {
     enabled: true,
