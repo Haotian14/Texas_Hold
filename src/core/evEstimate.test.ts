@@ -6,7 +6,7 @@ import { parseRange } from './rangeNotation';
 import { fullRange, rangeCombos } from './rangeSet';
 import type { RangeSet } from './rangeSet';
 import type { Situation } from './situation';
-import { estimateEv } from './evEstimate';
+import { estimateEv, betInvestment } from './evEstimate';
 import { equityVsRanges, InfeasibleSamplingError } from './equity';
 import { rankRange, topFraction } from './rangeStrength';
 import * as rangeStrengthModule from './rangeStrength';
@@ -730,5 +730,23 @@ describe('estimateEv hero 自己的底牌 + 公共牌就能把对手范围挤空
     for (const c of r.candidates) {
       expect(Number.isFinite(c.ev)).toBe(true);
     }
+  });
+});
+
+describe('betInvestment（全项目唯一的尺度换算点）', () => {
+  // pot 是**跟平之前**的底池。这条断言原来挂在动作条的快捷档位上
+  // （session/actionBarModel.test.ts），动作条换成加价步进器之后档位没了，
+  // 断言搬到公式本身这里——它守的是一个真出过的口径 bug：曾经按「跟注后
+  // 的底池」计价（toCall + f × (pot + toCall)），翻前面对 2BB 开池时算出
+  // 7.5BB 而不是 5.5BB，是正确值的 1.4 倍。
+  it('翻前面对 2BB 开池：满池 = 5.5BB（底池 3.5 + 欠注 2），不是 7.5BB', () => {
+    // 底池 3.5 = SB 0.5 + BB 1 + 开池 2；hero 在 BTN，欠注 2
+    expect(betInvestment(3.5, 2, 1)).toBeCloseTo(5.5, 2);
+    expect(betInvestment(3.5, 2, 1 / 2)).toBeCloseTo(3.75, 2);
+  });
+
+  it('无人下注时退化成「下注 f 倍底池」', () => {
+    expect(betInvestment(10, 0, 1)).toBeCloseTo(10, 2);
+    expect(betInvestment(10, 0, 1 / 3)).toBeCloseTo(3.33, 2);
   });
 });

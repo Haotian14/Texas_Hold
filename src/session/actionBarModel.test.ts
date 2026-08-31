@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { startHand, applyAction, legalActions } from '../core/gameEngine';
-import { HERO_SEAT, SEAT_COUNT } from '../core/types';
+import { HERO_SEAT } from '../core/types';
 import type { GameState } from '../core/types';
-import { betInvestment } from '../core/evEstimate';
 import { actionBarModel } from './actionBarModel';
 
 /** 把牌局推进到指定座位行动为止，途中所有人都用 fold 以外的最省事动作 */
@@ -50,79 +49,7 @@ describe('actionBarModel', () => {
     expect(m.raise!.max).toBe(legalRaise!.max);
   });
 
-  it('快捷尺度全部落在 [min, max] 内，落不进去的档位不出现', () => {
-    let checkedCount = 0;
-    for (let button = 0; button < SEAT_COUNT; button++) {
-      const s = advanceTo(startHand({ seed: `abm-p${button}`, buttonSeat: button }), HERO_SEAT);
-      const m = actionBarModel(s);
-      if (!m.raise) continue;
-      checkedCount++;
-      for (const p of m.raise.presets) {
-        expect(p.amount).toBeGreaterThanOrEqual(m.raise.min);
-        expect(p.amount).toBeLessThanOrEqual(m.raise.max);
-      }
-    }
-    // 保证这次真的检查过至少一个存在 raise 的局面，而不是六个座位全都没有
-    // raise、导致上面的循环体从未执行、测试静默通过。
-    expect(checkedCount).toBeGreaterThanOrEqual(1);
-  });
-
-  it('快捷尺度与 EV 引擎同口径：投入额 = toCall + f × pot（跟平前的底池）', () => {
-    const s = advanceTo(startHand({ seed: 'abm-4', buttonSeat: 0 }), HERO_SEAT);
-    const m = actionBarModel(s);
-    expect(m.raise).not.toBeNull();
-
-    const seat = s.seats[HERO_SEAT];
-    const toCall = s.currentBet - seat.streetContribution;
-    const pot = s.seats.reduce((a, x) => a + x.totalContribution, 0);
-
-    const FRACTIONS: Record<string, number> = {
-      '1/3 池': 1 / 3,
-      '1/2 池': 1 / 2,
-      '2/3 池': 2 / 3,
-      '满池': 1,
-    };
-
-    // 对 presets 里实际存在的每一档都按公式断言，而不只挑 1/2 池；
-    // 并保证至少检查过一档，避免「一档都没出现」被静默放过。
-    let checkedCount = 0;
-    for (const p of m.raise!.presets) {
-      const f = FRACTIONS[p.label];
-      expect(f).toBeDefined();
-      // 直接对 betInvestment 断言：档位金额的唯一权威是它，这条测试同时
-      // 钉住「动作条不自己另算一遍」。
-      expect(p.amount).toBeCloseTo(betInvestment(pot, toCall, f), 2);
-      checkedCount++;
-    }
-    expect(checkedCount).toBeGreaterThanOrEqual(1);
-  });
-
-  // 回归：动作条曾按「跟注后的底池」计价（toCall + f × (pot + toCall)），
-  // 比 EV 引擎多算一个 toCall。翻前面对一个 2BB 开池时那是 7.5BB 而不是
-  // 5.5BB——按钮写着「满池」，打出去的却是引擎口径的 1.4 倍。
-  it('翻前面对 2BB 开池：满池档是 5.5BB（pot 3.5 + toCall 2），不是 7.5BB', () => {
-    let s = startHand({ seed: 'abm-pot', buttonSeat: 1 });
-    // 推进到 hero（座位 0，此局在 BTN）行动：前面几家全弃，只留开池的那家。
-    // 找到第一个能加注的座位让它开到 2BB，其余弃牌。
-    const opener = s.toAct!;
-    const raise = legalActions(s).find(a => a.type === 'raise' || a.type === 'bet');
-    expect(raise).toBeDefined();
-    // 「开到 2BB」= 本次投入 2 − 已投入（开池者若在盲注位则要减掉盲注）
-    const openTo = 2 - s.seats[opener].streetContribution;
-    s = applyAction(s, { type: raise!.type, amount: openTo });
-    while (s.toAct !== HERO_SEAT) s = applyAction(s, { type: 'fold' });
-
-    const pot = s.seats.reduce((a, x) => a + x.totalContribution, 0);
-    const toCall = s.currentBet - s.seats[HERO_SEAT].streetContribution;
-    expect(pot).toBeCloseTo(3.5, 2);   // SB 0.5 + BB 1 + 开池 2
-    expect(toCall).toBeCloseTo(2, 2);
-
-    const full = actionBarModel(s).raise!.presets.find(p => p.label === '满池');
-    expect(full).toBeDefined();
-    expect(full!.amount).toBeCloseTo(5.5, 2);  // 旧口径会给 2 + 1×5.5 = 7.5
-  });
-
-  // 引擎的 raise.min/max/presets.amount 全是**本次投入额**（见 gameEngine 的
+  // 引擎的 raise.min/max 都是**本次投入额**（见 gameEngine 的
   // ActionInput 注释），而动作条上那颗按钮写的是「加注到 X」——两者相差 hero
   // 本街已投入的部分。committed 就是这个差额，交给 UI 拼出「加注到」的总额，
   // 免得它自己去 state 里取（src/ui 不得从引擎取值）。
@@ -138,20 +65,24 @@ describe('actionBarModel', () => {
     expect(m.raise!.committed).toBe(seat.streetContribution);
 
     // 「加注到」的总额必须等于本街最终投入，且严格大于场上当前下注额——
-    // 一次合法的加注不可能加到比现有下注还低的位置。
-    for (const p of m.raise!.presets) {
-      expect(m.raise!.committed + p.amount).toBeGreaterThan(s.currentBet);
+    // 一次合法的加注不可能加到比现有下注还低的位置。动作条能选的额度全部
+    // 落在 [min, max] 里（步进器每一步都夹回这个区间），所以钉住两端即可。
+    for (const amount of [m.raise!.min, m.raise!.max]) {
+      expect(m.raise!.committed + amount).toBeGreaterThan(s.currentBet);
     }
   });
 
-  it('all-in 是独立字段，不混在 presets 里', () => {
+  // all-in 单独一个字段，而不是让 UI 自己从 raise.max 推——动作条要靠它
+  // 把主按钮文案换成「全下 $X」（那一下需要用户明确看见），推来的值一旦
+  // 与引擎的 allin.min 有一分钱出入，二次确认就会在该出现时不出现。
+  it('all-in 是独立字段，金额等于 hero 剩余筹码', () => {
     const s = advanceTo(startHand({ seed: 'abm-5', buttonSeat: 0 }), HERO_SEAT);
     const m = actionBarModel(s);
     expect(m.raise).not.toBeNull();
-    expect(m.raise!.presets.some(p => p.label.includes('全下'))).toBe(false);
-    expect(m.raise!.presets.some(p => p.label.toLowerCase().includes('allin'))).toBe(false);
     expect(m.allin).not.toBeNull();
     expect(m.allin!.amount).toBe(s.seats[HERO_SEAT].stack);
+    // 两者恒等是动作条判定「当前额度已经是全下」的前提（见 ActionBar.tsx）
+    expect(m.raise!.max).toBe(m.allin!.amount);
   });
 
   it('手牌结束后禁用', () => {

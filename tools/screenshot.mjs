@@ -16,6 +16,14 @@ import { chromium } from 'playwright';
  * 解析（本机 `npx playwright install` 装过就能直接跑）。
  */
 const out = process.argv[2];
+// 不给输出目录就明确报错。不加这一条时它会把图写进字面量目录 `undefined/`
+// 并打印「截图完成 -> undefined」——看起来是成功的，而且会在仓库里留下一个
+// 谁也不知道从哪来的目录（真踩过）。同 tools/overlap-all.sh 那条：
+// 「没有报告问题」和「没有跑对」必须长得不一样。
+if (!out) {
+  console.error('用法：node tools/screenshot.mjs <输出目录>');
+  process.exit(1);
+}
 const base = process.env.PREVIEW_URL ?? 'http://127.0.0.1:4173/';
 
 const exe = process.env.PLAYWRIGHT_CHROMIUM;
