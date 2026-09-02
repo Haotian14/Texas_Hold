@@ -110,7 +110,7 @@ export function ActionBar({
       {model.raise && (
         <div className="raise-panel">
           {/* 尺寸全部由 --u 推出来，不用组件自带的固定档。--u 是牌桌的比例
-              单位（见 app.css 的 .app-main > *）——整条动作条跟着牌桌缩放，
+              单位（见 styles/table.css 的 .app-main > *）——整条动作条跟着牌桌缩放，
               换成固定像素会让它在手机上和牌桌脱节 */}
           {RAISE_STEP_CHIPS.map(step => {
             const next = round2(clamped + step / CHIPS_PER_BB);

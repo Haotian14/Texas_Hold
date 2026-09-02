@@ -1,0 +1,222 @@
+/* ───────── 设置页（③-D-3，规格 §10.6） ───────── */
+
+/* 版式抄 .rep：同一套外边距、同一条滚动容器规则，两页并排看不出是两个人写的 */
+.set {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px calc(18px + var(--safe-bottom));
+}
+
+.set-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.set-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* 一组设置项。卡片外观与 .rep-card 一致 */
+/* flex: none 的理由同 .hr-list：.set 是 flex 列容器且自己滚，子项默认会被
+   压扁，而这张卡为了圆角开了 overflow: hidden，压扁就等于裁掉内容。
+   目前设置页的内容装得下，所以看不出来——但这是个只等内容变多就会犯的错。 */
+.set-group {
+  flex: none;
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+}
+.set-group-title {
+  margin: 0;
+  padding: 10px 14px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+/* 一行一项。行与行之间只有一条极细线，没有间距——设置项是一张连续的表，
+   不是一堆独立卡片 */
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--line);
+  min-height: 44px; /* 触摸目标下限 */
+}
+.set-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.set-row-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.set-row-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.set-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+  flex: none;
+}
+
+/* 开关。原生 checkbox 用 appearance: none 剥掉默认外观后自己画，
+   :checked 的样式因此不需要任何 JS 参与 */
+
+/* 二选一的分段控件 */
+
+/* <input type=file> 自带的按钮样式没法改，藏起来，用外面的 <label> 当按钮。
+   label 包着 input，点它等价于点 input，不需要任何 JS。 */
+
+/* 不可撤销的动作用红字而不是红底：红底按钮在一页设置里太吵，
+   而这颗按钮的危险性来自它做的事，不来自它的面积 */
+
+.set-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--blue-soft);
+  border: 1px solid rgba(47, 111, 237, 0.22);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+/* ───────── 牌型大小对照（新手速查） ───────── */
+
+/* 版式与设置页同一套：整页可滚、卡片化的分组、页头带一颗齿轮。
+   它是一张速查表，不是一个功能页——没有任何交互，翻开就看。 */
+.hr {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px calc(18px + var(--safe-bottom));
+}
+.hr-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.hr-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.hr-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* flex: none 是必须的，不是保险。
+   .hr 是 flex 列容器且自己开了 overflow-y: auto，子项默认 flex-shrink: 1——
+   内容一超高，这张卡就被**压扁**，而它为了圆角开了 overflow: hidden，于是
+   直接把后面几档牌型裁掉（实测 360×688 上九档只画出三档），外层反而没有
+   溢出可滚。让它保持自然高度，滚动才落到 .hr 身上。 */
+.hr-list {
+  flex: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+}
+.hr-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.hr-row + .hr-row {
+  border-top: 1px solid var(--line);
+}
+/* 序号只是"第几大"的视觉锚点，不带别的含义，所以做成一枚安静的灰色圆片。
+   它是 aria-hidden 的：读屏用户从 <ol> 的列表语义里已经知道这是第几项。 */
+.hr-seq {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--soft);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.hr-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.hr-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+/* 五张牌一排。窄屏上允许换行——牌面尺寸跟着 --u 走，360px 上五张 md 牌
+   约 155px，装得下；但点数位数与屏宽都会变，留一个换行的退路比裁掉强。 */
+.hr-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(0.4 * var(--u));
+}
+.hr-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.hr-tail {
+  flex: none;
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hr-tail-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.hr-tail-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+}

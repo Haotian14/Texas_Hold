@@ -17,7 +17,7 @@ export type PageId = 'table' | 'review' | 'history' | 'report' | 'settings' | 'h
  * 主导航。
  *
  * 一份 DOM 两种版式：宽屏是设计稿那条 190px 左侧栏，窄屏折成**底部**的一条
- * 标签栏（全部由 CSS 控制，见 app.css 的 .nav）。写成两套 DOM 再按屏宽二选一
+ * 标签栏（全部由 CSS 控制，见 styles/shell-history.css 的 .nav）。写成两套 DOM 再按屏宽二选一
  * 的话，两边的可访问性属性、选中态、键盘顺序都得各维护一遍。
  *
  * 手机上放底部而不是顶部：牌桌页的纵向空间全靠顶上那一条让出来，而拇指

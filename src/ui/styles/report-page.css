@@ -1,0 +1,265 @@
+/* ───────── 报表页（③-D 首个入口，规格 §10.5，对应设计稿 Progress 屏） ───────── */
+
+.rep {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px calc(18px + var(--safe-bottom));
+}
+
+.rep-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.rep-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.rep-win {
+  display: flex;
+  gap: 5px;
+}
+/* 窄屏上让四个窗口档位自己占一行，把首行留给「报表」和右上角的齿轮。
+   .rep-head 是 flex-wrap: wrap，不这么排的话四颗按钮会把首行填满，齿轮被
+   挤到第二行的右端——孤零零挂在那里，看不出它属于页头。 */
+@media (max-width: 520px) {
+  .rep-win {
+    order: 1;
+    flex-basis: 100%;
+  }
+}
+/* 「库里共 N 手」——partial 不是空态，选了大窗口的新用户要看得到报表，
+   这里只提醒实际手数比窗口小 */
+.rep-partial-note {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+/* 回填没成功：正常渲染，只在页头挂一句提醒，不挡内容 */
+.rep-backfill-note {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warn);
+}
+
+.rep-empty {
+  margin: 24px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+/* 卡片外观抄 .hist-row：同一圆角、同一条边线、同一层阴影，不另调一套 */
+.rep-card {
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+}
+
+.rep-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.rep-kpi {
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+  padding: 13px 14px;
+}
+.rep-kpi-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 5px;
+}
+.rep-kpi-value {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.rep-kpi-value-positive { color: var(--positive); }
+.rep-kpi-value-negative { color: var(--danger); }
+.rep-kpi-unit {
+  margin-left: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.rep-main {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 10px;
+  /* 两栏等高（默认 stretch）：左栏曲线卡跟右栏三张小卡叠起来的高度看齐，
+     不再各自撑到自己内容的高度——设计稿就是两栏齐平。 */
+}
+
+.rep-card-title {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.rep-curve-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  /* grid 行拉伸出来的高度是明确值，flex:1 的 SVG 才有多余空间可撑——
+     min-height:0 是必须的，不然 flex 子项按内容最小高度撑破容器。 */
+  min-height: 0;
+}
+.rep-curve-svg {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+.rep-curve-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  padding-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.rep-trend {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.rep-bars-card,
+.rep-pos-card {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.rep-side-empty {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.rep-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rep-bar-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+}
+.rep-bar-name {
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rep-bar-count {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.rep-bar-amount {
+  margin-left: auto;
+  flex: none;
+  color: var(--danger);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.rep-bar-track {
+  height: 5px;
+  border-radius: 99px;
+  background: var(--soft);
+  overflow: hidden;
+}
+.rep-bar-fill {
+  height: 100%;
+  background: var(--danger);
+  border-radius: 99px;
+  opacity: 0.85;
+}
+
+.rep-pos-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+}
+.rep-pos-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-faint);
+}
+.rep-pos-dot-positive { background: var(--positive); }
+.rep-pos-dot-negative { background: var(--danger); }
+.rep-pos-name {
+  width: 34px;
+  flex: none;
+  color: var(--text-2);
+  font-weight: 600;
+}
+.rep-pos-rate {
+  margin-left: auto;
+  color: var(--text);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-note,
+/* 复盘页印的是同一句话，样式也共用一条规则——两处分头调字号会让同一句
+   说明在两页上看起来像两回事 */
+.rvp-note {
+  margin: 4px 0 0;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+@media (max-width: 520px) {
+  .rep {
+    padding: 12px 12px calc(14px + var(--safe-bottom));
+  }
+  .rep-kpis {
+    grid-template-columns: 1fr;
+  }
+  .rep-main {
+    grid-template-columns: 1fr;
+  }
+  /* 单栏堆叠之后不再有"跟右栏对齐"这回事——grid 单列的行高就是内容自身
+     高度，flex:1 在这种未定高的容器里没有基准可撑，退回固定高度。 */
+  .rep-curve-card {
+    min-height: auto;
+  }
+  .rep-curve-svg {
+    flex: none;
+    height: 150px;
+  }
+}

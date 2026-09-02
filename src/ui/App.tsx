@@ -2,14 +2,10 @@ import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import type { ActionInput } from '../core/gameEngine';
 import { HERO_SEAT } from '../core/types';
 import { chipsGreater, round2 } from '../core/chips';
-import { playSound, soundFor, isMuted, setMuted, isBgmOn, setBgmOn, unlockAudio } from './sound';
+import { playSound, soundFor, unlockAudio } from './sound';
 import {
   startSession,
-  stepAi,
-  applyHero,
-  nextHand,
   heroNeedsRebuy,
-  rebuyHero,
   isDeepStackHand,
   REBUY_OPTIONS,
 } from '../session/handSession';
@@ -18,14 +14,6 @@ import { heroNet } from '../session/ledger';
 import { actionBarModel } from '../session/actionBarModel';
 import { heroEquityNow } from '../session/heroEquity';
 import type { HeroEquity } from '../session/heroEquity';
-import {
-  showEquityPref, setShowEquityPref,
-  fastModePref, setFastModePref,
-  vibratePref, setVibratePref,
-  autoReviewPref, setAutoReviewPref,
-  aiModePref, setAiModePref,
-} from './prefs';
-import type { AiMode } from './prefs';
 import { TopBar } from './components/TopBar';
 import { Table } from './components/Table';
 import { HeroHand } from './components/HeroHand';
@@ -49,6 +37,8 @@ import { SettingsPage } from './pages/SettingsPage';
 import { HandRanksPage } from './pages/HandRanksPage';
 import type { StoredHand } from '../storage/schema';
 import type { HandRecord } from '../core/types';
+import { sessionReducer } from './sessionReducer';
+import { useAppPreferences, VIBRATE_MS } from './hooks/useAppPreferences';
 
 /**
  * 复盘页当前在看哪一手。
@@ -61,8 +51,8 @@ import type { HandRecord } from '../core/types';
 type ReviewTarget = { kind: 'live' } | { kind: 'stored'; hand: StoredHand };
 
 const CFG: SessionConfig = {
-  // 每次刷新换一局。③-C 会把 seed 一并持久化，届时刷新可续上。
-  seed: `s${Date.now()}`,
+  // 正常使用每次刷新换一局；E2E 通过构建环境注入固定 seed，验证刷新可复现。
+  seed: import.meta.env.VITE_FIXED_SEED?.trim() || `s${Date.now()}`,
   now: Date.now,
 };
 
@@ -70,50 +60,25 @@ const CFG: SessionConfig = {
 const THINK_MIN = 300;
 const THINK_MAX = 600;
 
-/** 「轮到我时震动」的时长（毫秒）。够察觉，不至于像来电 */
-const VIBRATE_MS = 30;
-
-/**
- * cfg 随动作传进来，不由 reducer 从模块作用域里取。
- *
- * 设置页能改 SessionConfig 的一部分（AI 模式），而 reducer 必须是纯的——
- * 让它去读一个会变的外部值，同一个 (state, action) 就不再对应同一个结果。
- * 传进来的是 App 每次渲染算好的那份 cfg，纯度因此保住了。rebuy 不带 cfg：
- * 补码只动筹码，不派生任何随机流。
- */
-type Action =
-  | { kind: 'stepAi'; cfg: SessionConfig }
-  | { kind: 'hero'; input: ActionInput; cfg: SessionConfig }
-  | { kind: 'nextHand'; cfg: SessionConfig }
-  | { kind: 'rebuy'; targetStack: number };
-
-function reducer(s: HandSessionState, a: Action): HandSessionState {
-  switch (a.kind) {
-    case 'stepAi':
-      // StrictMode 下 effect 会双跑，这个守卫让第二次成为无操作。
-      // stepAi 本身也是幂等的（派生 seed，不存有状态 Rng），
-      // 两道保险都要有：守卫防的是状态被推进两步。
-      return s.phase === 'aiToAct' ? stepAi(s, a.cfg) : s;
-    case 'hero':
-      return s.phase === 'awaitingHero' ? applyHero(s, a.input, a.cfg) : s;
-    case 'nextHand':
-      return s.phase === 'handOver' && !heroNeedsRebuy(s) ? nextHand(s, a.cfg) : s;
-    case 'rebuy':
-      return heroNeedsRebuy(s) ? rebuyHero(s, a.targetStack) : s;
-  }
-}
-
 export function App() {
-  const [muted, setMutedState] = useState(isMuted);
-  // 背景音乐。和静音一样存在 sound.ts 那边（播放路径要读它），这里只留一份
-  // 供设置页显示的镜像——两处各读一次会分叉，理由见 SettingsPage 顶部那段。
-  const [bgm, setBgmState] = useState(isBgmOn);
-  const [showEquity, setShowEquityState] = useState(showEquityPref);
-  // 设置页的四项。都存 localStorage（见 prefs.ts），默认值即现状行为。
-  const [fastMode, setFastModeState] = useState(fastModePref);
-  const [vibrate, setVibrateState] = useState(vibratePref);
-  const [autoReview, setAutoReviewState] = useState(autoReviewPref);
-  const [aiMode, setAiModeState] = useState<AiMode>(aiModePref);
+  const {
+    aiMode,
+    autoReview,
+    bgm,
+    fastMode,
+    muted,
+    showEquity,
+    vibrate,
+    onSetAiMode,
+    onSetAutoReview,
+    onSetBgm,
+    onSetFastMode,
+    onSetMuted,
+    onSetShowEquity,
+    onSetVibrate,
+    onToggleEquity,
+    onToggleMute,
+  } = useAppPreferences();
 
   // 每次渲染算一份 cfg 交给 dispatch。aiMode 变了就是一份新的 cfg，
   // 下一次 nextHand 才会用上——beginHand 是唯一读它的地方，所以切模式
@@ -124,7 +89,7 @@ export function App() {
   // **刷新后的第一手**就生效，传 CFG 的话第一手永远是随机原型池，只有从
   // 第二手起才对——一个只在第一手错的 bug，正是最难被看见的那种。
   // useReducer 的第二个参数只在首次渲染用，之后 cfg 再变也不会重新初始化。
-  const [state, dispatch] = useReducer(reducer, cfg, startSession);
+  const [state, dispatch] = useReducer(sessionReducer, cfg, startSession);
   /**
    * 算好的胜率。与它属于哪一步绑在一起（handIndex + stepIndex）——不绑的话，
    * 上一步算出来的数会在新局面上多显示一帧，而那一帧里它是错的。
@@ -180,58 +145,6 @@ export function App() {
       setStats(s);
       setStorageOk(storageStatus() !== 'unavailable');
     });
-  }, []);
-
-  const onToggleMute = useCallback(() => {
-    setMutedState(prev => {
-      const next = !prev;
-      setMuted(next);
-      return next;
-    });
-  }, []);
-
-  const onToggleEquity = useCallback(() => {
-    setShowEquityState(prev => {
-      const next = !prev;
-      setShowEquityPref(next);
-      return next;
-    });
-  }, []);
-
-  // 设置页的开关走「设值」而不是「取反」：那一页显示的是当前值，用户点的是
-  // 一个明确的目标状态，取反语义会在两处状态不同步时给出反直觉的结果。
-  const onSetShowEquity = useCallback((v: boolean) => {
-    setShowEquityState(v);
-    setShowEquityPref(v);
-  }, []);
-  const onSetMuted = useCallback((v: boolean) => {
-    setMutedState(v);
-    setMuted(v);
-  }, []);
-  const onSetBgm = useCallback((v: boolean) => {
-    setBgmState(v);
-    // setBgmOn 自己会把音乐起来或收掉（静音时它什么都不放），
-    // 这里不需要、也不该再碰播放
-    setBgmOn(v);
-  }, []);
-  const onSetFastMode = useCallback((v: boolean) => {
-    setFastModeState(v);
-    setFastModePref(v);
-  }, []);
-  const onSetVibrate = useCallback((v: boolean) => {
-    setVibrateState(v);
-    setVibratePref(v);
-    // 打开时立刻震一下：这是唯一能让用户确认「这台设备真的会震」的反馈，
-    // 否则要等到下一次轮到自己才知道开关有没有用。
-    if (v) navigator.vibrate?.(VIBRATE_MS);
-  }, []);
-  const onSetAutoReview = useCallback((v: boolean) => {
-    setAutoReviewState(v);
-    setAutoReviewPref(v);
-  }, []);
-  const onSetAiMode = useCallback((v: AiMode) => {
-    setAiModeState(v);
-    setAiModePref(v);
   }, []);
 
   /** 重置数据之后：统计归零、存储状态重新问一次。当前这局照常继续 */

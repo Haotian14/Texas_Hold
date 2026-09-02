@@ -1,0 +1,461 @@
+/* ───────── ③-C 导航壳与历史页 ───────── */
+
+/* .app 从"纵向一列"变成"横向两块"：左边导航，右边整页内容。
+   窄屏下面的媒体查询把它折回纵向（导航变成顶部一条）。 */
+.app {
+  flex-direction: row;
+}
+
+/*
+ * ===== 比例尺 =====
+ *
+ * 牌桌上所有尺寸都用 --u 表示，1u = 牌桌宽度的 1%。设计稿是按 900px 宽的
+ * 牌桌画的，所以「设计稿的 N px」在这里写成 calc(N / 9 * 1u)——桌子多宽，
+ * 头像、牌、字号就一起按比例走，不必为每个断点再抄一份像素表。
+ *
+ * 下限 7px 不是审美，是因为纯比例在手机上会崩：373px 宽的屏上 1u = 3.7px，
+ * 40px 的头像缩到 16px、名字缩到 5px，谁也读不出来。设计稿自己也是这么处理
+ * 的——它的 H5 版把头像按比例放大回去（28px 对 366px 的台面，相对尺寸是
+ * Web 版的近两倍）。一个 max() 替代了那一整套断点覆盖。
+ *
+ * 结果：u 在 7px（手机）到 9px（桌面，牌桌 900px 封顶）之间，桌面渲染出来
+ * 与设计稿逐像素一致。
+ */
+/* 牌桌的比例尺 --u：**由可用空间推出来，不是常数**。
+
+   历经两版才对：
+   1. `max(7px, 牌桌宽/100)` —— 只看宽度。手机上宽度项算出来永远不到 7px，
+      于是恒等于下限 7px，牌桌再矮也按同一把尺子排版，公共牌压住两侧座位。
+   2. `max(5px, min(牌桌宽/100, 0.9cqh))` —— 补了高度项，遮挡解决了，但
+      **宽度项仍然是常数**：`牌桌宽/100` 是照 900px 桌面桌标定的，360px 屏上
+      只有 3.6px，被 5px 下限一顶，手机上又变回「恒等于 5px」，屏幕再大也不长。
+
+   现在两项都跟着屏幕走：
+
+   - `0.92cqh`（可用高度的 0.92%）是主驱动。手机上牌桌是竖高的，纵向才是紧的那
+     一维——座位靠纵向错开避免碰撞，高度决定了能塞多大。系数由实测反推：
+     用 tools/ 的探针把 --u 钉成固定值扫遍视口，量出「不遮挡的前提下 u 最大
+     能到多少」——320×568 是 6、360×640 与 360×688 是 7、414×736 是 7、
+     390×844 是 8，对可用高度几乎是线性的 u ≈ 0.011×H。取 1.0% 留出余量。
+   - `2.6cqw` 是横向兜底，只在**又宽又矮**的视口（横屏手机）上才会赢——那时
+     高度项会算得很小，而横向其实还很宽裕，反过来也一样。
+
+   clamp 的两端：5px 防止极端小窗口把点数缩到读不出；9px 是上限，保留桌面端
+   原来的观感（此前桌面实际拿到的是 7.2px，现在是 8px 上下）。 */
+.app-main > * {
+  --u: clamp(5px, min(0.92cqh, 2.6cqw), 9px);
+}
+
+/*
+ * 牌桌区限宽并居中，但**外壳不限**。
+ *
+ * 台面是 border-radius: 999px 的椭圆，宽高比一旦拉开就退化成一条跑道：
+ * 1800px 宽的视口上，不限宽的台面是一条两端半圆的长条，座位被扯到屏幕两侧，
+ * 中间的公共牌离谁都很远。限宽的是这一块，不是整个应用——顶栏、动作条、
+ * 历史页仍然铺满，那几块本来就是越宽越好用。
+ */
+.table,
+.hero,
+.bottom {
+  width: 100%;
+  max-width: 900px;
+  margin-inline: auto;
+}
+
+/*
+ * 台面还要限**高**，不能只限宽。
+ *
+ * .table 是 flex: 1，在 823px 高的视口上它会把纵向空间全吃掉，于是 900×720
+ * 的台面画出来是个正圆——座位被推到圆周上彼此隔得极远，中间一大片空白，
+ * 公共牌离谁都不近。1.6 的宽高比才是牌桌该有的样子。
+ *
+ * 限高之后 flex 列会剩下一段空隙。让 .bottom 用 margin-top: auto 吃掉它，
+ * 动作条因此始终贴底（拇指可达区，spec §10.2），空隙落在手牌与动作条之间。
+ */
+.table {
+  max-height: 580px;
+}
+/*
+ * 限高之后 flex 列会剩一段空隙。两个 margin-top: auto 把它**均分**成上下两段：
+ * 一段在台面之上，一段在手牌与动作条之间。只给 .bottom 加的话，空隙会整块
+ * 堆在手牌下方，牌桌被顶到屏幕上沿，看着像渲染没画完。
+ */
+.table {
+  margin-top: auto;
+}
+.bottom {
+  margin-top: auto;
+}
+
+.app-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  /* flex 项的 min-height 默认是 auto，意思是「不许收缩到内容高度以下」。
+     内容一旦比视口高，.app-main 就跟着涨（实测手机上复盘页 972px vs 视口
+     844px），把整个应用顶出视口，再被 body 的 overflow: hidden 裁掉——而
+     body 那条 overflow 是故意的（动作条要贴底），于是内容既滚不到也看不见。
+     min-height: 0 让它老实停在分给它的高度上，溢出的部分交给各页自己的
+     滚动容器（.hist / .rep 有，.rvp 在下面的 720px 断点里补上）。
+     牌桌页不受影响：它本来就靠 .table 的 flex: 1 自适应，从不溢出。 */
+  min-height: 0;
+  /* 尺寸容器。开在这里而不是 .table 上，因为 .hero 与 .bottom 是 .table 的
+     兄弟节点，它们要按同一把尺子缩放。
+     用 size 而不是 inline-size：上面的 --u 要读 cqh。.app-main 是
+     `flex: 1` + `min-height: 0` 的 flex 子项，高度由外层给定、不依赖内容，
+     所以 size containment 在这里是安全的（inline-size 时 cqh 无解，
+     min() 会整条失效，--u 会退回一个非预期值）。 */
+  container-type: size;
+  /* 安全区的补偿从 .app 挪到这里：复盘卡片是绝对定位到 .app-main 的，
+     包含块得是它。留在 .app 上的话，宽屏有了侧栏之后卡片会连导航一起盖住。 */
+  padding-top: var(--safe-top);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 190px;
+  flex: none;
+  padding: 20px 12px;
+  background: var(--app);
+  border-right: 1px solid var(--line);
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 8px;
+}
+.nav-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--text);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.nav-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  border: none;
+  cursor: pointer;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: transparent;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+.nav-item-on {
+  background: var(--soft);
+  color: var(--text);
+  font-weight: 600;
+}
+.nav-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: #dfe3ea;
+}
+/* 宽屏侧栏用蓝点标当前页（设计稿原样），窄屏底部标签栏改用图标。
+   一份 DOM 两种版式，靠这两条互斥的显示开关切换，而不是渲染两套结构。 */
+.nav-icon {
+  display: none;
+}
+.nav-item-on .nav-dot {
+  background: var(--blue);
+}
+
+/* 会话盈亏：贴导航底部，靠 margin-top:auto 撑开——设计稿三屏的左栏都有
+   这一块（不是牌桌专属），所以挂在 Nav 而不是 TopBar 上，见 Nav.tsx 顶部
+   的注释。净盈亏/买入/静音这三样都是从旧版顶栏搬过来的。 */
+
+/* 两颗图标开关（百分号 = 胜率读数，喇叭 = 音效）。图标本体只有 15px，
+   按钮撑到 26px 是为了点击区：手机上导航折成顶部那条时这两颗仍然要能
+   用手指点准，15px 的裸图标点不中。 */
+
+/* 悬停只加一层极淡的底 + 把描边提一档，不整颗变色块：它们是坐在
+   导航底部的次要开关，不该比旁边的净盈亏数字还抢眼 */
+
+/* 开着的胜率开关。静音键靠图标本身（喇叭带不带叉）就能表达开关态，
+   百分号不能，所以这一颗要有独立的选中态——否则用户只能靠牌桌上有没有
+   数字来反推。除了变蓝，底也一起上：只靠颜色的话色觉障碍用户拿不到这个
+   状态，而描边图标没有"加粗"这条路可走（原来那个"%"字符靠 font-weight）。 */
+
+/* ---- 历史页 ---- */
+.hist {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px calc(18px + var(--safe-bottom));
+}
+
+.hist-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hist-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.hist-sort {
+  display: flex;
+  gap: 5px;
+  margin-left: auto;
+}
+
+/* 小胶囊按钮，排序与筛选都用它。
+   **不要叫 .chip** —— 那个类在本项目里已经是"筹码圆片"（width: 13px 的实心
+   小圆，见 .chip-stack 那一组）。第一版就是这么撞的：排序按钮被 13px 的宽度
+   压成一坨，文字全糊在一起，而 CSS 不会为类名撞车报任何错。 */
+
+.hist-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.hist-filters select {
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: var(--app);
+  color: var(--text-2);
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  max-width: 46vw;
+}
+
+.hist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.hist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--sh-1);
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.hist-row:hover {
+  border-color: var(--line-2);
+}
+
+.hist-pos {
+  width: 34px;
+  flex: none;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.hist-net {
+  width: 62px;
+  flex: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.hist-net.neg { color: var(--danger); }
+.hist-net.pos { color: var(--positive); }
+.hist-loss {
+  width: 92px;
+  flex: none;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.hist-tags {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.hist-tag {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(220, 76, 71, 0.1);
+  color: var(--danger);
+  font-size: 9.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.hist-tag-more {
+  background: var(--soft);
+  color: var(--text-dim);
+}
+.hist-disputed {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--soft);
+  color: var(--text-dim);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.hist-time {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hist-more {
+  align-self: center;
+  min-height: 40px;
+  padding: 0 20px;
+  flex: none;
+}
+
+.hist-empty {
+  margin: 24px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+.hist-retry {
+  margin-left: 8px;
+}
+
+/* 窄屏：侧栏折成**底部**一条标签栏。一份 DOM 两种版式，靠 flex 方向 + order
+   切换——.app 变回纵向列、.nav 变成横向条并用 order 挪到主内容之后，DOM 顺序
+   不动（读屏与键盘 Tab 仍然先到导航，那是对的：它是页面的主结构）。
+   放在文件末尾的原因见上面那段：媒体查询不增加特异性，只看源码顺序。
+
+   放底部而不是顶部有两条理由。牌桌页最缺的是纵向空间，而顶栏那一条已经
+   合并成单行、把会话盈亏一起装了进去；再压一条导航在上面，牌桌就只剩不到
+   半屏。另一条是拇指——底部标签栏是移动端的通行版式，够得到。 */
+@media (max-width: 520px) {
+  .app {
+    flex-direction: column;
+  }
+  .nav {
+    order: 1;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: space-around;
+    gap: 0;
+    width: auto;
+    padding: 4px 8px calc(4px + var(--safe-bottom));
+    border-right: none;
+    border-top: 1px solid var(--line);
+    /* 上缘一道极轻的投影，让标签栏浮在内容之上而不是被内容顶着 */
+    box-shadow: 0 -1px 2px rgba(17, 20, 26, 0.03);
+  }
+  /* 手机上不占位置写产品名与图标：那一块既不能点也不带信息 */
+  .nav-brand {
+    display: none;
+  }
+  .nav-items {
+    flex: 1;
+    flex-direction: row;
+    gap: 0;
+  }
+  /* 每项一格等分，图标在上、文字在下——移动端标签栏的通行版式。
+     44px 是触摸目标下限，标签栏整体 56px 左右。 */
+  .nav-item {
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    min-height: 44px;
+    padding: 5px 2px;
+    font-size: 10.5px;
+    font-weight: 500;
+    border-radius: 10px;
+  }
+  /* 蓝点是侧栏那一版的当前页标记，标签栏改用图标 + 文字上色 */
+  .nav-dot {
+    display: none;
+  }
+  .nav-icon {
+    display: block;
+    width: 19px;
+    height: 19px;
+  }
+  .nav-item-on {
+    background: transparent;
+  }
+  /* 底部安全区归导航条独占。
+     .nav 现在是屏幕最下面那个元素，由它的 padding 把内容顶到 home 指示条
+     之上；而动作条、历史页、报表页、设置页、复盘页都各自也加了一份
+     var(--safe-bottom)——那些 padding 现在落在导航条**上方**，再补一次就是
+     凭空多出一条空白。
+     在 .app-main 上把这个变量清零，一次覆盖掉它全部后代；.nav 是 .app-main
+     的兄弟节点，仍然从 :root 读到真值，不受影响。 */
+  .app-main {
+    --safe-bottom: 0px;
+  }
+  /* 槽位换成设计稿 H5 版的坐标（SEATS_DEF.h5Pos）。设计稿自己就为手机把两侧
+     座位往里收了——Web 版的 11% / 89% 在 373px 宽的屏上会让座位卡左右各探出
+     屏幕 4px（实测）。这是**设计稿本来就有的两套坐标**，不是我另加的断点。 */
+  .slot-0 { left: 16%; top: 60%; }
+  .slot-1 { left: 17%; top: 24%; }
+  .slot-2 { left: 50%; top: 3%; }
+  .slot-3 { left: 83%; top: 24%; }
+  .slot-4 { left: 84%; top: 60%; }
+  /* top 另由文件末尾的 @container 块覆盖（公共牌遮挡），这里只管 left */
+
+  .hist {
+    padding: 12px 12px calc(14px + var(--safe-bottom));
+  }
+  /* 一行塞不下七列。窄屏把时间与"损失"两列去掉——评级色点与分类标签
+     已经说清"这手值不值得看"，时间在按损失排序时本来也不是主线索。 */
+  .hist-loss,
+  .hist-time {
+    display: none;
+  }
+  .hist-row {
+    gap: 8px;
+    padding: 9px 10px;
+  }
+}
+
+/* ───────── ③-C 收尾：异议标记 ───────── */
+
+/* 导出/导入的样式随控件本身搬去了设置页（.set-import / .set-notice）：
+   规格 §10.6 把数据管理归在那一页，历史页那条注释当初就写着「到时候
+   整体搬过去」。 */
