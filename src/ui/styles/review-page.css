@@ -1,0 +1,504 @@
+/* ───────── ③-D 复盘页（设计稿 Hand Review 屏，整页两栏） ─────────
+
+   尺寸全部照抄设计稿 `data-screen-label="Hand Review (Web)"` 那一段的内联
+   样式：页面 padding 26px 32px、两栏 gap 18px、左栏定宽 254px、右栏
+   border-radius 16px + padding 26px。
+
+   这一屏**不走** --u 那把比例尺（牌桌用的）。理由：--u 是按牌桌宽度算的，
+   而复盘页没有牌桌，屏幕越宽字越大只会让一屏文字变成海报。设计稿这一屏
+   本来也是固定像素。 */
+
+.rvp {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 26px 32px calc(26px + var(--safe-bottom));
+}
+
+.rvp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.rvp-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.rvp-sub {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.rvp-net {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* 与 .topbar-meta .pos/.neg 与 .summary-line 同款：`.neg`/`.pos` 在本项目里从来
+   不是独立类，必须带祖先限定，否则金额完全没颜色、赢和输长得一样，而项目
+   没有组件渲染测试，没有任何一条测试会发现。 */
+.rvp-net.neg { color: var(--danger); }
+.rvp-net.pos { color: var(--positive); }
+/* 「· 摊牌 / · 弃牌结束」是后缀，不跟着金额一起变红绿：它说的是这手怎么
+   结束的，不是输赢。letter-spacing 复位，否则会继承外层的 -0.02em。 */
+.rvp-net-note {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--text-dim);
+  letter-spacing: 0;
+}
+
+.rvp-cols {
+  display: flex;
+  gap: 18px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── 左栏：一街一项，恒四项 ── */
+.rvp-streets {
+  width: 254px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rvp-street {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--app);
+  border-radius: 12px;
+  padding: 13px;
+  font-family: var(--font);
+  cursor: pointer;
+}
+.rvp-street:hover {
+  border-color: var(--line-2);
+}
+/* 选中态用蓝边 + 淡蓝底（设计稿的 #2f6fed / #eaf1fe，即 --blue / --blue-soft），
+   不额外加投影：四张卡片是一列并排的选择器，谁浮起来谁就像是"更重要"，
+   而它们只是"被选中"。 */
+.rvp-street-on {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.rvp-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  line-height: 1;
+}
+/* 三态照抄设计稿 streetVisual。绿/红直接用既有令牌（--positive 就是设计稿的
+   #18945a，--danger 就是 #dc4c47），灰底用 --soft2（#e9ecf1），一个新色都不加。 */
+.rvp-mark-good { background: var(--positive); color: #fff; }
+.rvp-mark-leak { background: var(--danger); color: #fff; }
+.rvp-mark-skip { background: var(--soft2); color: var(--text-dim); }
+
+.rvp-street-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rvp-street-name {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.rvp-street-ev {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+/* 只有失误那一档变红。good 的「—」与 skip 的「n/a」都留在 --text-dim：
+   给"没问题"上绿字会让四张卡片里三张都带颜色，红的那张就不显眼了。 */
+.rvp-street-ev-leak { color: var(--danger); }
+
+/* ── 右栏：选中那条街的全部决策点 ── */
+.rvp-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  background: var(--app);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 26px;
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.04), 0 14px 30px -18px rgba(17, 20, 26, 0.18);
+}
+
+.rvp-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.rvp-detail-title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+/* 标签胶囊。**不要叫 .rv-tag** —— 那个类已经是"失误分类"（决策点详情里那颗
+   红色小标签），语义与配色都不同；也不要叫 .chip，那个是筹码圆片。 */
+.rvp-tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.rvp-tag-good { background: rgba(24, 148, 90, 0.1); color: var(--positive); }
+.rvp-tag-leak { background: rgba(220, 76, 71, 0.1); color: var(--danger); }
+.rvp-tag-skip { background: var(--soft); color: var(--text-dim); }
+
+/* 正文可滚：一条街可能有三四个决策点，每个还带一张 EV 条形图，加上底部的
+   对手底牌，右栏卡片本身不该跟着长高把按钮行推出视口。 */
+.rvp-detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.rvp-body-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-2);
+  max-width: 520px;
+}
+
+/* 一个决策点一块。同一条街有多个决策点时纵向排开，中间一条细线分隔 —— 用
+   border-top 而不是各自描边成卡片：它们已经在右栏这张卡片里了，卡里再套卡
+   会多出两层边框。 */
+.rvp-dec + .rvp-dec {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.rvp-dec-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 10px;
+}
+.rvp-dec-act {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.rvp-dec-sev {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+/* ── 底部按钮行 ── */
+/* margin-top: auto 把它顶到卡片底部（设计稿写的就是这一条），正文再短也不会
+   让按钮浮在半空。 */
+.rvp-actions {
+  margin-top: auto;
+  display: flex;
+  gap: 10px;
+  padding-top: 12px;
+  flex-wrap: wrap;
+}
+
+/* 已标记有异议：用琥珀而不是红。红在这套配色里专指"你打错了"，而"我不认同
+   判定"说的是引擎可能错了——两件事不该同色。（原样搬自 ③-C 的 .rv-dispute-on） */
+.rvp-dispute-on {
+  background: rgba(183, 121, 31, 0.09);
+  border-color: rgba(183, 121, 31, 0.28);
+  color: var(--warn);
+}
+
+/* 还没有任何一手打完时的空态 */
+.rvp-blank {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+/* 窄屏：两栏折成一列，左栏的四张街道卡片改横排。放在文件末尾——媒体查询不
+   增加特异性，同特异性下只看源码顺序（这一条在本文件上方栽过一次）。
+   断点取 720px 而不是 520px：254 + 18 + 右栏内容宽度在 700px 上下就挤不下了，
+   比手机断点早得多。 */
+@media (max-width: 720px) {
+  /* 手机上整页滚，而不是在右栏里开一个小窗口滚。
+     桌面两栏时「页面不滚、右栏正文自己滚」是对的：左栏四张街道卡要一直
+     看得见。塌成上下堆叠之后这个前提就没了——页头 + 四张街道卡 + 详情卡
+     的固定部分先占掉大半屏，留给 .rvp-detail-body 的那点高度装不下一个
+     决策点，而 .rvp 自己没有 overflow（.hist / .rep 都有），于是页面整体
+     既滚不动、内容又被裁掉。
+     这里三条 + 上面 .app-main 的 min-height: 0 是一组，**缺任何一半都无效**，
+     实测过：只改这三条，.app-main 仍涨到 972px，.rvp 没有溢出可滚；只改
+     min-height，.rvp 的 overflow 还是 visible，压根不是滚动容器。两边都到位
+     才有 772/972 这个可滚的 200px。
+     三条各自的作用：.rvp 开滚、.rvp-cols 不再抢满高（flex:1 会把它压回容器
+     高度，外层就永远没有可滚的溢出）、内层交还滚动权（否则两层嵌套滚动，
+     手指在正文上滑动时外层不动）。 */
+  .rvp {
+    padding: 16px 14px calc(16px + var(--safe-bottom));
+    overflow-y: auto;
+  }
+  .rvp-cols {
+    flex-direction: column;
+    flex: none;
+  }
+  .rvp-detail-body {
+    overflow: visible;
+  }
+  .rvp-streets {
+    width: auto;
+    flex-direction: row;
+  }
+  /* 横排时四张卡片等分，圆形标记与街名并排、EV 文案换行到下面 */
+  .rvp-street {
+    flex: 1;
+    min-width: 0;
+    padding: 10px;
+    gap: 8px;
+  }
+  .rvp-detail {
+    padding: 18px;
+  }
+  .rvp-net {
+    font-size: 20px;
+  }
+}
+
+/* ───────── 窄牌桌：把公共牌与两侧座位在**纵向**上错开 ─────────
+
+   手机上实测（393×873）：公共牌压住左右两个座位各约 85×25px，座位只露出
+   头像和半截筹码数——用户报的「遮挡太明显」就是这个。
+
+   根因是两把不同的尺子。座位槽位用 `top: %`（百分比按容器**高度**算），而
+   牌桌中心区的下移用的是 `.table-center { padding-top: 28% }` —— CSS 里
+   padding 的百分比一律按容器**宽度**算，即使是 padding-top。宽屏上两者都大，
+   看不出问题；窄高的手机上宽度小了，28% 只剩 110px，公共牌整体上移，正好
+   撞进两侧座位那条带子。
+
+   横向上让不开：公共牌占牌桌宽度的 79%（393px 屏上是 42→351），而两个座位
+   胶囊各宽约 120px，加起来 240px，中间只剩 153px——想不重叠，牌得缩到 28px
+   宽，那已经读不出点数了。所以只能纵向错开。
+
+   三处一组：把中心区改成绝对定位 + `top: %`（换成和座位同一把尺子）、两侧
+   座位上下再拉开一点、公共牌在窄桌上比手牌小一号（`card-lg` 是和 hero 手牌
+   同规格的，桌上五张排开时太占地方）。`.slot-*` 这里只覆盖 `top`，`left`
+   仍然由 520px 那个断点里设计稿的 H5 坐标提供。
+
+   用**容器查询而不是媒体查询**：碰撞取决于牌桌宽度，而宽屏下左侧导航要占
+   190px，视口宽和牌桌宽差着一截（视口 745px 时牌桌只有 555px，照样会撞）。
+   `.app-main` 已经是 `container-type: inline-size`，直接问它就行。
+   **阈值 2026-08-26 从 560px 抬到 700px。** 560 是 `--u` 还被钉在 5px 那会儿
+   标的；u 改成跟着屏幕长之后交叉点上移了——768px 视口下牌桌只有 578px（侧栏
+   占 190px），公共牌五张就要约 370px，而两侧座位胶囊各 127px，横向根本排不开
+   （实测 .seat-info × .board 重叠 37×9px）。窄桌那套版式存在的理由正是这个，
+   把它的适用范围抬到真实的交叉点上。
+
+   本块必须留在文件末尾——它覆盖的 `.table-center`（441 行）、`.card-lg`
+   （537 行）、`.slot-*`（1749 行那组）都在前面，同特异性下后写的才生效。 */
+@container (max-width: 700px) {
+  /* 上排三个座位（左 19% · 中 50% · 右 81%）在窄屏上横向排不下三个胶囊：
+     19% 与 50% 只隔 31% 的牌桌宽，而胶囊上限 30cqw。所以**纵向也要错开**
+     ——中间那个再抬高一点，两侧的再压低一点，让「中 vs 侧」这一对在纵向上
+     就已经不相交，横向挤不挤都无所谓。
+     8% 与 24% 相隔 16% 的牌桌高度，实测大于胶囊连同下方筹码堆的总高。 */
+  /* 5%：顶部这个座位当庄时庄家钮要在胶囊上方留出 2u（它挂角上，不是上缘
+     正中，见下面 .dealer-btn 的注释），贴着上沿会戳进顶栏。
+     也不能再往下——它的底牌摊开时是往**下**长的，压低就撞进底池。 */
+  .slot-2 { top: 5%; }
+  .slot-1,
+  .slot-3 { top: 23%; }
+  /* 下排两个座位压到 73%。留这么多余量是因为**摊牌时座位会长高**：
+     .opponent-slot 用 translate(-50%,-50%) 按中心定位，亮出的两张底牌让整块
+     变高，于是胶囊被朝牌桌中心方向拽走半个牌高。320×568 那一档上原来的 68%
+     余量刚好不够，实测 6px 的重叠——而且只在摊牌那一瞬间出现，非摊牌的状态
+     一直是干净的，靠翻截图查不到。 */
+  .slot-0,
+  .slot-4 { top: 73%; }
+
+  /* 绝对定位是为了把 `top` 从「按宽度」换成「按高度」，不是为了脱离文档流。
+     left/right 归零让它仍然占满整宽，内部照旧居中。 */
+  .table-center {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 36%;
+    padding-top: 0;
+    gap: 8px;
+  }
+
+  /* 公共牌降一号。字号跟着降，否则点数会顶破牌面。 */
+  .board .card-lg {
+    width: calc(6.4 * var(--u));
+    height: calc(9 * var(--u));
+  }
+  .board .card-lg .card-rank { font-size: calc(2.3 * var(--u)); }
+  .board .card-lg .card-suit { font-size: calc(2.1 * var(--u)); }
+
+  /* ── 座位胶囊不许探出牌桌 ──
+
+     胶囊的宽度由内容撑（性格名 + 位置标签 + 筹码数），不跟 --u 缩放；而它的
+     中心锚在 left: 18% / 82%。于是"不溢出"的条件是**宽度不超过左边距的两倍**
+     ——18% × 2 = 36%，取 34cqw 留一点余量。cqw 问的是 .app-main（已经是
+     container-type: inline-size），也就是牌桌自己的宽度。
+
+     实测（改前）：胶囊 119px、锚在 16%，360px 屏上两侧各探出约 2px；320px 屏
+     上更糟——`--u` 有 7px 的下限（见 .app-main > * ），牌桌内部按 700px 的尺子
+     排版却塞在 320px 里，一次量到 38 个元素出界。
+
+     光加 max-width 不够：胶囊里每一段都是 nowrap，压不动。要让它真的能收窄，
+     得给 .seat-meta 开 min-width: 0（flex 子项默认 min-width: auto，不写这条
+     的话溢出而不是收缩），再让性格名以省略号截断。位置标签与筹码数不截断：
+     那两样是信息，名字只是标识。 */
+  .seat-info {
+    max-width: 30cqw;
+    /* 头像与文字之间、以及右侧的内边距都收窄。这不是为了好看，是为了让
+       30cqw 这个上限**不必真的触发截断**——胶囊原本要 119px，而 390px 屏上
+       30cqw 只有 117px，差 2px 就把「岩石」截成了「岩...」。
+       手机上 `--u` 被钉在 7px 的下限（见 .app-main > * 的 max(7px, …)），
+       牌桌再窄胶囊内部也不会自己缩，只能在这里显式收。 */
+    gap: calc(0.8 * var(--u));
+    padding: calc(0.6 * var(--u)) calc(1.1 * var(--u)) calc(0.6 * var(--u))
+      calc(0.6 * var(--u));
+  }
+  /* 头像方块小一号，省下的宽度全给名字 */
+  .seat-badge {
+    min-width: calc(3.7 * var(--u));
+    height: calc(3.7 * var(--u));
+    border-radius: calc(1.2 * var(--u));
+    font-size: calc(1.2 * var(--u));
+  }
+
+  /* 两侧座位再往里收一点，给上面那个 30cqw 留出余量 */
+  .slot-0 { left: 18%; }
+  .slot-1 { left: 19%; }
+  .slot-3 { left: 81%; }
+  .slot-4 { left: 82%; }
+
+  /* 庄家钮改挂在胶囊的**上缘正中**。
+     它默认是绝对定位到胶囊左上角外侧的一枚圆徽章；左侧那两个座位本来就贴着
+     屏幕左缘，再往左探一枚 2.89u 的圆片必然出界（实测 left = -8）。
+     试过改挂内侧（朝牌桌中心那一边），更糟：它会伸进邻座的胶囊里，实测
+     10×10px 的重叠，占那枚圆片的 23%。
+     挂上缘正中就都躲开了——横向永远不超出胶囊自身的宽度，所以既不会出界，
+     也不会撞到左右任何东西；纵向探进去的是胶囊上方的空台面。 */
+  /* -3.2u 而不是 -1.8u：这枚圆片直径 3.6u，探出 1.8u 就意味着**另一半压在
+     胶囊里**，正好盖住性格名（360×688 实测 17×8px，占圆片的 58%）。放大
+     庄家钮之后这一下更明显。留 0.4u 搭在胶囊边上，其余全在外面。 */
+  .dealer-btn {
+    top: calc(-3.2 * var(--u));
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+  /* hero 的那枚不跟着挪。
+     「挂上缘正中」是给**对手座位**用的：它们贴着牌桌左右缘，挂在角上会出界。
+     hero 的胶囊是居中的，两侧都有空地，挂角上不会出界；而挂正中反倒有半个
+     身子压在胶囊里，正好盖住名字旁边的位置标签与 YOU（360×688 实测压住
+     BTN 标签 8px）。放大庄家钮之后这一下就更明显了。 */
+  /* hero 与**顶部中间**那个座位改挂左上角外侧。
+     「上缘正中」那个挂法是给贴着牌桌左右缘的座位防出界用的，代价是纵向要
+     留出整整 3.2u；而这两个座位在横向上都不贴边（hero 居中、顶部座位也居中），
+     挂角上既不会出界，纵向又只占 2u。
+     顶部那个座位尤其需要这 1.2u：它上面是顶栏、下面是底池，两头都挤——
+     用正中挂法时，抬高就戳顶栏、压低就让摊牌的底牌撞进底池，来回都是错。
+     往外挪到 -2u 是为了只搭在头像方块的圆角上而**不碰到任何文字**：压住
+     装饰性的头像是设计本意，压住名字或位置标签不是。 */
+  .hero-info .dealer-btn,
+  .slot-2 .dealer-btn {
+    top: calc(-2 * var(--u));
+    left: calc(-2 * var(--u));
+    transform: none;
+  }
+  /* 试过给椭圆加高度上限、让它更接近设计稿那种横向台面（.table 是 flex: 1，
+     顶栏合并、导航下移之后它多分到一大截高度，390px 屏上被抻成 366×435，
+     下半圈空着一片）。**没有采用**：88cqw 与 105cqw 两档都实测过，遮挡分别
+     回到 4/18/2/7/8 组与 9/0/1/1/7 组——压扁台面就是把五个座位在纵向上挤回
+     一起，而纵向错开正是上面那组 slot 坐标解决遮挡的全部办法。
+     台面偏长是取舍的代价，不是漏掉的一项。要同时拿到两者，得改的是座位
+     版式本身（比如两侧座位改成竖排头像 + 悬浮数字），那是另一次改版。 */
+
+  /* 下注筹码堆挂在胶囊下方，宽度由「筹码图形 + 金额」撑。它比胶囊窄，
+     但两侧座位靠得近时仍会探进邻座——限成与胶囊同宽，超出的部分让金额
+     自己换行前的截断处理掉。 */
+  .seat-bet {
+    max-width: 30cqw;
+  }
+}
+
+/* ───────── 矮视口再收一档（320×568 这类小屏） ─────────
+
+   上面那组 slot 坐标是在**高度够用**的前提下标的。视口一矮，动作条（两行
+   常驻）与底部导航吃掉的高度不变，被压缩的全是牌桌：320×568 上牌桌只剩
+   268px 高，而 360×688 上有 350px。座位坐标是百分比，牌桌一矮，同样的
+   百分比换算出来的像素间距跟着等比变窄，而胶囊、底牌、庄家钮的高度是按
+   --u 走的（--u 在这一档已经顶到 5px 的下限，不再跟着缩）——两边不同步，
+   于是只有这一档会撞。
+
+   实测（改前，320×568 跑八轮，五轮出现）：
+     .seat-cards × .topbar   31×3px   上排两侧的底牌往上探进顶栏
+     .seat-cards × .pot      31×2px   顶部座位的底牌往下探进底池
+     .seat-info  × .board    26×1px   下排两个胶囊的上缘贴进公共牌
+   三处都是 1–3px 的擦边，且**只在摊牌/有下注筹码堆那一瞬间**出现——座位盒子
+   那时才长到最高。截图翻不到，靠 tools/overlap-check.mjs 扫状态才看得见。
+
+   为什么不改 --u 的下限：把 5px 放到 4.5px 确实能等比缩掉这 3px，但牌桌上
+   最小的字是 1.28u，4.5px 下只有 5.8px，这一档本来就是最难看清的一档。
+   宁可挪坐标，不动字号。
+
+   阈值 560px 问的是 .app-main 的高度（= 视口高 − 底部导航 55px），所以它
+   对应视口高约 615px 以下。清单里只有 320×568 落进来，360×640 及以上都不受
+   影响——这一块是给最矮那一档单独让位的，不是通用规则。 */
+@container (max-width: 700px) and (max-height: 560px) {
+  /* 上排两侧下移 3%：它们的底牌是往**上**长的，牌桌一矮，23% 换算出来只剩
+     61px，扣掉半个胶囊、4u 的庄家钮让位和一个牌高就顶进顶栏了 */
+  .slot-1,
+  .slot-3 { top: 26%; }
+  /* 下排两个再下移 2%，把胶囊上缘从公共牌下沿挪开 */
+  .slot-0,
+  .slot-4 { top: 75%; }
+
+  /* 底池连同公共牌整块下移 3%（约 8px），躲开顶部座位摊开的底牌。
+     顶部座位的底牌只能往**下**长（上面是顶栏），而那 3u 的留白动不得——
+     筹码堆归零时会向下滑 2.4u 再淡出（见 .seat-bet[data-empty]），留白一收
+     窄，滑出去的那一路就穿过底牌。所以让开的是底池这一边。
+
+     gap 同时从 8px 收到 4px：整块下移会把公共牌一起推向下排两个座位，
+     而那两个刚往下挪了 2%（≈5px）的余量正好被抵消。收掉 4px 的行距之后
+     公共牌下沿净移动约 +4px，仍在下排座位让出来的余量之内。 */
+  .table-center {
+    top: 39%;
+    gap: 4px;
+  }
+}

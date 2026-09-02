@@ -15,7 +15,7 @@
       "@/*": ["./src/*"]
     },
     // node 是给 vite.config.ts / vitest.config.ts 里的 node:url 用的
-    "types": ["vitest/globals", "node"]
+    "types": ["vitest/globals", "node", "vite/client"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
 }

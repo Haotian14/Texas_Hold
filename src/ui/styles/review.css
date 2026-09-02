@@ -1,0 +1,293 @@
+/* ───────── ③-B 复盘卡片：EV 条形图 ───────── */
+
+/* 三列的宽度定义在这里，是因为它有两个消费者：每行的 grid，以及
+   零点基线的定位层。两处必须严格一致，所以只能有一份定义。 */
+.ev-bars {
+  --ev-col-label: 68px;
+  /* 132px 是量出来的，不是拍的：最宽的一格是「数字 + 你选的 + 推荐」两个
+     徽章同时出现（用户正好选中推荐动作时的常态）。实测 -12.34 BB 双徽章
+     内容宽 123.5px，把数字撑到 -123.45 BB（远超 100BB 筹码量能产生的 EV）
+     也只有 129.9px，仍在 132 之内。改小之前先量一遍：.ev-value 是
+     white-space: nowrap + text-align: right，溢出会往左压到 .ev-track 上，
+     而且 scrollWidth 不会报——得用 Range.getClientRects 量内容实宽。 */
+  --ev-col-value: 132px;
+  --ev-gap: 8px;
+  position: relative;
+  margin: 10px 0;
+}
+
+/* 零点基线的定位层。它必须与条所在的 grid 列**同一套坐标**：
+   条画在 .ev-track（1fr 那一列）里，基线若直接挂在 .ev-bars 上就会按整宽
+   解析，两者对不齐——负条"右端贴基线"这件事就永远画不出来。 */
+.ev-zero-layer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--ev-col-label) + var(--ev-gap));
+  right: calc(var(--ev-col-value) + var(--ev-gap));
+  pointer-events: none;
+}
+
+.ev-zero {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line-2);
+}
+
+.ev-row {
+  display: grid;
+  grid-template-columns: var(--ev-col-label) 1fr var(--ev-col-value);
+  gap: var(--ev-gap);
+  align-items: center;
+  height: 22px;
+}
+
+.ev-label {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ev-track {
+  position: relative;
+  height: 10px;
+  border-radius: 99px;
+  background: var(--soft);
+}
+
+.ev-fill {
+  position: absolute;
+  top: 0;
+  height: 10px;
+  border-radius: 99px;
+  background: var(--bar-fill);
+}
+
+.ev-fill.ev-rec {
+  background: var(--positive);
+}
+
+/* 用户选的那一条用描边而不是换底色：它可能同时是推荐动作，
+   两种标记必须能叠加显示 */
+.ev-fill.ev-actual {
+  outline: 1px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.ev-value {
+  font-size: 11px;
+  color: var(--text-2);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ev-mark {
+  margin-left: 4px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--blue);
+  background: var(--blue-soft);
+  border: 1px solid rgba(47, 111, 237, 0.22);
+}
+
+.ev-mark-rec {
+  color: var(--positive);
+  background: rgba(24, 148, 90, 0.1);
+  border-color: rgba(24, 148, 90, 0.22);
+}
+
+/* 复盘页的「本手牌面」（.hc-*）。前身是只画对手两张牌的 .opp-*，
+   加进公共牌与 hero 之后那套名字就不成立了，整组一起改掉，不留死规则。 */
+.hc {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.hc-title {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.hc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+/* 位置列定宽，五行加公共牌那行的牌**竖着对齐**——这一页是拿来横向比牌的，
+   对不齐就得一行行找起点。「公共牌」三个字是这一列里最宽的内容，宽度按它定。 */
+.hc-pos {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  width: 42px;
+  flex: none;
+}
+
+.hc-hand {
+  display: flex;
+  gap: 3px;
+}
+
+/* 公共牌与下面五行之间划一道线：它不是第六个人，是这五手牌共用的牌面 */
+.hc-board {
+  padding-bottom: 7px;
+  margin-bottom: 4px;
+  border-bottom: 1px dashed var(--line);
+}
+
+/* hero 那一行淡淡地垫一层底。在一列位置标记里找「哪个是我」不该要读一遍 */
+.hc-hero {
+  background: color-mix(in srgb, var(--accent-foreground) 6%, transparent);
+  border-radius: 6px;
+  padding-left: 4px;
+  margin-left: -4px;
+}
+
+.hc-you {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-foreground);
+  letter-spacing: 0.02em;
+}
+
+/* 弃牌的行整体退后一层，牌本身仍在——复盘要看的正是「他拿这手牌为什么弃」 */
+.hc-folded {
+  opacity: 0.45;
+}
+
+.hc-note {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+/* ───────── ③-B 复盘：决策点详情（现在住在 ③-D 的复盘页右栏里） ─────────
+
+   覆盖式卡片 .rv-sheet、它的头部 / 关闭按钮 / 评级徽章，以及手风琴时间线
+   （.rv-street / .rv-row / .rv-act / .rv-sev）那一整组规则已经删掉：
+   复盘从「牌桌上弹出来的一张卡」改成了整页两栏（见下面的 .rvp-*），
+   ReviewSheet.tsx 与 ReviewTimeline.tsx 两个组件一并删除。留着这些规则
+   不会报错，只会让下一个人以为还有东西在用它们。 */
+
+.rv-empty {
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+/* 基色就是 --sev-ok，没有 .rv-dot-ok / .rv-dot-clean 规则是有意的：
+   两个调用方给的枚举名不同（ReviewTrigger 给 Grade 的 'clean'，
+   复盘页的决策点行给 Severity 的 'ok'），却是同一个「这里没问题」，
+   与其写两条一模一样的规则，不如让它们一起落到基色上。
+   下面四条则必须逐个列出——漏一条就是把某一档失误静默显示成「没问题」。 */
+.rv-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--sev-ok);
+}
+
+.rv-dot-minor { background: var(--sev-minor); }
+.rv-dot-notable { background: var(--sev-notable); }
+.rv-dot-severe { background: var(--sev-severe); }
+.rv-dot-unknown { background: var(--sev-unknown); }
+
+/* 决策点详情。以前是手风琴展开的下半张卡（所以有 border-top: none 和只圆
+   下两角那套写法），现在直接嵌在复盘页右栏的 .rvp-dec 里——外框由 .rvp-dec
+   画，这里只管内容的排布。 */
+.rv-detail {
+  padding: 0;
+}
+
+.rv-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-bottom: 10px;
+}
+
+.rv-stat-name {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  margin-right: 5px;
+}
+
+.rv-stat-value {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rv-rec {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--positive);
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rv-tag {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: rgba(220, 76, 71, 0.1);
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+/* 设计稿右栏的正文规格：14px / line-height 1.7 / --text-2 / max-width 520px。
+   520px 那条是设计稿写死的——一行超过大约 75 个西文字符就开始难读，右栏在
+   宽屏上会比这宽得多。 */
+.rv-text {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-2);
+  max-width: 520px;
+  margin: 10px 0 0;
+}
+
+.rv-degraded {
+  color: var(--text-dim);
+}
+
+.rv-trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 auto 8px;
+  padding: 6px 14px;
+  background: var(--app);
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--sh-1);
+}
+
+.rv-trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* ───────── 窄屏（手机） ─────────
+   座位 / 牌面 / 气泡 / 槽位那一整组断点覆盖已经删掉了：--u 的 max(7px, …)
+   下限把它们全部替代了（见文件上方「比例尺」那段）。
+
+   那一段还出过一个更隐蔽的问题：它原先写在基础规则**之前**，而媒体查询不
+   增加特异性，同特异性下只看源码顺序——于是整段是死的，改了半天没有任何
+   效果，是在浏览器里量座位坐标才发现的。少一套断点表，就少一处这种事。 */

@@ -1,0 +1,973 @@
+/* ---- 布局骨架 ---- */
+/* 应用铺满视口。
+   设计稿里那张居中的圆角卡片是**画布上的窗口示意**——设计工具为了展示
+   "在浏览器里长什么样"画的边框，不是应用自己的外壳。照抄它的结果是真机上
+   四周永远空一圈灰底，屏幕越大浪费越多，手机上还会因为圆角把四角切掉。 */
+.app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  /* 安全区的补偿在 .app-main 上，不在这里：复盘卡片绝对定位到 .app-main，
+     两处都补会把顶部空白算两遍 */
+  background: var(--page);
+}
+
+/* 顶栏：一行装下身份、进度、开关三段。
+   左边是"这是什么局"（黑桃标 + 盲注 + 6-max）与"这次坐下发生了什么"
+   （第几手 · 会话盈亏），右边是状态标记与三颗开关。
+   会话盈亏原来在 Nav 底部，随导航移到底部一起搬了过来——底部标签栏只有
+   三个图标的高度，塞不下一个金额块。 */
+.topbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  /* 非对称内边距是设计稿原值：顶 14px、左右 22px，底部只留 6px——
+     牌桌区自己的上边距会把视觉间距补足，顶栏不需要在底部再留满。 */
+  padding: 14px 22px 6px;
+  color: var(--text);
+  background: var(--app);
+  border-bottom: 1px solid var(--line);
+}
+/* 黑桃标。设计稿这里是个带「▾」的游戏类型胶囊，暗示可切换游戏；本项目
+   只有德州扑克一种玩法，渲染成可切换控件是「列一个点了没反应的入口」，
+   所以收成一枚纯标识，把省下的横向空间让给右边的开关。 */
+.topbar-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--text);
+  color: #fff;
+  font-size: 15px;
+}
+/* min-width: 0 让这一段在窄屏上能被压缩。flex 子项默认 min-width: auto，
+   不写这条的话它会把右边的开关顶出屏幕，而不是自己收窄。
+   `overflow: hidden` 与它是一组，**缺了就等于没压缩**：min-width 只让盒子变窄，
+   里面 nowrap 的文字照样画到盒子外面去，结果是「第 1,284 手 · 会话 -$128,400」
+   直接压在状态标记和右边四颗图标上（320px 实测，见截图那次）。
+   这一层是结构性的，不是调出来的数值——不论文字多长都溢不出去。 */
+.topbar-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
+/* 两行都以省略号截断。让位的顺序是有意的：右边那四颗图标随时要点，状态标记
+   （未记录/深筹码）是必须看见的警告，盲注与手数最后让位。
+   最坏情况实测（320px + 两个标记同时挂着 + 「第 1,284 手 · 会话 -$128,400」）：
+   标记 97px、四颗图标 134px、黑桃标 30px、间距 30px 合计 291px，这一段被压到
+   0 宽、整个消失。不好看，但四颗图标仍在视口内、警告仍然可读、且**没有任何
+   重叠**——在 320px 上这三样装不下，总得有一样让位。 */
+.topbar-game,
+.topbar-meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-game {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+/* 第几手 · 会话盈亏 */
+.topbar-meta {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.topbar-meta .pos { color: var(--positive); font-weight: 600; }
+.topbar-meta .neg { color: var(--danger); font-weight: 600; }
+/* 「未记录」「深筹码」这类状态标记，靠右 */
+.topbar-flags {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ---- 右上角那一组开关 ---- */
+/* .topbar-flags 已经用 margin-left:auto 占住了推开的活儿；这一组紧跟其后，
+   两者之间只留一点间距，读起来是同一块「状态与控制」。
+   没有标记时 flags 是个零宽的 flex 容器，auto 边距照样生效。 */
+.quick-toggles {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+/* 复盘页与报表页的页头里，这一组要自己占住右端。
+   顶栏那边靠 .topbar-flags 的 margin-left: auto 顺带推开了它，但这两个页头
+   没有那一块；而且它们都是 flex-wrap: wrap，不推的话齿轮会跟着换行落到
+   第二行的**左**端（报表页实测如此）。 */
+.rvp-head .quick-toggles,
+.rep-head .quick-toggles,
+.hr-head .quick-toggles {
+  margin-left: auto;
+}
+.quick-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 9px;
+  color: var(--text-faint);
+  /* 图标的宽高是 1em，所以这一行就是图标边长 */
+  font-size: 16px;
+  line-height: 1;
+}
+.quick-btn:hover {
+  background: var(--soft);
+  color: var(--text-2);
+}
+/* 开着的状态用浅蓝底 + 蓝字，与设置页那个分段控件的选中态同一套 */
+.quick-btn-on,
+.quick-btn-on:hover {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.table {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 毡面画在伪元素上而不是 .table 本身：座位是绝对定位的，
+   改动 .table 的盒模型会挪动它们，用伪元素则完全不碰布局。
+   浅色版是两层：::before 是台面本体（白→冷白渐变 + 外阴影 + 一圈内描边），
+   ::after 是嵌在里面缩进 14px 的台呢（径向渐变 + 内阴影）。设计稿靠这两层
+   叠出"桌面有厚度"的感觉，塌成一层就只剩一个灰椭圆。 */
+.table::before {
+  content: '';
+  position: absolute;
+  inset: 8px 12px 6px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff, #f1f4f9);
+  box-shadow:
+    0 1px 1px rgba(17, 20, 26, 0.04),
+    0 8px 16px -8px rgba(17, 20, 26, 0.1),
+    0 26px 46px -18px rgba(17, 20, 26, 0.18),
+    inset 0 1px 0 #ffffff,
+    inset 0 0 0 1px rgba(17, 20, 26, 0.05);
+  z-index: 0;
+}
+.table::after {
+  content: '';
+  position: absolute;
+  inset: 22px 26px 20px;
+  border-radius: 999px;
+  /* 比设计稿压深一档。设计稿的台呢是在 --page(#f7f8fa) 上取的，本应用的
+     牌桌区背景同样是 --page，照抄会让台呢和页面底几乎同色——牌桌整个"消失"，
+     只剩一圈白边。这里把三个色标各往下压约 4%，台面才立得住。 */
+  background: radial-gradient(120% 92% at 50% 6%, #f4f7fb 0%, #e7ecf4 58%, #dde4ee 100%);
+  box-shadow:
+    inset 0 8px 18px -6px rgba(17, 20, 26, 0.16),
+    inset 0 0 0 1px rgba(17, 20, 26, 0.05);
+  z-index: 0;
+}
+.table > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- 弧形座位：5 个对手沿台面边缘排布 ----
+   改成绝对定位铺满整个 .table，槽位百分比因此是相对**整张台面**的。
+   之前 .opponents 只占上部 40%，槽位的 62% 实际只到台面的 25%——五个人
+   全挤在上四分之一，下面大半张桌子空着。设计稿是把两侧的座位一路排到
+   62% 的，那才是"围坐一圈"。 */
+.opponents {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+/* 座位按中心锚定。摊牌时底牌不进文档流（见下面 .seat-cards），所以这个盒子
+   的高度不随牌局状态变化，锚点也就不会漂。 */
+.opponent-slot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+/* 顶部中间那个座位例外：改按**上缘**锚定。
+   它贴在牌桌最上沿，中心锚定时盒子有半个身子在锚点之上——牌桌越矮，那半个
+   身子占的百分比越大，于是胶囊连同庄家钮一起戳进顶栏（1280×800 上实测胶囊
+   3px、庄家钮 7px，320×568 上 7px / 12px）。上缘锚定让盒子只能往下长。 */
+.slot-2 {
+  transform: translate(-50%, 0);
+}
+.slot-0 { left: 11%; top: 60%; }
+.slot-1 { left: 11%; top: 25%; }
+.slot-2 { left: 50%; top: 3%; }
+.slot-3 { left: 89%; top: 25%; }
+.slot-4 { left: 89%; top: 60%; }
+/* 窄牌桌上这几个 top 会被文件末尾那个 @container 块改掉，改坐标时记得一起看 */
+
+/* 座位卡。所有尺寸 = 设计稿 px / 9 * 1u（见上面「比例尺」那段）。 */
+.seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(0.56 * var(--u));
+  transition: opacity 0.2s;
+  /* 摊牌时亮出的底牌的定位上下文 */
+  position: relative;
+}
+
+/* 底牌**不进文档流**。
+   它只在摊牌那一刻存在，若留在流里，座位整块会长高一个牌高；而座位是按中心
+   定位的，长高的后果是整块朝两个方向各摊开半个牌高，其中朝里的那半个正好伸
+   进公共牌。这是间歇性的——非摊牌状态一直干净，翻截图查不到，320×568 上三次
+   里撞一次。脱离文档流之后座位盒子的高度不随牌局状态变化，胶囊也就不会漂。
+
+   默认摆在胶囊上方（上排三个座位，往牌桌上沿方向长，那边是空地）；下排两个
+   翻到下方，见 .slot-0 / .slot-4 的覆盖——它们上方就是公共牌。 */
+.seat-cards {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: calc(0.33 * var(--u));
+  /* 上方要给庄家钮让位：窄桌上它挂在胶囊上缘正中、探出 1.5u（见下面的
+     容器查询），底牌压上去就把那枚圆片盖住了 */
+  margin-bottom: calc(4 * var(--u));
+}
+/* 下排两个座位与顶部那个：底牌翻到胶囊**下方**。
+   下排上方就是公共牌，顶部那个上方就是顶栏，两边都没有地方往上长。
+   顶部那个试过在宽桌上让它往上长（宽桌离顶栏远），结果 1280×800 上 100%
+   撞进顶栏——牌桌顶到哪里跟视口多宽没关系，它上面永远是那条顶栏。 */
+.slot-0 .seat-cards,
+.slot-2 .seat-cards,
+.slot-4 .seat-cards {
+  bottom: auto;
+  top: 100%;
+  margin-bottom: 0;
+  /* 比 .seat-bet 归零时滑出的 2.4u 再多留一点：那一路正好经过这里 */
+  margin-top: calc(3 * var(--u));
+}
+.seat-folded { opacity: 0.4; }
+/* 行动中的座位：蓝色描边 + 一圈淡外发光，静态，不做呼吸/闪烁——
+   它全程存在，动起来就是持续干扰 */
+.seat-to-act .seat-info {
+  border-color: rgba(47, 111, 237, 0.42);
+  box-shadow: var(--sh-seat-act);
+}
+
+.seat-info {
+  /* 定位上下文：庄家钮（.dealer-btn）绝对定位到胶囊外侧，锚点就是这一层 */
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: calc(1.33 * var(--u));
+  /* 半透明白 + 背景模糊并轻微提饱和：座位卡压在台面上，底下的渐变要透一点
+     出来。saturate(1.08) 是设计稿加的，去掉之后卡片会发灰。 */
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px) saturate(1.08);
+  border: 1px solid rgba(17, 20, 26, 0.06);
+  border-radius: calc(1.78 * var(--u));
+  padding: calc(0.78 * var(--u)) calc(1.89 * var(--u)) calc(0.78 * var(--u))
+    calc(0.78 * var(--u));
+  box-shadow: var(--sh-seat);
+  /* 胶囊不许探出牌桌。
+     宽屏的座位锚点是 left: 11% / 89%（`.slot-*`），胶囊以锚点为中心，所以
+     「不出界」的条件是宽度不超过 11% × 2 = 22% 的牌桌宽。cqw 问的是
+     .app-main，也就是牌桌自己的宽度。
+     这一条在宽屏上几乎不触发（1280px 屏上 22cqw = 240px，而胶囊只要 130px），
+     但**牌桌宽度在 560–620px 那一段会触发**：那里既够不到下面窄桌的容器查询，
+     22% 又只剩 127px。胶囊的宽度随筹码位数变化（$3,980 与 $12,345 不一样宽），
+     所以那一段是间歇性出界——768px 屏上实测探出 1px，换一手就好了，靠截图
+     查不出来。 */
+  max-width: 22cqw;
+}
+
+/* 头像方块。设计稿放名字缩写（纯装饰），这里放位置——在扑克里"坐在哪"
+   比"叫什么"重要，同一个性格在 UTG 和在 BTN 是两种威胁。
+
+   三层阴影缺一不可：顶部内高光做出弧面，内描边收住边缘，外投影让它离开
+   卡片表面。只留底色的话是一块死板的色卡，这正是改版前的样子。 */
+.seat-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(0.22 * var(--u));
+  min-width: calc(4.44 * var(--u));
+  height: calc(4.44 * var(--u));
+  padding: 0 calc(0.55 * var(--u));
+  border-radius: calc(1.44 * var(--u));
+  color: #fff;
+  font-size: calc(1.33 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  flex: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 0 0 1px rgba(17, 20, 26, 0.06),
+    0 1px 2px rgba(17, 20, 26, 0.12);
+  /* 兜底色：data-av 缺失时也不会是个透明方块 */
+  background: linear-gradient(140deg, #9aa6b8, #71809a);
+}
+
+/* 五个座位各一种渐变，逐条抄自设计稿的 SEATS_DEF.gradient。
+   按**槽位**分配而不是按座位号：颜色跟着屏幕上的位置走，按钮位每手轮转时
+   头像不会跟着换色——那会让人误以为换了人。 */
+.seat-badge[data-av='0'] { background: linear-gradient(140deg, #9aa6b8, #71809a); }
+.seat-badge[data-av='1'] { background: linear-gradient(140deg, #8fb3ab, #63897f); }
+.seat-badge[data-av='2'] { background: linear-gradient(140deg, #c2b08c, #9c8763); }
+.seat-badge[data-av='3'] { background: linear-gradient(140deg, #bfa0a6, #96757c); }
+.seat-badge[data-av='4'] { background: linear-gradient(140deg, #a7a4c6, #7d7aa4); }
+/* hero 用中性灰，与五个对手都不同 —— 自己不该被误认成某个 AI */
+.hero-badge { background: linear-gradient(140deg, #909aaa, #5a6371); }
+
+.seat-to-act .seat-badge {
+  background: linear-gradient(140deg, #4d84f2, #2963e0);
+}
+
+.seat-meta {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.11 * var(--u));
+  line-height: 1.25;
+  /* flex 子项默认 min-width: auto，不写这条的话上面那个 max-width 压不动它
+     ——胶囊会溢出而不是收缩 */
+  min-width: 0;
+}
+.seat-name-row {
+  display: flex;
+  align-items: center;
+  gap: calc(0.67 * var(--u));
+}
+.seat-name {
+  font-size: calc(1.5 * var(--u));
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  /* 胶囊被 max-width 压到放不下时，让位的是名字——位置标签与筹码数是信息，
+     名字只是标识 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 状态点。不是唯一编码：正在行动同时有整张卡的蓝环，已弃牌同时有整块淡出
+   与「弃牌」徽章。 */
+.seat-status {
+  width: calc(0.67 * var(--u));
+  height: calc(0.67 * var(--u));
+  flex: none;
+  border-radius: 50%;
+}
+.seat-status.is-live { background: #39ab6c; }
+.seat-status.is-toact { background: var(--blue); }
+.seat-status.is-folded { background: #d6dae1; }
+.seat-stack {
+  font-size: calc(1.39 * var(--u));
+  color: var(--text-2);
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  font-variant-numeric: tabular-nums;
+}
+/* 位置小标记（BTN/SB/…）。头像方块让位给性格字之后，这条信息退到这里，
+   一枚极小的灰底胶囊，不与姓名/状态点抢视觉重量。 */
+.seat-pos {
+  flex: none;
+  padding: 1px calc(0.44 * var(--u));
+  border-radius: calc(0.44 * var(--u));
+  background: var(--soft);
+  color: var(--text-dim);
+  font-size: calc(1 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* 动作徽章＝设计稿的 badge：白底描边小标签，挂在胶囊下方 */
+.bubble {
+  background: var(--app);
+  color: var(--text-2);
+  border: 1px solid var(--line-2);
+  border-radius: calc(0.78 * var(--u));
+  padding: calc(0.33 * var(--u)) calc(1 * var(--u));
+  font-size: calc(1.11 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.05);
+}
+/* raise/bet/allin 类动作：设计稿 BADGE_STYLES.raise 的靛蓝配色，与中性的
+   call/check（上面的默认样式）区分开——"施压"和"跟随"不该长一个样。
+   这三个值是设计稿自己的调色板，不是本项目 --token 体系里的颜色，
+   照抄字面量而不是新建令牌。 */
+.bubble-raise {
+  background: #eeeffc;
+  color: #4a54d6;
+  border-color: rgba(74, 84, 214, 0.22);
+}
+/* 弃牌者的徽章退成无框灰字：它说的是"这个人已经不在了"，不该和还在牌里
+   的人的动作徽章一样显眼 */
+.seat-folded .bubble {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--text-dim);
+}
+/* 庄家钮：独立的圆形徽章，脱开座位/hero 胶囊，绝对定位在它外侧——
+   不再是头像方块角落里那个 5px、几乎不可辨认的小白点。定位锚点是
+   .seat-info / .hero-info（见那两条规则里的 position: relative）。
+   放在胶囊左上角外侧：这个位置不依赖座位在桌上的左右朝向，六个槽位
+   （含 hero）都不会被推出可视区，比照抄设计稿里"只对 hero 生效"的
+   left:-88px 更通用。 */
+.dealer-btn {
+  position: absolute;
+  top: calc(-1.2 * var(--u));
+  left: calc(-1.2 * var(--u));
+  z-index: 2;
+  /* 3.6u 而不是原来的 2.89u：这枚圆片标的是「谁在按钮位」，是牌桌上信息密度
+     最高的一个标记，而 --u 在手机上只有 6px 出头——2.89u 算出来才 18px，
+     和旁边的位置标签比小了一圈，一眼扫过去认不出。 */
+  width: calc(3.6 * var(--u));
+  height: calc(3.6 * var(--u));
+  border-radius: 50%;
+  background: var(--app);
+  border: 1px solid var(--line-2);
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.06), 0 6px 14px -6px rgba(17, 20, 26, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(1.55 * var(--u));
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+/* ---- 中部：底池与公共牌 ---- */
+/* 底池与公共牌不居中，而是落在台面约三分之一高的位置——设计稿就是这样，
+   下半张台面留给 hero。座位现在铺满整张台面（见 .opponents），所以这里的
+   padding 是相对整张台面算的。 */
+.table-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 28%;
+  gap: 11px;
+}
+/* 底池＝设计稿的胶囊标签。padding 与 border-radius 常驻在这里，
+   不放进 .pot-won，否则类名出现的那一刻底池会因为盒子变大而跳一下 */
+.pot {
+  display: flex;
+  gap: calc(0.78 * var(--u));
+  align-items: baseline;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: calc(0.67 * var(--u)) calc(1.78 * var(--u));
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.05), 0 10px 20px -12px rgba(17, 20, 26, 0.2);
+}
+.pot-label {
+  color: var(--text-dim);
+  font-size: calc(1.28 * var(--u));
+  font-weight: 500;
+}
+.pot-amount {
+  font-size: calc(1.83 * var(--u));
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.board {
+  display: flex;
+  align-items: flex-end;
+}
+/* 逐张递增的间距（0 / 6 / 6 / 18px），不是统一 gap——设计稿用第四张前的
+   大间隙暗示"这是转牌，前三张是同一次翻牌"，统一间距会把这条信息抹平。 */
+.board .card:nth-child(1) { margin-left: 0; }
+.board .card:nth-child(2),
+.board .card:nth-child(3) {
+  margin-left: calc(0.67 * var(--u));
+}
+.board .card:nth-child(n + 4) {
+  margin-left: calc(2 * var(--u));
+}
+
+/* ---- 四色牌 ---- */
+/* 设计稿的牌面是"点数在上、花色在下、居中竖排"，白底、圆角、带内描边和
+   投影。这与暗色版"点数占满 + 花色缩在右上角"的排法不同，改的是 CSS 不是
+   组件——Card.tsx 渲染出来本来就是 rank 后跟 suit 两个 span。
+
+   花色仍是四色（♠黑 ♥红 ♦蓝 ♣绿），这是**对设计稿的有意偏离**：设计稿用的
+   是两色（黑/红），而 spec §10.2 把四色牌列为要求，它是训练辅助——多人底池里
+   要快速看清同花可能，两色牌得逐张分辨形状。取的四个色相全部来自设计稿自己的
+   令牌（text / danger / blue / positive），所以不破坏整体调性。 */
+.card {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: linear-gradient(180deg, #ffffff, #fbfcfe);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  box-shadow: var(--sh-card);
+}
+.card-rank {
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.card-suit {
+  line-height: 1;
+  font-weight: 500;
+}
+/* 三档尺寸全部是设计稿 px / 9 * 1u。lg 取公共牌那一档（70×98）做基准，
+   hero 手牌在 .hero-cards 里缩到设计稿的 62×87。 */
+.card-sm {
+  width: calc(2.9 * var(--u));
+  height: calc(4.05 * var(--u));
+  border-radius: calc(0.5 * var(--u));
+  gap: calc(0.15 * var(--u));
+}
+.card-sm .card-rank { font-size: calc(1.35 * var(--u)); }
+.card-sm .card-suit { font-size: calc(1.2 * var(--u)); }
+.card-md {
+  width: calc(4.4 * var(--u));
+  height: calc(6.2 * var(--u));
+  border-radius: calc(0.7 * var(--u));
+  gap: calc(0.22 * var(--u));
+}
+.card-md .card-rank { font-size: calc(1.9 * var(--u)); }
+.card-md .card-suit { font-size: calc(1.7 * var(--u)); }
+.card-lg {
+  width: calc(7.78 * var(--u));
+  height: calc(10.89 * var(--u));
+  border-radius: calc(1 * var(--u));
+  gap: calc(0.33 * var(--u));
+}
+.card-lg .card-rank { font-size: calc(3.33 * var(--u)); }
+.card-lg .card-suit { font-size: calc(3 * var(--u)); }
+/* 「10」是唯一两个字符的点数。**字号与单字符点数完全一致**（2026-08-25
+   用户决定）——此前它被缩一档，结果是牌桌上 10 比 9 明显小一圈，一眼看
+   过去像是另一种东西。
+   只保留收紧字距：两个数字并排本来就比单个宽，-0.06em 让它不至于把牌面
+   撑满，但不动字号。牌宽容得下——tools/card-fit-check.mjs 逐张量过。 */
+.card-rank-wide { letter-spacing: -0.06em; }
+/* 牌背没有子元素，上面的 .card-rank/.card-suit 规则对它无副作用 */
+.card-back {
+  background: repeating-linear-gradient(45deg, #dbe1ea, #dbe1ea 3px, #c7cfdc 3px, #c7cfdc 6px);
+  box-shadow: var(--sh-1), inset 0 0 0 1px rgba(17, 20, 26, 0.05);
+}
+/* 花色配色：四色牌 ♠黑 ♥红 ♦蓝 ♣绿，与设计文档一致。
+   四色的用处是让同花一眼可辨——两色牌下 ♥ 与 ♦ 同色，区分只剩花色符号
+   本身那一点点形状差别，而复盘时"这手是不是同花"要在一屏里数出来。
+
+   2026-08-25 一度按用户要求把 ♦ 改成红色（对齐那张目标稿），当天又改了
+   回来。**不要"顺手"再把它两色化一次**：那不是没人想到，是想过并且否掉的。 */
+.suit-s { color: #111419; }
+.suit-h { color: #d93a3f; }
+.suit-d { color: #2f6fed; }
+.suit-c { color: #18945a; }
+
+/* ---- hero ---- */
+/* hero 往上压进台面。设计稿里自己的两张牌是**压在台边上**的，不是摆在
+   桌子外面——这是"你坐在这张桌子前"的全部由来。负 margin 而不是绝对定位：
+   它仍要参与 flex 列的高度计算，否则底部动作条会跟着上移。 */
+.hero {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(1.56 * var(--u));
+  /* 压进台面下缘。负 margin 也按比例走，否则小屏上会压过头 */
+  margin-top: calc(-6 * var(--u));
+  padding: calc(0.9 * var(--u)) 0;
+}
+/* 自己的牌：设计稿是 62×87，比公共牌的 70×98 小一档，投影更重——离"镜头"更近 */
+.hero-cards {
+  display: flex;
+  gap: calc(0.78 * var(--u));
+}
+.hero-cards .card-lg {
+  width: calc(6.89 * var(--u));
+  height: calc(9.67 * var(--u));
+}
+.hero-cards .card-lg .card-rank { font-size: calc(3 * var(--u)); }
+.hero-cards .card-lg .card-suit { font-size: calc(2.67 * var(--u)); }
+.hero-cards .card { box-shadow: var(--sh-card-hero); }
+/* 胜率读数。尺寸走 --u（牌桌那把比例尺），和它上面的底牌一起缩放。
+   底色用中性灰而不是 --blue：蓝在这套配色里是"轮到你/推荐"的专用色，
+   一个常驻读数占着它，会让"该你了"那圈蓝环不再是唯一信号。 */
+.hero-equity {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: calc(0.67 * var(--u));
+  padding: calc(0.33 * var(--u)) calc(1.11 * var(--u));
+  border-radius: calc(1.11 * var(--u));
+  background: var(--soft);
+  border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.hero-equity-num {
+  font-size: calc(1.78 * var(--u));
+  font-weight: 650;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.hero-equity-label {
+  font-size: calc(1.11 * var(--u));
+  color: var(--text-dim);
+}
+/* 降级：数字是放宽成全范围后算的。用 --warn（"注意但不是错"那一档），
+   不用 --danger —— 它不是一个错误，是一个不该被当真的数。 */
+.hero-equity.degraded {
+  background: rgba(183, 121, 31, 0.09);
+  border-color: rgba(183, 121, 31, 0.22);
+}
+.hero-equity.degraded .hero-equity-num,
+.hero-equity.degraded .hero-equity-label {
+  color: var(--warn);
+}
+
+/* 庄家钮是绝对定位到胶囊**外面**的，不占流内高度——所以它上方那点空隙得
+   自己留：.hero 的 flex gap 是 1.56u，而这枚圆片往上探 1.8u（窄桌上），
+   差的 0.24u 就是实测那 1px 的重叠（hero 的 D 蹭到上面的手牌与胜率读数，
+   五档视口都中）。这里补的量按探出量给，不是拍一个好看的数。 */
+.hero-info {
+  margin-top: calc(0.6 * var(--u));
+  /* 定位上下文：与 .seat-info 同理，庄家钮锚定在这一层外侧 */
+  position: relative;
+  display: flex;
+  gap: calc(1.33 * var(--u));
+  align-items: center;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(17, 20, 26, 0.06);
+  border-radius: calc(1.78 * var(--u));
+  padding: calc(0.78 * var(--u)) calc(1.89 * var(--u)) calc(0.78 * var(--u))
+    calc(0.78 * var(--u));
+  box-shadow: var(--sh-seat);
+  transition: border-color 160ms linear, box-shadow 160ms linear;
+}
+/* 「你」的标记，设计稿里是名字右边一枚蓝色小签 */
+.hero-you {
+  padding: calc(0.11 * var(--u)) calc(0.56 * var(--u));
+  border-radius: calc(0.44 * var(--u));
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: calc(1 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+/* 「轮到你了」。蓝环是纯颜色编码，这一行字是它的文字版本——色觉障碍用户
+   与读屏用户只能拿到这一个。 */
+.hero-turn {
+  display: flex;
+  align-items: center;
+  gap: calc(0.67 * var(--u));
+  font-size: calc(1.28 * var(--u));
+  font-weight: 500;
+  color: var(--blue);
+}
+.hero-turn::before {
+  content: '';
+  width: calc(0.56 * var(--u));
+  height: calc(0.56 * var(--u));
+  border-radius: 50%;
+  background: var(--blue);
+}
+/* 轮到你：与对手座位的 .seat-to-act 用同一组令牌，两处必须长一样，
+   否则"该谁了"在牌桌上下半部各是一种说法 */
+.hero-info.hero-to-act {
+  border-color: rgba(47, 111, 237, 0.42);
+  box-shadow: var(--sh-seat-act);
+}
+/* hero 的位置与筹码走与对手座位同一组样式（.seat-badge / .seat-meta），
+   这里只留它独有的两项。 */
+.hero-stack {
+  font-size: calc(1.39 * var(--u));
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: -0.012em;
+  font-variant-numeric: tabular-nums;
+}
+.hero-bet {
+  color: var(--blue);
+  font-weight: 600;
+  font-size: calc(1.3 * var(--u));
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(0.56 * var(--u));
+}
+
+/* ---- 底部动作条：位于拇指可达区 ----
+   不用 position: fixed —— 它已是 .app 这个满高 flex 列的最后一个子元素，
+   天然贴底并自动占位；固定定位反而会压住 hero 手牌。body 的 overflow: hidden
+   已经保证「不随内容滚动」这条设计意图。
+   浅色版去掉了整条深色面板：设计稿里底部不是一块背景板，而是几个浮在页面
+   底色上的元素，层次靠阴影。 */
+.bottom {
+  padding: calc(1.11 * var(--u)) calc(1.33 * var(--u))
+    calc(2.44 * var(--u) + var(--safe-bottom));
+}
+
+.actionbar {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.11 * var(--u));
+}
+
+.actionbar-idle {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: calc(1.39 * var(--u));
+  padding: calc(2 * var(--u)) 0;
+}
+
+.actionbar-row {
+  display: flex;
+  gap: calc(1.11 * var(--u));
+}
+
+/* 设计稿给三颗按钮各配了 hover：前两颗压一层 --soft，主按钮提亮。
+   :not(.btn-primary) 不是装饰——`.btn:hover` 是 (0,2,0)，而 .btn-primary
+   的蓝底只有 (0,1,0)，不排除的话 hover 时灰底会盖掉蓝底，而主按钮是白字，
+   白字压在近白的 --soft 上等于整颗按钮消失（实测：文字完全看不见）。
+   受影响的是全部三处 .btn-primary：动作条主按钮、补码的两颗、结算的
+   「下一手」。 */
+
+/* 主动作是页面上唯一的实心蓝：设计稿里同屏永远只有一个这样的按钮 */
+
+/* 弃牌是"什么都不做"，视觉上要最轻——透明底、灰字，不与另外两个抢 */
+
+/* 预设档 + 滑块 + 金额框合成一整条浮起的卡片（设计稿的 raise 条），
+   与下面的 Fold/Call/Raise 三键行**同屏常驻**，不是点「加注」才展开出来的
+   面板——三态互斥切换是改版前的形状，见 ActionBar.tsx 顶部的注释。
+   设计稿这一整条是单行 flex row（预设按钮/滑块/金额框都是平级子元素），
+   不是"预设一行、滑块一行"的纵向堆叠。 */
+/* 允许换行。
+   一行里有五个预设 + 滑块 + 金额框 + 「最大」，横向本来就紧；--u 改成跟着
+   屏幕长之后，它们在 360 与 390 上直接把金额框顶出面板（实测面板右缘 352、
+   金额框右缘 382，超出 30px，再被视口切掉，屏幕上看到的是「$120 | 最」）。
+   换行之后金额框整体落到第二行，与设计稿「预设一行、滑块+金额一行」的两行
+   版式一致，而不是把字缩小硬塞。 */
+.raise-panel {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(0.89 * var(--u));
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line);
+  border-radius: calc(1.67 * var(--u));
+  padding: calc(1.11 * var(--u)) calc(1.33 * var(--u));
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.04), 0 12px 26px -16px rgba(17, 20, 26, 0.2);
+}
+/* 五档预设（1/3池 · 1/2池 · 2/3池 · 池 · 全下）按内容自身宽度排布，
+   不再各占一等份——它们与滑块是同一行里的平级兄弟，滑块才是吃剩余空间
+   的那个（见 .raise-slider 的 flex:1）。 */
+
+/* 选中态是持久的（当前滑块值等于这一档），不是只在按下瞬间闪一下——
+   :active 是原生的按压反馈，顺手复用同一组配色，两者不冲突。 */
+.preset:active,
+
+/* 已走过的部分填蓝：用一道硬边渐变而不是两个色标，--fill 处直接切换，
+   不留过渡带。Chrome 与 Firefox 的轨道伪元素名字不同但画法一样。 */
+
+/* 金额独立成一个描边小盒，与设计稿一致——它是这一条里唯一会变的数字，
+   套个框才不会被两侧的按钮淹掉。盒内还嵌一条竖分隔线 + 「最大」文字链接
+   （设计稿的 Max），点它等价于把滑块拖到头，与「全下」预设是同一个动作。 */
+.raise-amount-box {
+  display: flex;
+  align-items: center;
+  flex: none;
+  /* 推到行尾。上行原来靠滑块的 flex-1 把金额框顶到右边，滑块换成步进器
+     之后没有会伸缩的东西了，改用 auto 外边距——面板 flex-wrap，窄屏上金额
+     框换行之后仍然靠右，与下行主按钮的右边缘对齐 */
+  margin-left: auto;
+  gap: calc(1 * var(--u));
+  border: 1px solid var(--line-2);
+  border-radius: calc(1.11 * var(--u));
+  padding: calc(0.78 * var(--u)) calc(1.22 * var(--u));
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(17, 20, 26, 0.04);
+}
+.raise-amount {
+  min-width: calc(6.2 * var(--u));
+  text-align: right;
+  font-size: calc(1.5 * var(--u));
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.raise-amount-sep {
+  width: 1px;
+  height: calc(1.56 * var(--u));
+  background: var(--line-2);
+  flex: none;
+}
+
+.summary { display: flex; flex-direction: column; gap: 8px; }
+.summary-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.summary-line .pos { color: var(--positive); }
+.summary-line .neg { color: var(--danger); }
+.summary-note { color: var(--text-dim); font-size: 12px; font-weight: 400; }
+
+.rebuy { display: flex; flex-direction: column; gap: 8px; }
+.rebuy-note { color: var(--text-dim); font-size: 11.5px; text-align: center; }
+.rebuy-actions { display: flex; gap: 6px; }
+
+/* ---- 面额筹码堆 ----
+   筹码是界面上唯一"实物"，浅色底下反而更该保持饱和——它们要读成塑料圆片，
+   不是 UI 色块。所以这一组不用设计令牌，单独挑色。 */
+.chip-stack {
+  display: inline-flex;
+  align-items: flex-end;
+  vertical-align: middle;
+}
+/* 筹码图形同理：13px / -4px 是照桌面写死的，不跟牌桌缩放。
+   1.85u 在桌面上仍是约 13px，手机上跟着一起缩。 */
+.chip {
+  width: calc(1.85 * var(--u));
+  height: calc(1.85 * var(--u));
+  border-radius: 50%;
+  margin-left: calc(-0.57 * var(--u));
+  position: relative;
+  box-shadow:
+    0 1px 2px rgba(17, 20, 26, 0.28),
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.35);
+}
+.chip:first-child { margin-left: 0; }
+/* 边缘的虚线条纹——真实筹码的标志性纹路 */
+.chip::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.5);
+}
+.chip-d20 { background: #6b7480; }
+.chip-d100 { background: #c0392f; }
+.chip-d500 { background: #1f8a55; }
+.chip-d1000 { background: #24272e; }
+
+/* 下注额跟着 --u 缩放。
+   原来 .seat-bet-amount 压根没写 font-size，于是继承 body 的 16px，**不随牌桌
+   缩放**——手机上牌桌缩到一半，这个数字还是桌面尺寸，整块筹码堆连数字一起
+   挂到牌桌外面去（360×688 上实测左边探出台面约 90px）。
+   旁边的 .hero-bet 一直是对的（calc(1.3 * var(--u))），这条是漏的。 */
+.seat-bet {
+  display: flex;
+  align-items: center;
+  gap: calc(0.7 * var(--u));
+  font-size: calc(1.7 * var(--u));
+}
+.seat-bet-amount {
+  color: var(--blue);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ================= m2 动效 =================
+   全部用 CSS transition / keyframes，不引动画库，也不在 React 里编排时间线。 */
+
+/* 筹码滑向牌桌中心并淡出。对手在上半部，向下即朝中心；hero 在下方，方向相反。
+   元素常驻挂载（见 Seat.tsx / HeroHand.tsx），卸载就没有过渡可言。 */
+.seat-bet,
+.hero-bet {
+  transition:
+    transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* 归零时滑走并淡出。位移改成按 --u 缩放：26px 是照着桌面尺寸写死的，牌桌缩到
+   手机大小之后它相当于半个座位高，滑出去的那一路会穿过下面的底牌（摊牌时那两
+   张牌就摆在胶囊下方，见 .slot-0 / .slot-2 / .slot-4 的 .seat-cards）。
+   实测撞出来过：22 轮扫描里出现两次 31×12px 的重叠，且只在过渡的那 200ms 里
+   存在——静态截图永远看不到。 */
+.seat-bet[data-empty='true'] {
+  opacity: 0;
+  transform: translateY(calc(2.4 * var(--u))) scale(0.7);
+  pointer-events: none;
+}
+.hero-bet[data-empty='true'] {
+  opacity: 0;
+  transform: translateY(-26px) scale(0.7);
+  pointer-events: none;
+}
+
+/* 底池收到筹码时轻轻一涨。由 Pot.tsx 的 key 变化触发重挂载 */
+@keyframes pot-bump {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+.pot-amount {
+  display: inline-block;
+  animation: pot-bump 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 公共牌逐张落下 */
+@keyframes card-drop {
+  from { opacity: 0; transform: translateY(-20px) scale(0.88); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.board .card:nth-child(-n + 3) {
+  animation: card-drop 220ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.board .card:nth-child(2) { animation-delay: 70ms; }
+.board .card:nth-child(3) { animation-delay: 140ms; }
+/* 转牌与河牌是单张落下，不参与错开——它们的兄弟节点不会重挂载，
+   给延迟只会让这一张空等 210/280ms，还和立即响起的 board-flip 音效脱节 */
+.board .card:nth-child(n + 4) {
+  animation: card-drop 220ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+  animation-delay: 0s;
+}
+
+/* 赢池脉冲：结算条出现时，底池闪两下蓝环 */
+@keyframes pot-win-pulse {
+  0%, 100% { box-shadow: none; }
+  25%, 75% {
+    box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.16), 0 10px 24px -10px rgba(47, 111, 237, 0.5);
+  }
+}
+.pot.pot-won {
+  animation: pot-win-pulse 600ms ease-in-out;
+}
+
+/* 系统开启「减少动态效果」时全部退化为纯淡入淡出：无位移、无缩放 */
+@media (prefers-reduced-motion: reduce) {
+  .seat-bet,
+  .hero-bet {
+    transition: opacity 120ms linear;
+  }
+  .seat-bet[data-empty='true'],
+  .hero-bet[data-empty='true'] {
+    transform: none;
+  }
+  .pot-amount { animation: none; }
+  .board .card:nth-child(n) {
+    animation: card-drop 120ms linear backwards;
+  }
+  @keyframes card-drop {
+    from { opacity: 0; transform: none; }
+    to { opacity: 1; transform: none; }
+  }
+  .pot.pot-won { animation: none; }
+}
