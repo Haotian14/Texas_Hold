@@ -215,7 +215,9 @@ describe('★ 验收关卡：脚本化玩家 200 手自对弈', () => {
       const again = run(CFG, HANDS, 100);
       expect(JSON.stringify(again.records)).toBe(JSON.stringify(r.records));
     },
-    30_000,
+    // Shared GitHub runners are slower than local machines for this
+    // deterministic 400-hand comparison, so keep a focused allowance here.
+    60_000,
   );
 
   it('4. 每份 record 都能被 replayHandRecord 复现到相同终局', () => {
